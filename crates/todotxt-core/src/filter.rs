@@ -98,8 +98,9 @@ impl Filter {
     pub fn matches_with_date(&self, task: &Task, today: NaiveDate) -> bool {
         let raw = task.to_raw();
 
-        // Pre-filter 1: hidden tag suppression
-        if self.suppress_hidden && raw.contains("h:1") {
+        // Pre-filter 1: hidden tag suppression — token-level match to avoid false positives on
+        // substrings like `h:10`, `auth:1`, etc.
+        if self.suppress_hidden && raw.split_ascii_whitespace().any(|t| t == "h:1") {
             return false;
         }
 
@@ -276,6 +277,14 @@ mod tests {
         let f = Filter::new(); // suppress_hidden: true by default
         assert!(!f.matches_with_date(&task("Secret task h:1"), today()));
         assert!(f.matches_with_date(&task("Normal task"), today()));
+    }
+
+    #[test]
+    fn suppress_hidden_no_false_positive_on_substring() {
+        // Tasks with "h:10", "h:11", or embedded substrings must NOT be suppressed
+        let f = Filter::new();
+        assert!(f.matches_with_date(&task("Task with h:10"), today()));
+        assert!(f.matches_with_date(&task("Task auth:1 check"), today()));
     }
 
     #[test]
