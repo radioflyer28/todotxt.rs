@@ -57,7 +57,7 @@
 
 ### Platform (PLAT)
 
-- [ ] **PLAT-01**: CLI generates shell completions for bash, zsh, fish, and PowerShell via `completions <shell>` subcommand
+- [x] **PLAT-01**: CLI generates shell completions for bash, zsh, fish, and PowerShell via `completions <shell>` subcommand
 
 ## Future Requirements (Deferred)
 
@@ -114,7 +114,7 @@
 | READ-08 | Phase 3 | Complete |
 | CFG-01 | Phase 3 | Complete |
 | CFG-02 | Phase 3 | Complete |
-| PLAT-01 | Phase 3 | Pending |
+| PLAT-01 | Phase 3 | Complete |
 | WRITE-01 | Phase 4 | Pending |
 | WRITE-02 | Phase 4 | Pending |
 | WRITE-03 | Phase 4 | Pending |
