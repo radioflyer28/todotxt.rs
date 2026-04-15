@@ -1,5 +1,13 @@
-use clap_complete::Shell;
+use clap::CommandFactory;
+use clap_complete::{generate, Shell};
 
-pub fn run(_shell: Shell) {
-    todo!("implemented in plan 03")
+use crate::cli::Cli;
+
+/// Generate shell completions and write to stdout.
+///
+/// Supports all shells provided by `clap_complete::Shell`:
+/// Bash, Zsh, Fish, PowerShell, Elvish.
+pub fn run(shell: Shell) {
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "todotxt", &mut std::io::stdout());
 }
