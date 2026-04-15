@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
 use crate::error::TodoError;
+use crate::filter::Filter;
+use crate::sort::SortOrder;
 use crate::task::Task;
 
 // ── LineEnding ────────────────────────────────────────────────────────────────
@@ -219,6 +221,51 @@ impl TaskList {
     /// Returns the detected line ending style.
     pub fn line_ending(&self) -> LineEnding {
         self.line_ending
+    }
+
+    // ── Filtering, Sorting, Batch ─────────────────────────────────────────────
+
+    /// Return all tasks that match `filter`, paired with their indices.
+    ///
+    /// Does NOT mutate or save. The index can be used for subsequent `update()` or
+    /// `delete()` calls without requiring a second lookup.
+    pub fn filter(&self, filter: &Filter) -> Vec<(usize, &Task)> {
+        self.tasks
+            .iter()
+            .enumerate()
+            .filter(|(_, task)| filter.matches(task))
+            .collect()
+    }
+
+    /// Sort tasks in-place according to `order` using a stable sort.
+    ///
+    /// Tasks that compare equal preserve their original relative order
+    /// (matching LINQ `OrderBy` behavior from the C# reference implementation).
+    ///
+    /// Does NOT save to disk — call `save()` explicitly if persistence is needed.
+    pub fn sort(&mut self, order: SortOrder) {
+        self.tasks.sort_by(|a, b| order.compare(a, b));
+    }
+
+    /// Replace multiple tasks atomically — validates all indices first, then
+    /// applies all replacements, then calls `save()` exactly once.
+    ///
+    /// **Fail-fast:** if ANY index is out of bounds, returns `IndexOutOfBounds`
+    /// immediately and NO tasks are mutated.
+    pub fn batch_update(&mut self, replacements: Vec<(usize, Task)>) -> Result<(), TodoError> {
+        let count = self.tasks.len();
+        // Validate ALL indices before ANY mutation
+        for &(index, _) in &replacements {
+            if index >= count {
+                return Err(TodoError::IndexOutOfBounds { index, count });
+            }
+        }
+        // Apply all replacements in a single pass
+        for (index, new_task) in replacements {
+            self.tasks[index] = new_task;
+        }
+        // Single save() call — avoids N disk writes for N tasks
+        self.save()
     }
 }
 
