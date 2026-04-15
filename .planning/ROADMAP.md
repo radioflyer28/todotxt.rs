@@ -127,7 +127,7 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Foundation: Cargo.toml deps, config.rs, output.rs (Wave 1)
+- [x] 03-01-PLAN.md — Foundation: Cargo.toml deps, config.rs, output.rs (Wave 1)
 - [ ] 03-02-PLAN.md — CLI wiring: cli.rs, main.rs, list/stats/projects/contexts/show commands (Wave 2)
 - [ ] 03-03-PLAN.md — Completions + integration tests (Wave 3)
 **UAT Criteria:**

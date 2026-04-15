@@ -24,8 +24,8 @@
 - [ ] **READ-03**: User can list all `+projects` present in the todo.txt file with `projects`
 - [ ] **READ-04**: User can list all `@contexts` present in the todo.txt file with `contexts`
 - [ ] **READ-05**: User can view a single task by numeric ID with `show <id>`
-- [ ] **READ-06**: User can get structured JSON output from any command with `--json` flag (includes `schema_version` field)
-- [ ] **READ-07**: User can suppress color output with `--no-color` and suppress informational output with `--quiet`
+- [x] **READ-06**: User can get structured JSON output from any command with `--json` flag (includes `schema_version` field)
+- [x] **READ-07**: User can suppress color output with `--no-color` and suppress informational output with `--quiet`
 - [ ] **READ-08**: CLI exits with code 0 (success), 1 (not found / no match), or 2 (error) consistently across all commands
 
 ### CLI — Write Commands (WRITE)
@@ -52,8 +52,8 @@
 
 ### Config & Settings (CFG)
 
-- [ ] **CFG-01**: CLI reads/writes a TOML config file at a platform-appropriate path (via `directories` crate: `~/.config/todotxt/config.toml` on Linux, `%APPDATA%\todotxt\config.toml` on Windows, `~/Library/Application Support/todotxt/config.toml` on macOS)
-- [ ] **CFG-02**: User can save and load up to 9 named filter presets in config (e.g., `[presets.work]`, `[presets.today]`)
+- [x] **CFG-01**: CLI reads/writes a TOML config file at a platform-appropriate path (via `directories` crate: `~/.config/todotxt/config.toml` on Linux, `%APPDATA%\todotxt\config.toml` on Windows, `~/Library/Application Support/todotxt/config.toml` on macOS)
+- [x] **CFG-02**: User can save and load up to 9 named filter presets in config (e.g., `[presets.work]`, `[presets.today]`)
 
 ### Platform (PLAT)
 
@@ -109,11 +109,11 @@
 | READ-03 | Phase 3 | Pending |
 | READ-04 | Phase 3 | Pending |
 | READ-05 | Phase 3 | Pending |
-| READ-06 | Phase 3 | Pending |
-| READ-07 | Phase 3 | Pending |
+| READ-06 | Phase 3 | Complete |
+| READ-07 | Phase 3 | Complete |
 | READ-08 | Phase 3 | Pending |
-| CFG-01 | Phase 3 | Pending |
-| CFG-02 | Phase 3 | Pending |
+| CFG-01 | Phase 3 | Complete |
+| CFG-02 | Phase 3 | Complete |
 | PLAT-01 | Phase 3 | Pending |
 | WRITE-01 | Phase 4 | Pending |
 | WRITE-02 | Phase 4 | Pending |
