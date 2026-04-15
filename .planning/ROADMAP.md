@@ -33,7 +33,7 @@
 
 Plans:
 - [x] 01-01-PLAN.md — Workspace scaffold + Task parser with winnow + builder methods + tests
-- [ ] 01-02-PLAN.md — TaskList with atomic file I/O, BOM/CRLF handling + integration tests
+- [x] 01-02-PLAN.md — TaskList with atomic file I/O, BOM/CRLF handling + integration tests
 
 **Deliverables:**
 - `Cargo.toml` workspace at repo root with members `crates/todotxt-core` and `crates/todotxt-cli`
