@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use assert_fs::{fixture::ChildPath, prelude::*, TempDir};
+use toml::Value;
 
 pub const SAMPLE_TODO: &str = "(A) Buy milk +groceries @home\n\
 (B) Send report +work @office\n\
@@ -27,10 +28,9 @@ impl TestFixture {
         let todo = dir.child("todo.txt");
         todo.write_str(content).expect("write todo.txt");
         let config = dir.child("config.toml");
-        // Use Debug format so Windows backslashes are escaped correctly in TOML
-        config
-            .write_str(&format!("todo_file = {:?}\n", todo.path()))
-            .expect("write config.toml");
+        let path_str = todo.path().to_string_lossy().into_owned();
+        let toml = format!("todo_file = {}\n", Value::String(path_str));
+        config.write_str(&toml).expect("write config.toml");
         TestFixture { dir, todo, config }
     }
 
