@@ -96,10 +96,35 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| CORE-01–08 | TBD | Pending roadmap |
-| READ-01–08 | TBD | Pending roadmap |
-| WRITE-01–07 | TBD | Pending roadmap |
-| ENRICH-01–04 | TBD | Pending roadmap |
-| BULK-01–02 | TBD | Pending roadmap |
-| CFG-01–02 | TBD | Pending roadmap |
-| PLAT-01 | TBD | Pending roadmap |
+| CORE-01 | Phase 1 | Pending |
+| CORE-02 | Phase 1 | Pending |
+| CORE-03 | Phase 1 | Pending |
+| CORE-07 | Phase 1 | Pending |
+| CORE-04 | Phase 2 | Pending |
+| CORE-05 | Phase 2 | Pending |
+| CORE-06 | Phase 2 | Pending |
+| CORE-08 | Phase 2 | Pending |
+| READ-01 | Phase 3 | Pending |
+| READ-02 | Phase 3 | Pending |
+| READ-03 | Phase 3 | Pending |
+| READ-04 | Phase 3 | Pending |
+| READ-05 | Phase 3 | Pending |
+| READ-06 | Phase 3 | Pending |
+| READ-07 | Phase 3 | Pending |
+| READ-08 | Phase 3 | Pending |
+| CFG-01 | Phase 3 | Pending |
+| CFG-02 | Phase 3 | Pending |
+| PLAT-01 | Phase 3 | Pending |
+| WRITE-01 | Phase 4 | Pending |
+| WRITE-02 | Phase 4 | Pending |
+| WRITE-03 | Phase 4 | Pending |
+| WRITE-04 | Phase 4 | Pending |
+| WRITE-05 | Phase 4 | Pending |
+| WRITE-06 | Phase 4 | Pending |
+| WRITE-07 | Phase 4 | Pending |
+| ENRICH-01 | Phase 5 | Pending |
+| ENRICH-02 | Phase 5 | Pending |
+| ENRICH-03 | Phase 5 | Pending |
+| ENRICH-04 | Phase 5 | Pending |
+| BULK-01 | Phase 5 | Pending |
+| BULK-02 | Phase 5 | Pending |
