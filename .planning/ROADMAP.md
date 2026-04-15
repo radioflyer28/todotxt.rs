@@ -124,6 +124,12 @@ Plans:
 - `crates/todotxt-cli/src/commands/completions.rs`: `clap_complete` shell completion generation for bash, zsh, fish, PowerShell
 - `crates/todotxt-cli/tests/`: `assert_cmd` integration tests for all read commands; exit-code assertions; JSON output schema validation
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Foundation: Cargo.toml deps, config.rs, output.rs (Wave 1)
+- [ ] 03-02-PLAN.md — CLI wiring: cli.rs, main.rs, list/stats/projects/contexts/show commands (Wave 2)
+- [ ] 03-03-PLAN.md — Completions + integration tests (Wave 3)
 **UAT Criteria:**
 - [ ] `todotxt list` prints all tasks in a formatted table with priority colorization; `todotxt ls +work` prints only tasks containing `+work`
 - [ ] `todotxt stats` prints total, complete, incomplete, due-today, and overdue counts as human-readable text; `todotxt stats --json` returns a JSON object with `schema_version: 1` and those same counts as fields
