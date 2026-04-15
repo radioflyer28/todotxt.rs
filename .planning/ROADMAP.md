@@ -32,7 +32,7 @@
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Workspace scaffold + Task parser with winnow + builder methods + tests
+- [x] 01-01-PLAN.md — Workspace scaffold + Task parser with winnow + builder methods + tests
 - [ ] 01-02-PLAN.md — TaskList with atomic file I/O, BOM/CRLF handling + integration tests
 
 **Deliverables:**
