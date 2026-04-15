@@ -39,8 +39,10 @@ impl Config {
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| PathBuf::from("."));
-        resolve_config_path(&binary_dir, platform_path.parent().unwrap_or(platform_path))
-            .join("config.toml")
+        let config_dir = platform_path
+            .parent()
+            .expect("platform config path must have a parent directory");
+        resolve_config_path(&binary_dir, config_dir).join("config.toml")
     }
 
     /// Load config from `path`. If the file does not exist, auto-create it
