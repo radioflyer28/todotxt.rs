@@ -19,14 +19,14 @@
 
 ### CLI — Read Commands (READ)
 
-- [ ] **READ-01**: User can list tasks with `list`/`ls`, optionally filtered by inline filter arguments
-- [ ] **READ-02**: User can view task statistics with `stats`: total, complete, incomplete, due today, overdue counts
-- [ ] **READ-03**: User can list all `+projects` present in the todo.txt file with `projects`
-- [ ] **READ-04**: User can list all `@contexts` present in the todo.txt file with `contexts`
-- [ ] **READ-05**: User can view a single task by numeric ID with `show <id>`
+- [x] **READ-01**: User can list tasks with `list`/`ls`, optionally filtered by inline filter arguments
+- [x] **READ-02**: User can view task statistics with `stats`: total, complete, incomplete, due today, overdue counts
+- [x] **READ-03**: User can list all `+projects` present in the todo.txt file with `projects`
+- [x] **READ-04**: User can list all `@contexts` present in the todo.txt file with `contexts`
+- [x] **READ-05**: User can view a single task by numeric ID with `show <id>`
 - [x] **READ-06**: User can get structured JSON output from any command with `--json` flag (includes `schema_version` field)
 - [x] **READ-07**: User can suppress color output with `--no-color` and suppress informational output with `--quiet`
-- [ ] **READ-08**: CLI exits with code 0 (success), 1 (not found / no match), or 2 (error) consistently across all commands
+- [x] **READ-08**: CLI exits with code 0 (success), 1 (not found / no match), or 2 (error) consistently across all commands
 
 ### CLI — Write Commands (WRITE)
 
@@ -104,14 +104,14 @@
 | CORE-05 | Phase 2 | Pending |
 | CORE-06 | Phase 2 | Pending |
 | CORE-08 | Phase 2 | Pending |
-| READ-01 | Phase 3 | Pending |
-| READ-02 | Phase 3 | Pending |
-| READ-03 | Phase 3 | Pending |
-| READ-04 | Phase 3 | Pending |
-| READ-05 | Phase 3 | Pending |
+| READ-01 | Phase 3 | Complete |
+| READ-02 | Phase 3 | Complete |
+| READ-03 | Phase 3 | Complete |
+| READ-04 | Phase 3 | Complete |
+| READ-05 | Phase 3 | Complete |
 | READ-06 | Phase 3 | Complete |
 | READ-07 | Phase 3 | Complete |
-| READ-08 | Phase 3 | Pending |
+| READ-08 | Phase 3 | Complete |
 | CFG-01 | Phase 3 | Complete |
 | CFG-02 | Phase 3 | Complete |
 | PLAT-01 | Phase 3 | Pending |

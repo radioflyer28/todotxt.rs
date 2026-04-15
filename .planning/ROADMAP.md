@@ -124,11 +124,11 @@ Plans:
 - `crates/todotxt-cli/src/commands/completions.rs`: `clap_complete` shell completion generation for bash, zsh, fish, PowerShell
 - `crates/todotxt-cli/tests/`: `assert_cmd` integration tests for all read commands; exit-code assertions; JSON output schema validation
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 03-01-PLAN.md — Foundation: Cargo.toml deps, config.rs, output.rs (Wave 1)
-- [ ] 03-02-PLAN.md — CLI wiring: cli.rs, main.rs, list/stats/projects/contexts/show commands (Wave 2)
+- [x] 03-02-PLAN.md — CLI wiring: cli.rs, main.rs, list/stats/projects/contexts/show commands (Wave 2)
 - [ ] 03-03-PLAN.md — Completions + integration tests (Wave 3)
 **UAT Criteria:**
 - [ ] `todotxt list` prints all tasks in a formatted table with priority colorization; `todotxt ls +work` prints only tasks containing `+work`
@@ -270,7 +270,7 @@ Plans:
 |-------|-------------|--------------|--------|-----------|
 | 1. Workspace Bootstrap + Core Library Foundation | Parser, Task model, TaskList CRUD, atomic writes | CORE-01, CORE-02, CORE-03, CORE-07 | Not started | — |
 | 2. Core Library Completion | Filter, sort, file watch, portable mode | CORE-04, CORE-05, CORE-06, CORE-08 | Not started | — |
-| 3. CLI Foundation — Config + Output + Read Commands | Config, output, all read commands, completions | READ-01–08, CFG-01, CFG-02, PLAT-01 | Not started | — |
+| 3. CLI Foundation — Config + Output + Read Commands | Config, output, all read commands, completions | 2/3 | In Progress|  |
 | 4. CLI Write Commands | Add, do, undo, del, edit, append, prepend | WRITE-01–07 | Not started | — |
 | 5. Task Enrichment + Bulk Operations | Pri, depri, due, postpone, archive, del-done | ENRICH-01–04, BULK-01–02 | Not started | — |
 | 6. Cross-Platform Polish + Integration Tests | E2E validation, README, cross-platform tests | All (verification) | Not started | — |
