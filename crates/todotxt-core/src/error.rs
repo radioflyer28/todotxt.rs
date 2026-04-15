@@ -14,4 +14,8 @@ pub enum TodoError {
 
     #[error("index {index} out of bounds (task count: {count})")]
     IndexOutOfBounds { index: usize, count: usize },
+
+    #[cfg(feature = "watching")]
+    #[error("file watcher error: {0}")]
+    Watch(#[from] notify_debouncer_mini::notify::Error),
 }
