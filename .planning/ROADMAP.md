@@ -29,6 +29,12 @@
 - CORE-03: TaskList CRUD — atomic file writes (write to `.tmp`, rename)
 - CORE-07: UTF-8 BOM stripping + CRLF/LF normalization on load; preserve on save
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Workspace scaffold + Task parser with winnow + builder methods + tests
+- [ ] 01-02-PLAN.md — TaskList with atomic file I/O, BOM/CRLF handling + integration tests
+
 **Deliverables:**
 - `Cargo.toml` workspace at repo root with members `crates/todotxt-core` and `crates/todotxt-cli`
 - `crates/todotxt-core/src/error.rs`: `TodoError` enum via `thiserror` 2.0
