@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 03-cli-foundation-config-output-read-commands
 source: [03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md]
 started: 2026-04-15T00:00:00Z
-updated: 2026-04-15T01:10:00Z
+updated: 2026-04-15T01:20:00Z
 ---
 
 ## Current Test
@@ -85,26 +85,69 @@ skipped: 0
   reason: "User reported: it incorrectlyt indented the done task"
   severity: major
   test: 2
-  artifacts: []
-  missing: []
+  root_cause: "Default list behavior uses Filter::new() (show-all semantics) so completed tasks are included, and Task::parse preserves trailing CR in raw text causing carriage-return formatting corruption in rendered output."
+  artifacts:
+    - path: "crates/todotxt-cli/src/commands/list.rs"
+      issue: "build_filter() returns Filter::new() when query is empty, which does not exclude completed tasks."
+    - path: "crates/todotxt-core/src/task.rs"
+      issue: "Task::parse stores raw before CR normalization, so raw can retain trailing \r."
+    - path: "crates/todotxt-cli/src/output.rs"
+      issue: "Renderer prints task.to_raw() verbatim, exposing carriage-return artifacts in terminal output."
+  missing:
+    - "Change list default to incomplete-only (equivalent to adding -DONE when no explicit completion term is provided)."
+    - "Normalize Task.raw for CRLF input (strip trailing \r in canonical raw representation)."
+    - "Add regression tests for list output on CRLF and mixed line endings."
+  debug_session: .planning/debug/phase-03-list-prints-done-task.md
 - truth: "Running `todotxt --json list` returns clean task payloads without trailing CR characters and excludes completed tasks from list output"
   status: failed
   reason: "User reported: JSON includes trailing \"\\r\" in raw text for completed task entry"
   severity: major
   test: 9
-  artifacts: []
-  missing: []
+  root_cause: "The default list filter includes completed tasks and Task.raw retains trailing CR on mixed-line-ending files; JSON serialization uses raw directly so \r leaks into payloads."
+  artifacts:
+    - path: "crates/todotxt-cli/src/commands/list.rs"
+      issue: "No default completion exclusion in list command path."
+    - path: "crates/todotxt-core/src/task_list.rs"
+      issue: "Single global line-ending split behavior allows trailing \r to remain on mixed-ending rows."
+    - path: "crates/todotxt-core/src/task.rs"
+      issue: "raw assigned from original line before trim_end_matches('\\r')."
+  missing:
+    - "Ensure mixed LF/CRLF rows are normalized before raw storage or serialization."
+    - "Add JSON snapshot test proving no trailing \r in raw field."
+    - "Ensure default list JSON excludes completed tasks unless explicitly requested."
+  debug_session: .planning/debug/phase03-json-list-trailing-cr.md
 - truth: "Running `todotxt --no-color list` prints cleanly formatted task rows; completed tasks are hidden and text is not mangled"
   status: failed
   reason: "User reported: done task is improperly indented and mangled the year"
   severity: major
   test: 10
-  artifacts: []
-  missing: []
+  root_cause: "Completed tasks are included by default and the trailing carriage return in raw task text causes cursor-return overwrite in terminal table output, producing mangled row formatting."
+  artifacts:
+    - path: "crates/todotxt-cli/src/commands/list.rs"
+      issue: "Default list includes completed items."
+    - path: "crates/todotxt-core/src/task.rs"
+      issue: "Trailing CR preserved in raw task representation."
+    - path: "crates/todotxt-cli/src/output.rs"
+      issue: "No sanitization of task.to_raw() before table rendering."
+  missing:
+    - "Filter completed tasks out of default list output."
+    - "Strip CR from rendered/serialized raw task text."
+    - "Add no-color table regression test covering completed line with CRLF input."
+  debug_session: .planning/debug/phase-03-no-color-list-output.md
 - truth: "Running `todotxt list :nonexistent` warns about unknown preset while preserving clean, correctly formatted list output"
   status: failed
   reason: "User reported: done task is still improperly indented"
   severity: major
   test: 12
-  artifacts: []
-  missing: []
+  root_cause: "Unknown preset warning path is correct; indentation defect is the same underlying CR propagation + completed-task inclusion behavior in list rendering."
+  artifacts:
+    - path: "crates/todotxt-cli/src/commands/list.rs"
+      issue: "Preset warning emitted but list output path still uses show-all semantics and raw rendering."
+    - path: "crates/todotxt-core/src/task_list.rs"
+      issue: "Mixed line endings retain CR on affected lines."
+    - path: "crates/todotxt-core/src/task.rs"
+      issue: "CR preserved in raw text after parse."
+  missing:
+    - "Keep warning behavior, but apply list default-completion and CR normalization fixes to this command path as well."
+    - "Add integration test for list :nonexistent to assert warning + clean output formatting."
+  debug_session: .planning/debug/phase-03-uat12-nonexistent-indent.md
