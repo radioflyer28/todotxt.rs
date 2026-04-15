@@ -6,6 +6,16 @@ use serde::Serialize;
 use serde_json::json;
 use todotxt_core::Task;
 
+/// Summary statistics for the todo list.
+#[derive(Serialize)]
+pub struct Stats {
+    pub total: usize,
+    pub complete: usize,
+    pub incomplete: usize,
+    pub due_today: usize,
+    pub overdue: usize,
+}
+
 /// Initialize global color support.
 ///
 /// Must be called once at startup, after parsing `--no-color` flag.
@@ -61,6 +71,39 @@ impl Renderer {
     pub fn print_count(&self, n: usize) {
         if !self.quiet && !self.json {
             eprintln!("-- {} task{} --", n, if n == 1 { "" } else { "s" });
+        }
+    }
+
+    /// Print a single task — as JSON or as a raw line (used by `show`).
+    pub fn print_task(&self, idx: usize, task: &Task) {
+        if self.json {
+            println!("{}", json_success(task_dto(idx, task)));
+        } else {
+            println!("{}", task.to_raw());
+        }
+    }
+
+    /// Print a list of plain strings, one per line — used by `projects` and `contexts`.
+    pub fn print_lines(&self, lines: &[String]) {
+        if self.json {
+            println!("{}", json_success(lines));
+        } else {
+            for line in lines {
+                println!("{line}");
+            }
+        }
+    }
+
+    /// Print summary statistics — as JSON or as aligned human-readable lines.
+    pub fn print_stats(&self, stats: &Stats) {
+        if self.json {
+            println!("{}", json_success(stats));
+        } else {
+            println!("Total:      {}", stats.total);
+            println!("Complete:   {}", stats.complete);
+            println!("Incomplete: {}", stats.incomplete);
+            println!("Due today:  {}", stats.due_today);
+            println!("Overdue:    {}", stats.overdue);
         }
     }
 }
