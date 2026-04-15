@@ -10,6 +10,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 winnow = { workspace = true }
 tempfile = { workspace = true }
+notify-debouncer-mini = { workspace = true, optional = true }
+
+[features]
+watching = ["dep:notify-debouncer-mini"]
 
 [dev-dependencies]
 rstest = "0.26"
