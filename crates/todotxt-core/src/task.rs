@@ -211,7 +211,7 @@ fn winnow_date_inner(input: &mut &str) -> ModalResult<NaiveDate> {
 
 /// Parse "YYYY-MM-DD " at the start of `s`, advance `s`, return the date.
 /// Returns `None` (and leaves `s` unchanged) if no valid date prefix is present.
-fn parse_date_prefix<'a>(s: &mut &'a str) -> Option<NaiveDate> {
+fn parse_date_prefix(s: &mut &str) -> Option<NaiveDate> {
     opt(winnow_date_inner).parse_next(s).unwrap_or_default()
 }
 
@@ -219,7 +219,7 @@ fn parse_date_prefix<'a>(s: &mut &'a str) -> Option<NaiveDate> {
 
 /// Parse "(X) " priority prefix where X ∈ [A-Z] (uppercase only).
 /// Returns `None` (and leaves `s` unchanged) for any other prefix.
-fn parse_priority_prefix<'a>(s: &mut &'a str) -> Option<char> {
+fn parse_priority_prefix(s: &mut &str) -> Option<char> {
     if s.len() >= 4 {
         let b = s.as_bytes();
         if b[0] == b'(' && b[1].is_ascii_uppercase() && b[2] == b')' && b[3] == b' ' {
