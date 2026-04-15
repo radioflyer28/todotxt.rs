@@ -58,6 +58,9 @@ Icon # Icon must end with two \r
 .AppleDesktop
 Network Trash Folder
 Temporary Items
+
+# Rust build output
+/target/
 .apdisk
 
 # windows

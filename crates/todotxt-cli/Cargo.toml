@@ -1,0 +1,11 @@
+[package]
+name = "todotxt-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "todotxt"
+path = "src/main.rs"
+
+[dependencies]
+todotxt-core = { path = "../todotxt-core" }
