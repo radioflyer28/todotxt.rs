@@ -38,20 +38,6 @@ impl Renderer {
         Self { json, quiet }
     }
 
-    /// Print an informational notice to stderr (suppressed by `--quiet`).
-    #[allow(dead_code)]
-    pub fn info(&self, msg: &str) {
-        if !self.quiet {
-            eprintln!("{}", msg);
-        }
-    }
-
-    /// Print an error to stderr. Never suppressed by `--quiet`.
-    #[allow(dead_code)]
-    pub fn error(&self, msg: &str) {
-        eprintln!("error: {}", msg);
-    }
-
     /// Print a list of tasks — as JSON or as a human table.
     pub fn print_tasks(&self, tasks: &[(usize, &Task)]) {
         if self.json {
@@ -207,19 +193,5 @@ mod tests {
         assert!(output.contains("\"schema_version\":1"));
         assert!(output.contains("\"error\":"));
         assert!(output.contains("something went wrong"));
-    }
-
-    #[test]
-    fn renderer_info_suppressed_by_quiet() {
-        // Smoke-test: just ensure it compiles and doesn't panic
-        let r = Renderer::new(false, true);
-        r.info("this should be suppressed");
-    }
-
-    #[test]
-    fn renderer_error_never_suppressed() {
-        // Smoke-test: just ensure it compiles and doesn't panic
-        let r = Renderer::new(false, true);
-        r.error("this is always shown");
     }
 }
