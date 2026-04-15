@@ -39,6 +39,7 @@ impl Renderer {
     }
 
     /// Print an informational notice to stderr (suppressed by `--quiet`).
+    #[allow(dead_code)]
     pub fn info(&self, msg: &str) {
         if !self.quiet {
             eprintln!("{}", msg);
@@ -46,6 +47,7 @@ impl Renderer {
     }
 
     /// Print an error to stderr. Never suppressed by `--quiet`.
+    #[allow(dead_code)]
     pub fn error(&self, msg: &str) {
         eprintln!("error: {}", msg);
     }
