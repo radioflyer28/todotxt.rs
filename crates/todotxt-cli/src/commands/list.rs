@@ -14,8 +14,9 @@ fn build_filter(args: &ListArgs, cfg: &Config) -> Filter {
                     // D-12: preset composes with other filters
                     query_parts.push(q.clone());
                 }
+            } else {
+                eprintln!("warning: unknown preset ':{preset_name}' — ignored");
             }
-            // Unknown presets are silently ignored
         } else {
             // Plain token is always a filter token — never treated as preset (D-12)
             query_parts.push(token.clone());
