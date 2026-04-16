@@ -162,11 +162,11 @@ Plans:
 **Plans:** 0/5 plans executed
 
 Plans:
-- [ ] 04-01-PLAN.md — Core builder (with_text_prepended) + Config/Output infra (Wave 1)
-- [ ] 04-02-PLAN.md — CLI scaffold + add command (Wave 2)
-- [ ] 04-03-PLAN.md — do/undo/del commands (Wave 3)
-- [ ] 04-04-PLAN.md — edit/append/prepend commands (Wave 3, parallel)
-- [ ] 04-05-PLAN.md — Integration tests (Wave 4)
+- [x] 04-01-PLAN.md — Core builder (with_text_prepended) + Config/Output infra (Wave 1)
+- [x] 04-02-PLAN.md — CLI scaffold + add command (Wave 2)
+- [x] 04-03-PLAN.md — do/undo/del commands (Wave 3)
+- [x] 04-04-PLAN.md — edit/append/prepend commands (Wave 3, parallel)
+- [x] 04-05-PLAN.md — Integration tests (Wave 4)
 
 - WRITE-01: `add "<text>"` with optional auto-creation-date
 - WRITE-02: `do <id>` — mark complete (prepend `x <date>`)
@@ -208,6 +208,16 @@ Plans:
 ### Phase 5: Task Enrichment + Bulk Operations
 
 **Goal:** Add priority manipulation, smart due-date management, and bulk archive/cleanup operations — completing the full command surface of the CLI.
+
+**Plans:** 0/6 plans executed
+
+Plans:
+- [ ] 05-01-PLAN.md — Config extension + CLI wiring foundation (Wave 1)
+- [ ] 05-02-PLAN.md — Date parsing utility for due/postpone (Wave 2)
+- [ ] 05-03-PLAN.md — pri/depri commands with multi-ID support (Wave 3)
+- [ ] 05-04-PLAN.md — due/postpone commands with date parsing (Wave 3, parallel)
+- [ ] 05-05-PLAN.md — archive/del-done commands with atomicity (Wave 4)
+- [ ] 05-06-PLAN.md — Integration test suite (29+ tests) (Wave 5)
 
 **Requirements:**
 - ENRICH-01: `pri <id> <A-Z>` — set priority
