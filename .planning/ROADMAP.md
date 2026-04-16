@@ -284,6 +284,12 @@ Plans:
 
 **Depends on:** Phase 5
 
+**Plans:**
+- [ ] 06-01-PLAN.md — Wave 1: Compiler hardening (deny warnings, unwrap audit)
+- [ ] 06-02-PLAN.md — Wave 2: Platform tests (CRLF round-trip, portable mode)
+- [ ] 06-03-PLAN.md — Wave 2: E2E integration scenario tests
+- [ ] 06-04-PLAN.md — Wave 3: CI yml + README (7 sections)
+
 ---
 
 ## Progress Table
