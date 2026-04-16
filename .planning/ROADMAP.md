@@ -209,13 +209,13 @@ Plans:
 
 **Goal:** Add priority manipulation, smart due-date management, and bulk archive/cleanup operations — completing the full command surface of the CLI.
 
-**Plans:** 0/6 plans executed
+**Plans:** 4/6 plans executed
 
 Plans:
-- [ ] 05-01-PLAN.md — Config extension + CLI wiring foundation (Wave 1)
-- [ ] 05-02-PLAN.md — Date parsing utility for due/postpone (Wave 2)
-- [ ] 05-03-PLAN.md — pri/depri commands with multi-ID support (Wave 3)
-- [ ] 05-04-PLAN.md — due/postpone commands with date parsing (Wave 3, parallel)
+- [x] 05-01-PLAN.md — Config extension + CLI wiring foundation (Wave 1)
+- [x] 05-02-PLAN.md — Date parsing utility for due/postpone (Wave 2)
+- [x] 05-03-PLAN.md — pri/depri commands with multi-ID support (Wave 3)
+- [x] 05-04-PLAN.md — due/postpone commands with date parsing (Wave 3, parallel)
 - [ ] 05-05-PLAN.md — archive/del-done commands with atomicity (Wave 4)
 - [ ] 05-06-PLAN.md — Integration test suite (29+ tests) (Wave 5)
 
@@ -294,5 +294,5 @@ Plans:
 | 2. Core Library Completion | Filter, sort, file watch, portable mode | CORE-04, CORE-05, CORE-06, CORE-08 | Not started | — |
 | 3. CLI Foundation — Config + Output + Read Commands | Config, output, all read commands, completions | 2/3 | In Progress|  |
 | 4. CLI Write Commands | Add, do, undo, del, edit, append, prepend | WRITE-01–07 | Not started | — |
-| 5. Task Enrichment + Bulk Operations | Pri, depri, due, postpone, archive, del-done | ENRICH-01–04, BULK-01–02 | Not started | — |
+| 5. Task Enrichment + Bulk Operations | Pri, depri, due, postpone, archive, del-done | 4/6 | In Progress|  |
 | 6. Cross-Platform Polish + Integration Tests | E2E validation, README, cross-platform tests | All (verification) | Not started | — |

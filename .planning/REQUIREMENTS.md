@@ -40,10 +40,10 @@
 
 ### CLI — Task Enrichment (ENRICH)
 
-- [ ] **ENRICH-01**: User can set or change a task's priority with `pri <id> <A-Z>`
-- [ ] **ENRICH-02**: User can remove a task's priority with `depri <id>`
-- [ ] **ENRICH-03**: User can set a due date on a task with `due <id> <date>` (accepts `today`, `tomorrow`, weekday names, and `YYYY-MM-DD`)
-- [ ] **ENRICH-04**: User can move a task's due date forward by N days with `postpone <id> <N>`
+- [x] **ENRICH-01**: User can set or change a task's priority with `pri <id> <A-Z>`
+- [x] **ENRICH-02**: User can remove a task's priority with `depri <id>`
+- [x] **ENRICH-03**: User can set a due date on a task with `due <id> <date>` (accepts `today`, `tomorrow`, weekday names, and `YYYY-MM-DD`)
+- [x] **ENRICH-04**: User can move a task's due date forward by N days with `postpone <id> <N>`
 
 ### CLI — Bulk Operations (BULK)
 
@@ -122,9 +122,9 @@
 | WRITE-05 | Phase 4 | Pending |
 | WRITE-06 | Phase 4 | Pending |
 | WRITE-07 | Phase 4 | Pending |
-| ENRICH-01 | Phase 5 | Pending |
-| ENRICH-02 | Phase 5 | Pending |
-| ENRICH-03 | Phase 5 | Pending |
-| ENRICH-04 | Phase 5 | Pending |
+| ENRICH-01 | Phase 5 | Complete |
+| ENRICH-02 | Phase 5 | Complete |
+| ENRICH-03 | Phase 5 | Complete |
+| ENRICH-04 | Phase 5 | Complete |
 | BULK-01 | Phase 5 | Pending |
 | BULK-02 | Phase 5 | Pending |
