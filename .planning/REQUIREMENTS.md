@@ -47,8 +47,8 @@
 
 ### CLI — Bulk Operations (BULK)
 
-- [ ] **BULK-01**: User can archive all completed tasks to `done.txt` (beside `todo.txt`) with `archive`
-- [ ] **BULK-02**: User can delete all completed tasks from `todo.txt` with `del-done`
+- [x] **BULK-01**: User can archive all completed tasks to `done.txt` (beside `todo.txt`) with `archive`
+- [x] **BULK-02**: User can delete all completed tasks from `todo.txt` with `del-done`
 
 ### Config & Settings (CFG)
 
@@ -126,5 +126,5 @@
 | ENRICH-02 | Phase 5 | Complete |
 | ENRICH-03 | Phase 5 | Complete |
 | ENRICH-04 | Phase 5 | Complete |
-| BULK-01 | Phase 5 | Pending |
-| BULK-02 | Phase 5 | Pending |
+| BULK-01 | Phase 5 | Complete |
+| BULK-02 | Phase 5 | Complete |
