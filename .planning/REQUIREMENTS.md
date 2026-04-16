@@ -8,14 +8,14 @@
 
 ### Core Library (CORE)
 
-- [ ] **CORE-01**: User's todo.txt file is parsed into structured tasks with all fields: priority, projects, contexts, due date, threshold date, creation date, completion date, and body text
-- [ ] **CORE-02**: Tasks serialize back to strict todo.txt format, round-tripping cleanly without altering user-authored text
-- [ ] **CORE-03**: TaskList supports add, update, and delete operations with atomic file writes (no corruption on crash or concurrent access)
-- [ ] **CORE-04**: TaskList detects external file changes and reloads with a 1-second debounce (matches C# FileChangeObserver behavior)
-- [ ] **CORE-05**: Filter engine supports: substring match, negation prefix (`-term`), `DONE`/`-DONE` keywords, and `due:today`/`due:past`/`due:future`/`due:active` tokens
-- [ ] **CORE-06**: Sort engine supports ordering by: priority, due date, alphabetical, project, context (matching C# SortType options)
-- [ ] **CORE-07**: File reader strips UTF-8 BOM and normalizes line endings (CRLF → LF) on load; preserves original line endings on save
-- [ ] **CORE-08**: Portable mode: when a config/settings file exists beside the binary, it takes precedence over platform config directories
+- [x] **CORE-01**: User's todo.txt file is parsed into structured tasks with all fields: priority, projects, contexts, due date, threshold date, creation date, completion date, and body text
+- [x] **CORE-02**: Tasks serialize back to strict todo.txt format, round-tripping cleanly without altering user-authored text
+- [x] **CORE-03**: TaskList supports add, update, and delete operations with atomic file writes (no corruption on crash or concurrent access)
+- [x] **CORE-04**: TaskList detects external file changes and reloads with a 1-second debounce (matches C# FileChangeObserver behavior)
+- [x] **CORE-05**: Filter engine supports: substring match, negation prefix (`-term`), `DONE`/`-DONE` keywords, and `due:today`/`due:past`/`due:future`/`due:active` tokens
+- [x] **CORE-06**: Sort engine supports ordering by: priority, due date, alphabetical, project, context (matching C# SortType options)
+- [x] **CORE-07**: File reader strips UTF-8 BOM and normalizes line endings (CRLF → LF) on load; preserves original line endings on save
+- [x] **CORE-08**: Portable mode: when a config/settings file exists beside the binary, it takes precedence over platform config directories
 
 ### CLI — Read Commands (READ)
 
@@ -30,13 +30,13 @@
 
 ### CLI — Write Commands (WRITE)
 
-- [ ] **WRITE-01**: User can add a new task with `add "<task text>"`, optionally auto-prepending creation date
-- [ ] **WRITE-02**: User can mark one or more tasks done with `do <id>` (prepends `x <date>` per todo.txt spec)
-- [ ] **WRITE-03**: User can unmark a completed task with `undo <id>` (removes `x <date>` prefix)
-- [ ] **WRITE-04**: User can delete a task by ID with `del <id>`
-- [ ] **WRITE-05**: User can replace a task's full text with `edit <id> "<new text>"`
-- [ ] **WRITE-06**: User can append text to a task with `append <id> "<text>"`
-- [ ] **WRITE-07**: User can prepend text to a task with `prepend <id> "<text>"`
+- [x] **WRITE-01**: User can add a new task with `add "<task text>"`, optionally auto-prepending creation date
+- [x] **WRITE-02**: User can mark one or more tasks done with `do <id>` (prepends `x <date>` per todo.txt spec)
+- [x] **WRITE-03**: User can unmark a completed task with `undo <id>` (removes `x <date>` prefix)
+- [x] **WRITE-04**: User can delete a task by ID with `del <id>`
+- [x] **WRITE-05**: User can replace a task's full text with `edit <id> "<new text>"`
+- [x] **WRITE-06**: User can append text to a task with `append <id> "<text>"`
+- [x] **WRITE-07**: User can prepend text to a task with `prepend <id> "<text>"`
 
 ### CLI — Task Enrichment (ENRICH)
 
@@ -96,14 +96,14 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| CORE-01 | Phase 7 (gap closure: Phase 1 verification) | Pending |
-| CORE-02 | Phase 7 (gap closure: Phase 1 verification) | Pending |
-| CORE-03 | Phase 7 (gap closure: Phase 1 verification) | Pending |
-| CORE-07 | Phase 7 (gap closure: Phase 1 verification) | Pending |
-| CORE-04 | Phase 7 (gap closure: Phase 2 verification) | Pending |
-| CORE-05 | Phase 7 (gap closure: Phase 2 verification) | Pending |
-| CORE-06 | Phase 7 (gap closure: Phase 2 verification) | Pending |
-| CORE-08 | Phase 7 (gap closure: Phase 2 verification) | Pending |
+| CORE-01 | Phase 7 (gap closure: Phase 1 verification) | Complete |
+| CORE-02 | Phase 7 (gap closure: Phase 1 verification) | Complete |
+| CORE-03 | Phase 7 (gap closure: Phase 1 verification) | Complete |
+| CORE-07 | Phase 7 (gap closure: Phase 1 verification) | Complete |
+| CORE-04 | Phase 7 (gap closure: Phase 2 verification) | Complete |
+| CORE-05 | Phase 7 (gap closure: Phase 2 verification) | Complete |
+| CORE-06 | Phase 7 (gap closure: Phase 2 verification) | Complete |
+| CORE-08 | Phase 7 (gap closure: Phase 2 verification) | Complete |
 | READ-01 | Phase 3 | Complete |
 | READ-02 | Phase 3 | Complete |
 | READ-03 | Phase 3 | Complete |
@@ -115,13 +115,13 @@
 | CFG-01 | Phase 3 | Complete |
 | CFG-02 | Phase 3 | Complete |
 | PLAT-01 | Phase 3 | Complete |
-| WRITE-01 | Phase 8 (gap closure: Phase 4 verification) | Pending |
-| WRITE-02 | Phase 8 (gap closure: Phase 4 verification) | Pending |
-| WRITE-03 | Phase 8 (gap closure: Phase 4 verification) | Pending |
-| WRITE-04 | Phase 8 (gap closure: Phase 4 verification) | Pending |
-| WRITE-05 | Phase 8 (gap closure: Phase 4 verification) | Pending |
-| WRITE-06 | Phase 8 (gap closure: Phase 4 verification) | Pending |
-| WRITE-07 | Phase 8 (gap closure: Phase 4 verification) | Pending |
+| WRITE-01 | Phase 8 (gap closure: Phase 4 verification) | Complete |
+| WRITE-02 | Phase 8 (gap closure: Phase 4 verification) | Complete |
+| WRITE-03 | Phase 8 (gap closure: Phase 4 verification) | Complete |
+| WRITE-04 | Phase 8 (gap closure: Phase 4 verification) | Complete |
+| WRITE-05 | Phase 8 (gap closure: Phase 4 verification) | Complete |
+| WRITE-06 | Phase 8 (gap closure: Phase 4 verification) | Complete |
+| WRITE-07 | Phase 8 (gap closure: Phase 4 verification) | Complete |
 | ENRICH-01 | Phase 5 | Complete |
 | ENRICH-02 | Phase 5 | Complete |
 | ENRICH-03 | Phase 5 | Complete |
