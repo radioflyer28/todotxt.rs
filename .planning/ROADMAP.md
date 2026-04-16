@@ -158,6 +158,16 @@ Plans:
 **Goal:** Complete the full task lifecycle — add, complete, undo, delete, edit, append, prepend — giving users and agents the ability to create and mutate tasks through the CLI.
 
 **Requirements:**
+
+**Plans:** 0/5 plans executed
+
+Plans:
+- [ ] 04-01-PLAN.md — Core builder (with_text_prepended) + Config/Output infra (Wave 1)
+- [ ] 04-02-PLAN.md — CLI scaffold + add command (Wave 2)
+- [ ] 04-03-PLAN.md — do/undo/del commands (Wave 3)
+- [ ] 04-04-PLAN.md — edit/append/prepend commands (Wave 3, parallel)
+- [ ] 04-05-PLAN.md — Integration tests (Wave 4)
+
 - WRITE-01: `add "<text>"` with optional auto-creation-date
 - WRITE-02: `do <id>` — mark complete (prepend `x <date>`)
 - WRITE-03: `undo <id>` — unmark complete
