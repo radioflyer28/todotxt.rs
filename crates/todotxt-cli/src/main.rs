@@ -49,6 +49,19 @@ fn run(cli: &Cli) -> Result<(), CliError> {
         Commands::Contexts => commands::contexts::run(&todo_path, &renderer)?,
         Commands::Show { id } => commands::show::run(&todo_path, *id, &renderer)?,
         Commands::Completions { shell } => commands::completions::run(*shell),
+        Commands::Add(args) => {
+            commands::add::run(&todo_path, &args.text, args.date, args.no_date, &cfg, &renderer)?
+        }
+        Commands::Do { ids } => commands::complete::run_do(&todo_path, ids, &renderer)?,
+        Commands::Undo { ids } => commands::complete::run_undo(&todo_path, ids, &renderer)?,
+        Commands::Del { ids } => commands::del::run(&todo_path, ids, &renderer)?,
+        Commands::Edit { id, text } => commands::edit::run(&todo_path, *id, text, &renderer)?,
+        Commands::Append { id, text } => {
+            commands::append::run(&todo_path, *id, text, &renderer)?
+        }
+        Commands::Prepend { id, text } => {
+            commands::prepend::run(&todo_path, *id, text, &renderer)?
+        }
     }
 
     Ok(())

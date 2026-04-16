@@ -1,6 +1,12 @@
+pub mod add;
+pub mod append;
+pub mod complete;
 pub mod completions;
 pub mod contexts;
+pub mod del;
+pub mod edit;
 pub mod list;
+pub mod prepend;
 pub mod projects;
 pub mod show;
 pub mod stats;

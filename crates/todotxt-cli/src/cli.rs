@@ -58,6 +58,53 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+
+    /// Add a new task to todo.txt
+    Add(AddArgs),
+
+    /// Mark one or more tasks as complete (prepends "x YYYY-MM-DD ")
+    #[command(name = "do")]
+    Do {
+        /// One or more 1-based task IDs
+        ids: Vec<usize>,
+    },
+
+    /// Unmark one or more completed tasks (removes "x YYYY-MM-DD " prefix)
+    Undo {
+        /// One or more 1-based task IDs
+        ids: Vec<usize>,
+    },
+
+    /// Delete one or more tasks by 1-based ID
+    #[command(alias = "delete")]
+    Del {
+        /// One or more 1-based task IDs
+        ids: Vec<usize>,
+    },
+
+    /// Replace a task's full text
+    Edit {
+        /// 1-based task ID
+        id: usize,
+        /// Replacement text (entire line; no creation date injected)
+        text: String,
+    },
+
+    /// Append text to the end of a task
+    Append {
+        /// 1-based task ID
+        id: usize,
+        /// Text to append (leading space added automatically)
+        text: String,
+    },
+
+    /// Prepend text before a task's body (after priority/date prefixes)
+    Prepend {
+        /// 1-based task ID
+        id: usize,
+        /// Text to prepend (trailing space added automatically)
+        text: String,
+    },
 }
 
 /// Arguments for the `list` / `ls` subcommand.
@@ -72,4 +119,17 @@ pub struct ListArgs {
     /// Additional filter query with spaces (combined AND with positional filters)
     #[arg(long = "filter", short = 'f')]
     pub filter_query: Option<String>,
+}
+
+/// Arguments for the `add` subcommand.
+#[derive(Args, Debug)]
+pub struct AddArgs {
+    /// Full task text (e.g., "Buy milk +groceries @home")
+    pub text: String,
+    /// Force-prepend today's creation date (YYYY-MM-DD) regardless of config
+    #[arg(long)]
+    pub date: bool,
+    /// Suppress creation date even when auto_creation_date = true in config
+    #[arg(long)]
+    pub no_date: bool,
 }
