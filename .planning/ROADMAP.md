@@ -315,9 +315,11 @@ Plans:
 - `.planning/phases/02-core-library-completion/02-VERIFICATION.md`: corrected report with accurate REQ-ID traceability (CORE-04..08); existing passing evidence preserved
 - `REQUIREMENTS.md` traceability table: CORE-01..08 all moved to `Pending` → satisfied under new verification closure
 
-**Plans:**
-- [ ] 07-01-PLAN.md — Produce Phase 01 VERIFICATION.md (Wave 1)
-- [ ] 07-02-PLAN.md — Correct Phase 02 VERIFICATION.md REQ-ID mapping (Wave 2)
+**Plans:** 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Produce Phase 01 VERIFICATION.md (CORE-01..03, CORE-07) (Wave 1)
+- [ ] 07-02-PLAN.md — Correct Phase 02 VERIFICATION.md REQ-ID mapping (CORE-04..08) (Wave 2)
 
 **UAT Criteria:**
 - [ ] `01-VERIFICATION.md` exists with status `passed`, lists CORE-01..03 + CORE-07 in requirement traceability table
