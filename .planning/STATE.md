@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 05
-status: Phase complete — ready for Phase 06 discussion
-last_updated: "2026-04-15T00:00:00.000Z"
+current_phase: 06
+status: Phase complete — all phases complete; v1.0 milestone achieved
+last_updated: "2026-04-16T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 5
-  total_plans: 27
-  completed_plans: 27
+  completed_phases: 6
+  total_plans: 31
+  completed_plans: 31
   percent: 100
 ---
 
@@ -24,20 +24,21 @@ See: .planning/PROJECT.md (updated 2026-04-15)
 
 ## Current Position
 
-Phase: 05 (task-enrichment-bulk-operations) — Complete
-Plan: 6 of 6
-**Milestone:** v1.0 Rust Port — Core + CLI
-**Current Phase:** 05
+Phase: 06 (cross-platform-polish-integration-tests) — Complete
+Plan: 4 of 4
+**Milestone:** v1.0 Rust Port — Core + CLI — ACHIEVED
+**Current Phase:** 06
 **Phase Status:** Complete
-**Last Updated:** 2026-04-15
+**Last Updated:** 2026-04-16
 
-Phase 05 delivered: 6 enrichment/bulk subcommands (pri, depri, due, postpone, archive, del-done)
-with multi-ID support, shared date parsing utility, atomic two-file archive, idempotent bulk ops,
-and 33 integration tests. 201 total tests passing, 0 clippy warnings.
+Phase 06 delivered: `#![deny(warnings)]` on both crate roots; 5 platform/portability tests;
+5 E2E scenario integration tests; `.github/workflows/ci.yml` (ubuntu-latest, commented multi-OS
+matrix for future expansion); 273-line README with 7 sections for human and AI agent audiences.
+All 6 phases complete — v1.0 milestone achieved. Full test suite passes (0 clippy warnings).
 
 ## Next Step
 
-`/gsd-discuss-phase 06` — discuss Phase 06 (cross-platform-polish-integration-tests)
+All phases complete. Tag `v1.0` when ready.
 
 ## Pending Decisions
 
