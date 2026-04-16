@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # Multi-OS matrix — uncomment for SEED-004:
+    # strategy:
+    #   matrix:
+    #     os: [ubuntu-latest, macos-latest, windows-latest]
+    # runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run tests
+        run: cargo test --workspace
+
+  # clippy — uncomment for SEED-004:
+  # clippy:
+  #   name: Clippy
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         components: clippy
+  #     - name: Run Clippy
+  #       run: cargo clippy --workspace -- -D warnings
+
+  # doc — uncomment for SEED-004:
+  # doc:
+  #   name: Doc
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - name: Build docs
+  #       run: cargo doc --workspace --no-deps
