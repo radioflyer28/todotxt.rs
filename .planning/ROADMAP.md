@@ -2,20 +2,20 @@
 
 **Milestone:** v1.0 — todotxt.net Rust Port: Core Library + CLI
 **Phase count:** 8
-**Status:** In Progress
+**Status:** Complete
 
 ---
 
 ## Phases
 
-- [ ] **Phase 1: Workspace Bootstrap + Core Library Foundation** — Cargo workspace, `todotxt-core` crate: parser, Task model, TaskList CRUD, atomic writes, BOM/CRLF handling
-- [ ] **Phase 2: Core Library Completion** — Filter engine, sort engine, file watching, batch operations, portable mode
-- [ ] **Phase 3: CLI Foundation — Config + Output + Read Commands** — All cross-cutting CLI conventions, config/presets, all read commands, shell completions
-- [ ] **Phase 4: CLI Write Commands** — Full task lifecycle: add, complete, undo, delete, edit, append, prepend
-- [ ] **Phase 5: Task Enrichment + Bulk Operations** — Priority commands, due date commands, archive, del-done
-- [ ] **Phase 6: Cross-Platform Polish + Integration Tests** — Cross-platform validation, integration test suite, README
-- [ ] **Phase 7: Retroactive Core Library Verification** — Produce Phase 01 VERIFICATION.md; correct Phase 02 VERIFICATION.md REQ-ID mapping for CORE-04..08
-- [ ] **Phase 8: Retroactive CLI Verification** — Produce Phase 04 VERIFICATION.md (WRITE-01..07); Phase 05 VERIFICATION.md (ENRICH-01..04, BULK-01..02); Phase 06 VERIFICATION.md
+- [x] **Phase 1: Workspace Bootstrap + Core Library Foundation** — Cargo workspace, `todotxt-core` crate: parser, Task model, TaskList CRUD, atomic writes, BOM/CRLF handling
+- [x] **Phase 2: Core Library Completion** — Filter engine, sort engine, file watching, batch operations, portable mode
+- [x] **Phase 3: CLI Foundation — Config + Output + Read Commands** — All cross-cutting CLI conventions, config/presets, all read commands, shell completions
+- [x] **Phase 4: CLI Write Commands** — Full task lifecycle: add, complete, undo, delete, edit, append, prepend
+- [x] **Phase 5: Task Enrichment + Bulk Operations** — Priority commands, due date commands, archive, del-done
+- [x] **Phase 6: Cross-Platform Polish + Integration Tests** — Cross-platform validation, integration test suite, README
+- [x] **Phase 7: Retroactive Core Library Verification** — Produce Phase 01 VERIFICATION.md; correct Phase 02 VERIFICATION.md REQ-ID mapping for CORE-04..08
+- [x] **Phase 8: Retroactive CLI Verification** — Produce Phase 04 VERIFICATION.md (WRITE-01..07); Phase 05 VERIFICATION.md (ENRICH-01..04, BULK-01..02); Phase 06 VERIFICATION.md
 
 ---
 
@@ -355,9 +355,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Produce Phase 04 VERIFICATION.md (WRITE-01..07) (Wave 1)
-- [ ] 08-02-PLAN.md — Produce Phase 05 VERIFICATION.md (ENRICH-01..04, BULK-01..02) (Wave 1, parallel)
-- [ ] 08-03-PLAN.md — Produce Phase 06 VERIFICATION.md (quality gates) (Wave 1, parallel)
+- [x] 08-01-PLAN.md — Produce Phase 04 VERIFICATION.md (WRITE-01..07) (Wave 1)
+- [x] 08-02-PLAN.md — Produce Phase 05 VERIFICATION.md (ENRICH-01..04, BULK-01..02) (Wave 1, parallel)
+- [x] 08-03-PLAN.md — Produce Phase 06 VERIFICATION.md (quality gates) (Wave 1, parallel)
 
 **UAT Criteria:**
 - [ ] All three VERIFICATION.md files have `status: passed` frontmatter
