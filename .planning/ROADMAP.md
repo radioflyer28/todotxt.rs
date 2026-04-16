@@ -352,10 +352,12 @@ Plans:
 - `.planning/phases/06-cross-platform-polish-integration-tests/06-VERIFICATION.md`: verification report confirming deny warnings, platform tests, E2E scenarios, README sections
 - `REQUIREMENTS.md` traceability: WRITE-01..07, ENRICH-01..04, BULK-01..02 updated to `Complete` in traceability table
 
-**Plans:**
+**Plans:** 3 plans
+
+Plans:
 - [ ] 08-01-PLAN.md — Produce Phase 04 VERIFICATION.md (WRITE-01..07) (Wave 1)
-- [ ] 08-02-PLAN.md — Produce Phase 05 VERIFICATION.md (ENRICH/BULK) (Wave 2)
-- [ ] 08-03-PLAN.md — Produce Phase 06 VERIFICATION.md (Wave 2, parallel)
+- [ ] 08-02-PLAN.md — Produce Phase 05 VERIFICATION.md (ENRICH-01..04, BULK-01..02) (Wave 1, parallel)
+- [ ] 08-03-PLAN.md — Produce Phase 06 VERIFICATION.md (quality gates) (Wave 1, parallel)
 
 **UAT Criteria:**
 - [ ] All three VERIFICATION.md files have `status: passed` frontmatter
