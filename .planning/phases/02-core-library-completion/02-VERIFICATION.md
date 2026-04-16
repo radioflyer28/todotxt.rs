@@ -2,12 +2,12 @@
 phase: 02-core-library-completion
 status: passed
 requirements-verified:
-  - CORE-01
-  - CORE-02
-  - CORE-03
   - CORE-04
-test-count: 96
-tests-passed: 96
+  - CORE-05
+  - CORE-06
+  - CORE-08
+test-count: 108
+tests-passed: 108
 tests-failed: 0
 must-haves-met: true
 ---
@@ -87,12 +87,14 @@ must-haves-met: true
 
 ## Requirement Traceability
 
-| Req ID | Description | Plan | Status |
-|--------|-------------|------|--------|
-| CORE-01 | Filter engine (12-token type, AND-logic) | 02-01 | ✅ Implemented |
-| CORE-02 | Sort engine (5 orders, stable) | 02-01 | ✅ Implemented |
-| CORE-03 | TaskList mutation (filter, sort, batch) + integration tests | 02-02 | ✅ Implemented |
-| CORE-04 | File watching with 1s debounce, optional feature | 02-03 | ✅ Implemented |
+> **Note (Phase 07 correction):** REQ-IDs in this file were corrected during Phase 07 gap closure. The original file incorrectly mapped CORE-01..04; Phase 2 actually owns CORE-04..06 and CORE-08. All must-have evidence above is unchanged.
+
+| Req ID | Description | Implementation File | Plan | Status |
+|--------|-------------|--------------------|----- |--------|
+| CORE-04 | File watching with 1s debounce (`notify` + `notify-debouncer-mini`) | `crates/todotxt-core/src/watcher.rs` | 02-03 | ✅ Implemented |
+| CORE-05 | Filter engine — substring, negation, `DONE`/`-DONE`, `due:` tokens, `h:1`, threshold | `crates/todotxt-core/src/filter.rs` | 02-01 | ✅ Implemented |
+| CORE-06 | Sort engine — priority, due date, alphabetical, project, context (5 `SortOrder` variants) | `crates/todotxt-core/src/sort.rs` | 02-01 | ✅ Implemented |
+| CORE-08 | Portable mode — config beside binary takes precedence over platform config dirs | `crates/todotxt-core/src/portable.rs` | 02-01 | ✅ Implemented |
 
 ---
 
