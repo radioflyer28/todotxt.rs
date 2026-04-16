@@ -94,6 +94,19 @@ impl Renderer {
             println!("Overdue:    {}", stats.overdue);
         }
     }
+
+    /// Print the result of a write operation.
+    #[allow(dead_code)]
+    pub fn print_write_result(&self, info: &str, idx: usize, task: &Task) {
+        if self.json {
+            println!("{}", json_success(task_dto(idx, task)));
+        } else {
+            if !self.quiet {
+                eprintln!("{}", info);
+            }
+            println!("{}", task.to_raw());
+        }
+    }
 }
 
 /// Produce the standard JSON success envelope: `{"schema_version":1,"data":<T>}`.

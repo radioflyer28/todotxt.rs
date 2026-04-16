@@ -16,6 +16,9 @@ pub struct PresetConfig {
 pub struct Config {
     /// Path to the user's todo.txt file. Required after first run.
     pub todo_file: Option<PathBuf>,
+    /// Automatically prepend today's date to new tasks added with `add`.
+    #[serde(default)]
+    pub auto_creation_date: bool,
     /// Named filter presets. Max 9 per CFG-02.
     #[serde(default)]
     pub presets: HashMap<String, PresetConfig>,
@@ -62,6 +65,7 @@ impl Config {
             let home_todo = dirs_home().map(|h| h.join("todo.txt"));
             let default = Config {
                 todo_file: home_todo,
+                auto_creation_date: false,
                 presets: HashMap::new(),
             };
             let toml_str = toml::to_string_pretty(&default)
@@ -135,6 +139,7 @@ mod tests {
     fn resolve_todo_file_returns_err_when_none() {
         let config = Config {
             todo_file: None,
+            auto_creation_date: false,
             presets: HashMap::new(),
         };
         assert!(config.resolve_todo_file().is_err());
@@ -144,6 +149,7 @@ mod tests {
     fn resolve_todo_file_returns_path_when_set() {
         let config = Config {
             todo_file: Some(PathBuf::from("/home/user/todo.txt")),
+            auto_creation_date: false,
             presets: HashMap::new(),
         };
         assert_eq!(

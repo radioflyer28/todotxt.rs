@@ -173,6 +173,19 @@ impl Task {
         let new_raw = rebuild_raw(&new_task);
         Task::parse(&new_raw)
     }
+
+    /// Prepend `text` before the task body, after completion marker, priority, and date prefixes.
+    ///
+    /// The inserted text is separated from the existing body by a single space.
+    pub fn with_text_prepended(self, text: &str) -> Self {
+        let new_body = format!("{} {}", text, self.body);
+        let new_task = Task {
+            body: new_body,
+            ..self
+        };
+        let new_raw = rebuild_raw(&new_task);
+        Task::parse(&new_raw)
+    }
 }
 
 impl fmt::Display for Task {

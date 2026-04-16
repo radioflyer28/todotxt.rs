@@ -214,6 +214,23 @@ fn with_creation_date_sets_date() {
     assert!(updated.to_string().contains("2024-06-01 Buy milk"));
 }
 
+#[test]
+fn with_text_prepended_inserts_before_body() {
+    let task = Task::parse("Call dentist @personal");
+    let updated = task.with_text_prepended("(A)");
+    assert!(updated.to_raw().starts_with("(A) Call dentist"));
+    assert_eq!(updated.priority, Some('A'));
+}
+
+#[test]
+fn with_text_prepended_preserves_completion_and_dates() {
+    let task = Task::parse("2026-01-01 Buy milk +groceries");
+    let updated = task.with_text_prepended("NOTE:");
+    assert!(updated.to_raw().contains("2026-01-01"));
+    assert!(updated.to_raw().contains("NOTE:"));
+    assert!(updated.to_raw().contains("Buy milk"));
+}
+
 // ── DueStatus ─────────────────────────────────────────────────────────────────
 
 #[test]
