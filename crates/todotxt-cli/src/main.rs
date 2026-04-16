@@ -62,6 +62,12 @@ fn run(cli: &Cli) -> Result<(), CliError> {
         Commands::Prepend { id, text } => {
             commands::prepend::run(&todo_path, *id, text, &renderer)?
         }
+        Commands::Pri { ids, priority } => commands::priority::run_pri(&todo_path, ids, *priority, &renderer)?,
+        Commands::Depri { ids } => commands::priority::run_depri(&todo_path, ids, &renderer)?,
+        Commands::Due { id, date } => commands::due::run_due(&todo_path, *id, date, &renderer)?,
+        Commands::Postpone { id, days } => commands::due::run_postpone(&todo_path, *id, *days, &renderer)?,
+        Commands::Archive => commands::archive::run_archive(&todo_path, &cfg, &renderer)?,
+        Commands::DelDone => commands::del_done::run_del_done(&todo_path, &renderer)?,
     }
 
     Ok(())

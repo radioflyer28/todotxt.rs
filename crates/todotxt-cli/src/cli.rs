@@ -105,6 +105,44 @@ pub enum Commands {
         /// Text to prepend (trailing space added automatically)
         text: String,
     },
+
+    /// Set priority (A-Z) for one or more tasks
+    #[command(name = "pri")]
+    Pri {
+        /// One or more 1-based task IDs
+        ids: Vec<usize>,
+        /// Priority letter (A-Z)
+        priority: char,
+    },
+
+    /// Remove priority from one or more tasks
+    Depri {
+        /// One or more 1-based task IDs
+        ids: Vec<usize>,
+    },
+
+    /// Set due date on a task
+    Due {
+        /// 1-based task ID
+        id: usize,
+        /// Date string (today, tomorrow, YYYY-MM-DD, or weekday)
+        date: String,
+    },
+
+    /// Move task's due date forward by N days
+    Postpone {
+        /// 1-based task ID
+        id: usize,
+        /// Number of days to postpone
+        days: u32,
+    },
+
+    /// Archive all completed tasks to done.txt
+    Archive,
+
+    /// Delete all completed tasks from todo.txt
+    #[command(name = "del-done")]
+    DelDone,
 }
 
 /// Arguments for the `list` / `ls` subcommand.
