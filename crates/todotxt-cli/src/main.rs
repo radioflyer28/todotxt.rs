@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 mod cli;
 mod commands;
 mod config;
