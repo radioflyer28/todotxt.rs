@@ -109,10 +109,11 @@ pub enum Commands {
     /// Set priority (A-Z) for one or more tasks
     #[command(name = "pri")]
     Pri {
-        /// One or more 1-based task IDs
-        ids: Vec<usize>,
         /// Priority letter (A-Z)
         priority: char,
+        /// One or more 1-based task IDs
+        #[arg(trailing_var_arg = true)]
+        ids: Vec<usize>,
     },
 
     /// Remove priority from one or more tasks
@@ -171,3 +172,4 @@ pub struct AddArgs {
     #[arg(long)]
     pub no_date: bool,
 }
+
