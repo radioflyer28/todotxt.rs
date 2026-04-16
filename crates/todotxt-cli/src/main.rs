@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 mod config;
+pub mod date;
 mod output;
 
 use clap::Parser;
