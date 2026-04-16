@@ -29,11 +29,25 @@ fn build_filter(args: &ListArgs, cfg: &Config) -> Filter {
     }
 
     let combined = query_parts.join(" ");
-    if combined.trim().is_empty() {
-        Filter::new() // no filter = show all
+
+    // Default list behavior: exclude completed tasks unless the query explicitly
+    // contains a completion term (DONE = completed-only, -DONE = incomplete-only).
+    let has_completion_term = combined
+        .split_whitespace()
+        .any(|t| t == "DONE" || t == "-DONE");
+
+    let effective_query = if combined.trim().is_empty() {
+        // No query: default to incomplete tasks only.
+        "-DONE".to_string()
+    } else if has_completion_term {
+        // Query already specifies completion semantics: honour as-is.
+        combined
     } else {
-        Filter::from_query(&combined)
-    }
+        // Other filters present but no completion term: append -DONE default.
+        format!("{combined} -DONE")
+    };
+
+    Filter::from_query(&effective_query)
 }
 
 pub fn run(todo_path: &Path, args: &ListArgs, cfg: &Config, renderer: &Renderer) -> Result<(), CliError> {
