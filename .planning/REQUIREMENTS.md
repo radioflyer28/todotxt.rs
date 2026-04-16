@@ -96,14 +96,14 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| CORE-01 | Phase 1 | Pending |
-| CORE-02 | Phase 1 | Pending |
-| CORE-03 | Phase 1 | Pending |
-| CORE-07 | Phase 1 | Pending |
-| CORE-04 | Phase 2 | Pending |
-| CORE-05 | Phase 2 | Pending |
-| CORE-06 | Phase 2 | Pending |
-| CORE-08 | Phase 2 | Pending |
+| CORE-01 | Phase 7 (gap closure: Phase 1 verification) | Pending |
+| CORE-02 | Phase 7 (gap closure: Phase 1 verification) | Pending |
+| CORE-03 | Phase 7 (gap closure: Phase 1 verification) | Pending |
+| CORE-07 | Phase 7 (gap closure: Phase 1 verification) | Pending |
+| CORE-04 | Phase 7 (gap closure: Phase 2 verification) | Pending |
+| CORE-05 | Phase 7 (gap closure: Phase 2 verification) | Pending |
+| CORE-06 | Phase 7 (gap closure: Phase 2 verification) | Pending |
+| CORE-08 | Phase 7 (gap closure: Phase 2 verification) | Pending |
 | READ-01 | Phase 3 | Complete |
 | READ-02 | Phase 3 | Complete |
 | READ-03 | Phase 3 | Complete |
@@ -115,13 +115,13 @@
 | CFG-01 | Phase 3 | Complete |
 | CFG-02 | Phase 3 | Complete |
 | PLAT-01 | Phase 3 | Complete |
-| WRITE-01 | Phase 4 | Pending |
-| WRITE-02 | Phase 4 | Pending |
-| WRITE-03 | Phase 4 | Pending |
-| WRITE-04 | Phase 4 | Pending |
-| WRITE-05 | Phase 4 | Pending |
-| WRITE-06 | Phase 4 | Pending |
-| WRITE-07 | Phase 4 | Pending |
+| WRITE-01 | Phase 8 (gap closure: Phase 4 verification) | Pending |
+| WRITE-02 | Phase 8 (gap closure: Phase 4 verification) | Pending |
+| WRITE-03 | Phase 8 (gap closure: Phase 4 verification) | Pending |
+| WRITE-04 | Phase 8 (gap closure: Phase 4 verification) | Pending |
+| WRITE-05 | Phase 8 (gap closure: Phase 4 verification) | Pending |
+| WRITE-06 | Phase 8 (gap closure: Phase 4 verification) | Pending |
+| WRITE-07 | Phase 8 (gap closure: Phase 4 verification) | Pending |
 | ENRICH-01 | Phase 5 | Complete |
 | ENRICH-02 | Phase 5 | Complete |
 | ENRICH-03 | Phase 5 | Complete |

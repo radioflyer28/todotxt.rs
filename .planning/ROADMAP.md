@@ -1,7 +1,7 @@
 # Roadmap: v1.0 — Core Library + CLI
 
 **Milestone:** v1.0 — todotxt.net Rust Port: Core Library + CLI
-**Phase count:** 6
+**Phase count:** 8
 **Status:** In Progress
 
 ---
@@ -14,6 +14,8 @@
 - [ ] **Phase 4: CLI Write Commands** — Full task lifecycle: add, complete, undo, delete, edit, append, prepend
 - [ ] **Phase 5: Task Enrichment + Bulk Operations** — Priority commands, due date commands, archive, del-done
 - [ ] **Phase 6: Cross-Platform Polish + Integration Tests** — Cross-platform validation, integration test suite, README
+- [ ] **Phase 7: Retroactive Core Library Verification** — Produce Phase 01 VERIFICATION.md; correct Phase 02 VERIFICATION.md REQ-ID mapping for CORE-04..08
+- [ ] **Phase 8: Retroactive CLI Verification** — Produce Phase 04 VERIFICATION.md (WRITE-01..07); Phase 05 VERIFICATION.md (ENRICH-01..04, BULK-01..02); Phase 06 VERIFICATION.md
 
 ---
 
@@ -292,13 +294,92 @@ Plans:
 
 ---
 
+### Phase 7: Retroactive Core Library Verification
+
+**Goal:** Produce the missing Phase 01 VERIFICATION.md and correct the Phase 02 VERIFICATION.md requirement traceability so that CORE-01..03 + CORE-07 (Phase 1) and CORE-04..06 + CORE-08 (Phase 2) are properly attributed and evidenced — unblocking the milestone audit score for the core library requirement group.
+
+**Requirements:**
+- CORE-01: todo.txt parser (Phase 1 closure)
+- CORE-02: Task serializer (Phase 1 closure)
+- CORE-03: TaskList CRUD (Phase 1 closure)
+- CORE-07: BOM/CRLF handling (Phase 1 closure)
+- CORE-04: File watching (Phase 2 REQ-ID correction)
+- CORE-05: Filter engine (Phase 2 REQ-ID correction)
+- CORE-06: Sort engine (Phase 2 REQ-ID correction)
+- CORE-08: Portable mode (Phase 2 REQ-ID correction)
+
+**Gap Closure:** Closes CORE-01..08 orphaned/unsatisfied gaps from v1.0-MILESTONE-AUDIT.md.
+
+**Deliverables:**
+- `.planning/phases/01-workspace-bootstrap-core-library-foundation/01-VERIFICATION.md`: full phase verification report for Phase 1 (test evidence, UAT closure, deliverable checklist)
+- `.planning/phases/02-core-library-completion/02-VERIFICATION.md`: corrected report with accurate REQ-ID traceability (CORE-04..08); existing passing evidence preserved
+- `REQUIREMENTS.md` traceability table: CORE-01..08 all moved to `Pending` → satisfied under new verification closure
+
+**Plans:**
+- [ ] 07-01-PLAN.md — Produce Phase 01 VERIFICATION.md (Wave 1)
+- [ ] 07-02-PLAN.md — Correct Phase 02 VERIFICATION.md REQ-ID mapping (Wave 2)
+
+**UAT Criteria:**
+- [ ] `01-VERIFICATION.md` exists with status `passed`, lists CORE-01..03 + CORE-07 in requirement traceability table
+- [ ] `02-VERIFICATION.md` requirement traceability table correctly maps CORE-04 (file watch), CORE-05 (filter), CORE-06 (sort), CORE-08 (portable mode) with evidence
+- [ ] Re-running milestone audit shows CORE group as 8/8 satisfied
+
+**Verification:**
+- [ ] Both VERIFICATION.md files have `status: passed` frontmatter
+- [ ] REQUIREMENTS.md traceability shows CORE-01..08 with updated verification phase
+
+**Depends on:** Phase 6
+
+---
+
+### Phase 8: Retroactive CLI Verification
+
+**Goal:** Produce the missing VERIFICATION.md reports for Phases 04, 05, and 06 — formally closing WRITE-01..07, ENRICH-01..04, BULK-01..02, and the Phase 06 cross-platform umbrella against existing implementation evidence and passing tests.
+
+**Requirements:**
+- WRITE-01..07 (Phase 4 closure)
+- ENRICH-01..04 (Phase 5 closure)
+- BULK-01..02 (Phase 5 closure)
+- Phase 06 umbrella: deny warnings, platform tests, E2E tests, README
+
+**Gap Closure:** Closes WRITE-01..07, ENRICH-01..04, BULK-01..02 unsatisfied/orphaned gaps from v1.0-MILESTONE-AUDIT.md; closes Phase 06 missing verification.
+
+**Deliverables:**
+- `.planning/phases/04-cli-write-commands-update-archive/04-VERIFICATION.md`: verification report for WRITE-01..07 with test suite evidence and UAT closure
+- `.planning/phases/05-task-enrichment-bulk-operations/05-VERIFICATION.md`: verification report for ENRICH-01..04 + BULK-01..02 with test suite evidence
+- `.planning/phases/06-cross-platform-polish-integration-tests/06-VERIFICATION.md`: verification report confirming deny warnings, platform tests, E2E scenarios, README sections
+- `REQUIREMENTS.md` traceability: WRITE-01..07, ENRICH-01..04, BULK-01..02 updated to `Complete` in traceability table
+
+**Plans:**
+- [ ] 08-01-PLAN.md — Produce Phase 04 VERIFICATION.md (WRITE-01..07) (Wave 1)
+- [ ] 08-02-PLAN.md — Produce Phase 05 VERIFICATION.md (ENRICH/BULK) (Wave 2)
+- [ ] 08-03-PLAN.md — Produce Phase 06 VERIFICATION.md (Wave 2, parallel)
+
+**UAT Criteria:**
+- [ ] All three VERIFICATION.md files have `status: passed` frontmatter
+- [ ] `04-VERIFICATION.md` lists WRITE-01..07 in traceability table with `cargo test -p todotxt-cli` evidence
+- [ ] `05-VERIFICATION.md` lists ENRICH-01..04 and BULK-01..02 with command and test evidence
+- [ ] `06-VERIFICATION.md` covers deny warnings, platform CRLF tests, 5 E2E scenarios, 7-section README
+- [ ] Re-running milestone audit shows 32/32 requirements satisfied
+
+**Verification:**
+- [ ] All three VERIFICATION.md files exist with `status: passed`
+- [ ] `cargo test --workspace` passes (unchanged)
+- [ ] `cargo clippy --workspace -- -D warnings` passes (unchanged)
+
+**Depends on:** Phase 7
+
+---
+
 ## Progress Table
 
 | Phase | Goal Summary | Requirements | Status | Completed |
 |-------|-------------|--------------|--------|-----------|
-| 1. Workspace Bootstrap + Core Library Foundation | Parser, Task model, TaskList CRUD, atomic writes | CORE-01, CORE-02, CORE-03, CORE-07 | Not started | — |
-| 2. Core Library Completion | Filter, sort, file watch, portable mode | CORE-04, CORE-05, CORE-06, CORE-08 | Not started | — |
-| 3. CLI Foundation — Config + Output + Read Commands | Config, output, all read commands, completions | 2/3 | In Progress|  |
-| 4. CLI Write Commands | Add, do, undo, del, edit, append, prepend | WRITE-01–07 | Not started | — |
-| 5. Task Enrichment + Bulk Operations | Pri, depri, due, postpone, archive, del-done | 5/6 | In Progress|  |
-| 6. Cross-Platform Polish + Integration Tests | E2E validation, README, cross-platform tests | All (verification) | Not started | — |
+| 1. Workspace Bootstrap + Core Library Foundation | Parser, Task model, TaskList CRUD, atomic writes | CORE-01, CORE-02, CORE-03, CORE-07 | Complete | — |
+| 2. Core Library Completion | Filter, sort, file watch, portable mode | CORE-04, CORE-05, CORE-06, CORE-08 | Complete | — |
+| 3. CLI Foundation — Config + Output + Read Commands | Config, output, all read commands, completions | READ-01..08, CFG-01..02, PLAT-01 | Complete | — |
+| 4. CLI Write Commands | Add, do, undo, del, edit, append, prepend | WRITE-01..07 | Complete | — |
+| 5. Task Enrichment + Bulk Operations | Pri, depri, due, postpone, archive, del-done | ENRICH-01..04, BULK-01..02 | Complete | — |
+| 6. Cross-Platform Polish + Integration Tests | E2E validation, README, cross-platform tests | All (verification) | Complete | — |
+| 7. Retroactive Core Library Verification | Phase 01 + 02 VERIFICATION.md | CORE-01..08 | Not started | — |
+| 8. Retroactive CLI Verification | Phase 04 + 05 + 06 VERIFICATION.md | WRITE-01..07, ENRICH-01..04, BULK-01..02 | Not started | — |
