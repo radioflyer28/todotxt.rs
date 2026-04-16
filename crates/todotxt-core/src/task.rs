@@ -45,9 +45,11 @@ impl Task {
     /// Lines that do not follow the todo.txt format produce a Task with all
     /// structured fields set to their defaults and `body` containing the full line.
     pub fn parse(line: &str) -> Self {
-        let raw = line.to_string();
-        // Strip trailing CR so CRLF lines parse identically to LF lines.
-        let mut rest: &str = line.trim_end_matches('\r');
+        // Strip trailing CR before storing raw so to_raw() never returns '\r'-terminated strings.
+        let normalized = line.trim_end_matches('\r');
+        let raw = normalized.to_string();
+        // Parse using the CR-stripped view so CRLF lines parse identically to LF lines.
+        let mut rest: &str = normalized;
 
         // 1. Completed marker: lowercase "x " prefix only (standard todo.txt).
         let completed = if rest.starts_with("x ") {

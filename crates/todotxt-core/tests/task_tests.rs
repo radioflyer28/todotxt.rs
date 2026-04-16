@@ -267,6 +267,42 @@ fn snapshot_full_task_json() {
     insta::assert_json_snapshot!(task);
 }
 
+// ── CR normalization regression tests (UAT gap 03-04) ───────────────────────
+
+/// to_raw() must never include a trailing '\r' even when the input line has CRLF ending.
+#[test]
+fn parse_crlf_line_raw_has_no_trailing_cr() {
+    let task = Task::parse("Buy milk\r");
+    assert_eq!(
+        task.to_raw(),
+        "Buy milk",
+        "to_raw() must not contain trailing \\r"
+    );
+    assert_eq!(task.to_string(), "Buy milk");
+    assert!(!task.to_raw().contains('\r'));
+}
+
+/// Completed task parsed from CRLF line must store CR-free raw.
+#[test]
+fn parse_completed_crlf_line_raw_has_no_trailing_cr() {
+    let task = Task::parse("x 2024-01-10 2024-01-05 Pay bills +Finance @home\r");
+    assert_eq!(
+        task.to_raw(),
+        "x 2024-01-10 2024-01-05 Pay bills +Finance @home"
+    );
+    assert!(task.completed);
+    assert_eq!(task.body, "Pay bills");
+    assert!(!task.to_raw().contains('\r'));
+}
+
+/// Line with only '\r' produces an empty task with no CR in raw.
+#[test]
+fn parse_bare_cr_produces_empty_raw() {
+    let task = Task::parse("\r");
+    assert_eq!(task.to_raw(), "");
+    assert!(!task.to_raw().contains('\r'));
+}
+
 // ── Helper ────────────────────────────────────────────────────────────────────
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {

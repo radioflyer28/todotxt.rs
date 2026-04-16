@@ -296,15 +296,25 @@ fn detect_line_ending(content: &str) -> LineEnding {
     LineEnding::Lf
 }
 
-/// Split content into lines, handling both CRLF and LF.
+/// Split content into lines, handling both CRLF and LF, including mixed line endings.
+///
+/// Always splits by '\n' so CRLF and LF rows are handled per-row rather than
+/// relying on a single globally-detected separator. Trailing '\r' on CRLF rows
+/// is stripped by `Task::parse()` before storing `raw`.
 ///
 /// Does NOT use `str::lines()` because that normalises all endings and
 /// silently swallows a blank trailing line.
 ///
 /// Trailing separator is stripped first so a file ending with a newline
 /// does not produce a spurious empty final token.
-fn split_lines(content: &str, line_ending: LineEnding) -> impl Iterator<Item = &str> {
-    let sep = line_ending.as_str();
-    let trimmed = content.strip_suffix(sep).unwrap_or(content);
-    trimmed.split(sep)
+///
+/// `_line_ending` is retained in the signature for save-semantics callers but
+/// is not used for splitting.
+fn split_lines(content: &str, _line_ending: LineEnding) -> impl Iterator<Item = &str> {
+    // Strip a trailing newline (\n or \r\n) before splitting.
+    let trimmed = content
+        .strip_suffix('\n')
+        .map(|s| s.strip_suffix('\r').unwrap_or(s))
+        .unwrap_or(content);
+    trimmed.split('\n')
 }

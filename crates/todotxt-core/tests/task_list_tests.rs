@@ -272,6 +272,52 @@ fn preserve_whitespace() {
     assert_eq!(list_with_ws.tasks()[1].to_string(), "");
 }
 
+// ── Mixed line-ending regression tests (UAT gap 03-04) ──────────────────────
+
+/// Loading a file with mixed LF/CRLF line endings must produce tasks whose
+/// to_raw() values contain no trailing carriage-return characters.
+#[test]
+fn load_mixed_line_endings_no_cr_in_raw() {
+    let dir = TempDir::new().unwrap();
+    // Two LF tasks and one CRLF task (third line).
+    let content = b"Buy milk\nx 2024-01-10 Completed task\r\n(A) Important task\n";
+    let path = write_file(&dir, "mixed.txt", content);
+
+    let list = TaskList::load(&path).unwrap();
+
+    assert_eq!(list.len(), 3);
+    for task in list.tasks() {
+        assert!(
+            !task.to_raw().contains('\r'),
+            "to_raw() must not contain carriage return; got: {:?}",
+            task.to_raw()
+        );
+    }
+    // The CRLF row must still parse correctly.
+    assert!(list.tasks()[1].completed);
+    assert_eq!(list.tasks()[1].body, "Completed task");
+}
+
+/// When the first line is LF but later lines are CRLF, line_ending is Lf
+/// and save must produce an LF-only file.
+#[test]
+fn mixed_file_detected_as_lf_saves_as_lf() {
+    let dir = TempDir::new().unwrap();
+    // First newline is bare LF → detected as Lf.
+    let content = b"Buy milk\nx 2024-01-10 Completed task\r\n";
+    let path = write_file(&dir, "mixed.txt", content);
+
+    let list = TaskList::load(&path).unwrap();
+    assert_eq!(list.line_ending(), LineEnding::Lf, "first LF line should set Lf ending");
+
+    list.save().unwrap();
+    let saved = fs::read(&path).unwrap();
+    assert!(
+        !saved.windows(2).any(|w| w == b"\r\n"),
+        "saved file must use LF line endings because first line was LF"
+    );
+}
+
 #[test]
 fn reload_picks_up_external_changes() {
     let dir = TempDir::new().unwrap();
