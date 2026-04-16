@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
+current_phase: 04
 status: Ready to execute
-last_updated: "2026-04-16T01:00:23.120Z"
+last_updated: "2026-04-16T02:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 15
-  completed_plans: 10
-  percent: 67
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -20,23 +20,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-15)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 03 — cli-foundation-config-output-read-commands
+**Current focus:** Phase 04 — cli-write-commands-update-archive
 
 ## Current Position
 
-Phase: 03 (cli-foundation-config-output-read-commands) — EXECUTING
-Plan: 1 of 5
+Phase: 04 (cli-write-commands-update-archive) — Complete
+Plan: 5 of 5
 **Milestone:** v1.0 Rust Port — Core + CLI
-**Current Phase:** 03
+**Current Phase:** 04
 **Phase Status:** Complete
-**Last Updated:** 2026-04-15
+**Last Updated:** 2026-04-16
 
-Phase 01 delivered: Cargo workspace scaffold, winnow-based Task parser (33 tests), TaskList with
-atomic I/O / BOM / CRLF / index-CRUD (13 tests). All 46 tests passing, 0 clippy warnings.
+Phase 04 delivered: 7 write subcommands (add, do, undo, del, edit, append, prepend) fully wired
+into the CLI with validation, idempotency, date logic, and 29 integration tests. All tests passing,
+0 clippy warnings.
 
 ## Next Step
 
-`/gsd-execute-phase 2` — execute Phase 02 (todo file I/O and archive operations)
+`/gsd-execute-phase 5` — execute Phase 05 (task-enrichment-bulk-operations)
 
 ## Pending Decisions
 
@@ -56,4 +57,7 @@ None.
 
 ## Accumulated Context
 
-*(Phase 1 not yet started)*
+Phase 01: Cargo workspace scaffold, winnow-based Task parser (33 tests), TaskList with atomic I/O / BOM / CRLF / index-CRUD (13 tests). 46 tests, 0 clippy warnings.
+Phase 02: Todo file I/O and archive operations.
+Phase 03: CLI foundation, config, output, read commands (list/show/stats). 10 list tests, 4 show tests, 2 stats tests passing.
+Phase 04: 7 write subcommands (add/do/undo/del/edit/append/prepend), 29 integration tests, 0 clippy warnings.
