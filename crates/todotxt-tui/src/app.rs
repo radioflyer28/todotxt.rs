@@ -134,6 +134,18 @@ impl App {
                         self.selected = self.selected.saturating_sub(half);
                     }
 
+                    // ── Done / undo (D-10, D-11, D-12) ──────────────────────
+                    // x toggles completion; u is an alias (D-12) but only when
+                    // no modifier is held (Ctrl+u is claimed for half-page up).
+                    KeyCode::Char('x') if task_count > 0 => {
+                        self.toggle_done();
+                    }
+                    KeyCode::Char('u')
+                        if key.modifiers == KeyModifiers::NONE && task_count > 0 =>
+                    {
+                        self.toggle_done();
+                    }
+
                     _ => {}
                 }
             }
@@ -166,6 +178,34 @@ impl App {
         // Redraw after every event (including resize and file change).
         terminal.draw(|f| self.draw(f))?;
         Ok(())
+    }
+
+    /// Toggle the completion state of the currently selected task and persist to disk.
+    ///
+    /// D-10: immediate save via `task_list.update()` (which calls `save()` internally).
+    /// D-11: toggles both ways — incomplete→done AND done→incomplete.
+    /// D-12: called by both `x` and bare `u`.
+    fn toggle_done(&mut self) {
+        let count = self.task_list.len();
+        if count == 0 {
+            return;
+        }
+        let idx = self.selected;
+        let task = self.task_list.tasks()[idx].clone();
+        let was_completed = task.completed;
+        let toggled = task.with_completed(!was_completed);
+        // update() calls save() internally — single atomic disk write (temp rename).
+        if let Err(e) = self.task_list.update(idx, toggled) {
+            // Non-fatal: write to stderr (terminal restore guard is active).
+            eprintln!("toggle_done error: {e}");
+        }
+        // Clamp in case the task list shrank after the write.
+        let new_count = self.task_list.len();
+        if new_count > 0 {
+            self.selected = self.selected.min(new_count - 1);
+        } else {
+            self.selected = 0;
+        }
     }
 
     /// Render the task list using ratatui `List` + `ListState` (D-04, D-05, D-06).
