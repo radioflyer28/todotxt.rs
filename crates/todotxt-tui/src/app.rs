@@ -8,21 +8,23 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::text::{Line, Text};
-use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use todotxt_core::TaskList;
 
 use crate::event::AppEvent;
 use crate::tui::Tui;
 
-/// Top-level application state for Phase 9.
-///
-/// Phase 10 will expand this with selection, mode, filter, status bar, etc.
+/// Top-level application state.
 pub struct App {
     pub should_quit: bool,
     pub task_list: TaskList,
     pub todo_path: PathBuf,
+    /// 0-based index into `task_list.tasks()` for the currently selected row.
+    /// Always clamped to `[0, task_count - 1]`.
+    pub selected: usize,
+    /// Height of the list area in terminal rows. Kept in sync with `Resize` events.
+    /// Used to compute half-page step for Ctrl+d / Ctrl+u (D-09).
+    pub list_height: u16,
 }
 
 impl App {
@@ -31,6 +33,8 @@ impl App {
             should_quit: false,
             task_list,
             todo_path,
+            selected: 0,
+            list_height: 0,
         }
     }
 
@@ -40,6 +44,11 @@ impl App {
         terminal: &mut Tui,
         rx: Receiver<AppEvent>,
     ) -> color_eyre::Result<()> {
+        // Capture initial terminal height for half-page scrolling (D-09).
+        // list_height = total rows minus 1 (status bar occupies the bottom row).
+        let size = terminal.size()?;
+        self.list_height = size.height.saturating_sub(1);
+
         // Initial draw before waiting for the first event.
         terminal.draw(|f| self.draw(f))?;
 
@@ -75,16 +84,61 @@ impl App {
                 if key.kind != KeyEventKind::Press {
                     return Ok(());
                 }
-                if key.code == KeyCode::Char('q')
-                    || (key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL))
-                {
-                    self.should_quit = true;
-                    return Ok(());
+
+                let task_count = self.task_list.len();
+
+                match key.code {
+                    // ── Quit ────────────────────────────────────────────────
+                    KeyCode::Char('q') => {
+                        self.should_quit = true;
+                        return Ok(());
+                    }
+                    KeyCode::Char('c')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        self.should_quit = true;
+                        return Ok(());
+                    }
+
+                    // ── Navigation (D-08, D-09) — only meaningful on non-empty lists ──
+                    // Move down 1
+                    KeyCode::Char('j') | KeyCode::Down if task_count > 0 => {
+                        self.selected = (self.selected + 1).min(task_count - 1);
+                    }
+                    // Move up 1
+                    KeyCode::Char('k') | KeyCode::Up if task_count > 0 => {
+                        self.selected = self.selected.saturating_sub(1);
+                    }
+                    // Jump to first (g)
+                    KeyCode::Char('g') if task_count > 0 => {
+                        self.selected = 0;
+                    }
+                    // Jump to last (G)
+                    KeyCode::Char('G') if task_count > 0 => {
+                        self.selected = task_count - 1;
+                    }
+                    // Half-page down (Ctrl+d)
+                    KeyCode::Char('d')
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && task_count > 0 =>
+                    {
+                        let half = (self.list_height / 2).max(1) as usize;
+                        self.selected = (self.selected + half).min(task_count - 1);
+                    }
+                    // Half-page up (Ctrl+u)
+                    KeyCode::Char('u')
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && task_count > 0 =>
+                    {
+                        let half = (self.list_height / 2).max(1) as usize;
+                        self.selected = self.selected.saturating_sub(half);
+                    }
+
+                    _ => {}
                 }
             }
             AppEvent::FileChanged => {
-                // D-11: Reload task list and redraw to prove auto-refresh.
+                // Reload task list on external file change.
                 self.task_list.reload().map_err(|e| {
                     color_eyre::eyre::eyre!(
                         "Failed to reload {}: {}",
@@ -92,13 +146,20 @@ impl App {
                         e
                     )
                 })?;
+                // Clamp selected so it stays in bounds after reload (D-07).
+                let task_count = self.task_list.len();
+                if task_count > 0 {
+                    self.selected = self.selected.min(task_count - 1);
+                } else {
+                    self.selected = 0;
+                }
             }
-            AppEvent::Resize(_, _) => {
-                // Ratatui handles resize automatically on the next draw.
-                // No state change needed.
+            AppEvent::Resize(_, rows) => {
+                // Update list_height on resize; subtract 1 for the status bar row (D-14).
+                self.list_height = rows.saturating_sub(1);
             }
             AppEvent::Error(_msg) => {
-                // Non-fatal: swallow silently for Phase 9.
+                // Non-fatal: swallow silently.
             }
         }
 
@@ -107,26 +168,95 @@ impl App {
         Ok(())
     }
 
-    /// Render the task list as plain-text lines (D-10).
+    /// Render the task list using ratatui `List` + `ListState` (D-04, D-05, D-06).
     ///
-    /// No colors, no cursor highlight, no selection — Phase 10 owns those.
-    /// One line per task: "{line_number}: {raw_text}".
+    /// Layout (D-14): list area occupies all rows except the 1-row status bar footer.
+    /// Row format (D-01): "{1-based line number}: {raw task text}"
+    /// Completed tasks: `Modifier::DIM` (D-03).
+    /// Selected row: `Modifier::REVERSED` (D-06).
     fn draw(&self, frame: &mut Frame) {
+        use ratatui::layout::{Constraint::{Length, Min}, Layout};
+        use ratatui::style::{Modifier, Style};
+        use ratatui::text::{Line, Span};
+        use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+        use todotxt_core::DueStatus;
+
+        // ── Layout split (D-14) ───────────────────────────────────────────────
+        let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+        let list_area = chunks[0];
+        let status_area = chunks[1];
+
+        // ── Task list (D-01 through D-06) ─────────────────────────────────────
         let tasks = self.task_list.tasks();
 
-        let lines: Vec<Line> = if tasks.is_empty() {
-            vec![Line::raw("(no tasks)")]
+        let items: Vec<ListItem> = if tasks.is_empty() {
+            vec![ListItem::new("(no tasks)")]
         } else {
             tasks
                 .iter()
                 .enumerate()
-                .map(|(i, t)| Line::raw(format!("{}: {}", i + 1, t.to_raw())))
+                .map(|(i, t)| {
+                    // D-01: line number = source file line (1-based), not display index.
+                    let content = format!("{}: {}", i + 1, t.to_raw());
+                    // D-03: completed tasks rendered dimmed.
+                    let style = if t.completed {
+                        Style::default().add_modifier(Modifier::DIM)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(content).style(style)
+                })
                 .collect()
         };
 
-        let text = Text::from(lines);
-        let widget = Paragraph::new(text);
+        // D-06: default reversed-colors highlight for selected row.
+        let list = List::new(items)
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+
+        // D-05: ListState built fresh each draw; not stored on App.
+        let mut list_state = ListState::default();
+        if !tasks.is_empty() {
+            list_state = list_state.with_selected(Some(self.selected));
+        }
+
         // frame.area() is correct for ratatui 0.30 (frame.size() is deprecated).
-        frame.render_widget(widget, frame.area());
+        frame.render_stateful_widget(list, list_area, &mut list_state);
+
+        // ── Status bar (D-14 through D-17) ────────────────────────────────────
+        let total = tasks.len();
+        // "visible" = total in Phase 10 (no filtering yet; Phase 11 adds filters).
+        let visible = total;
+        let due_today = tasks
+            .iter()
+            .filter(|t| !t.completed && t.due_status() == DueStatus::Today)
+            .count();
+        let overdue = tasks
+            .iter()
+            .filter(|t| !t.completed && t.due_status() == DueStatus::Overdue)
+            .count();
+
+        let file_name = self
+            .todo_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("todo.txt");
+
+        // D-15: left segment — file info and counts.
+        let left = format!(
+            "{} | {} tasks | {} visible | {} due today | {} overdue",
+            file_name, total, visible, due_today, overdue
+        );
+        // D-15: right segment — key hints.
+        let right = "q quit | x done | j/k nav";
+
+        // D-16: simple Span approach — agent discretion for layout.
+        // D-17: monochrome in Phase 10; Phase 13 adds theme colors.
+        let status_line = Line::from(vec![
+            Span::raw(left),
+            Span::raw("  "),
+            Span::raw(right),
+        ]);
+
+        frame.render_widget(Paragraph::new(status_line), status_area);
     }
 }
