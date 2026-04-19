@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: TUI Interface
-current_phase: —
-status: Roadmap defined
-last_updated: "2026-04-18T00:00:00.000Z"
+current_phase: 10
+status: Phase complete
+last_updated: "2026-04-19T00:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State
@@ -24,20 +24,18 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 
 ## Current Position
 
-Phase: Not started (Phase 9 next)
+Phase: 10 next (Phase 9 complete)
 Plan: —
-Status: Roadmap defined
-Last activity: 2026-04-18 — Roadmap created (Phases 9–13)
+Status: Phase 9 complete — ready for Phase 10
+Last activity: 2026-04-19 — Phase 9 executed (commits 97a4e43, edc0d63, 045406f)
 
 ## Next Step
 
-Run `/gsd-plan-phase 9` to start execution of Phase 9: TUI Foundation.
+Run `/gsd-plan-phase 10` to start Phase 10: TUI Task Display & Navigation.
 
 ## Pending Decisions
 
-- TUI framework: `ratatui` (planned — research may refine version/companion crates)
-- Terminal backend: `crossterm` (default ratatui backend, cross-platform)
-- Crate name: `todotxt-tui`, binary name: `todotxt-tui`
+None for Phase 10.
 
 ## Blockers
 
@@ -55,4 +53,5 @@ Phase 06: JSON output, exit codes, --no-color/--quiet, TOML config + named filte
 Phase 07: Cross-platform CI, README, quality gates.
 Phase 08: Retroactive verification for all phases. 207 tests, 0 clippy warnings, 5 E2E tests.
 
-**v1.1 starting:** TUI Interface — new crate `crates/todotxt-tui`, binary `todotxt-tui`, ratatui-based.
+**v1.1 in progress:**
+Phase 09 ✓: TUI Foundation — `crates/todotxt-tui` crate, ratatui 0.30 + crossterm 0.29 + color-eyre 0.6, TuiConfig, TerminalGuard (RAII), two-sender event loop (crossterm + FileWatcher → mpsc), App::run + App::draw, plain-text task list, q/Ctrl+C quit, file-change auto-refresh.
