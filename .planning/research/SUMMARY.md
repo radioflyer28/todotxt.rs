@@ -1,285 +1,172 @@
-# Project Research Summary
+# Research Summary — v1.1 TUI Interface
 
-**Project:** todotxt.net → Rust Port (v1.0: Core Library + CLI)
-**Domain:** Cross-platform CLI tool + core library, ported from C# .NET WPF app
-**Researched:** 2025-08-03
-**Confidence:** HIGH
+**Synthesized:** 2026-04-18  
+**Sources:** STACK.md · FEATURES.md · ARCHITECTURE.md · PITFALLS.md  
+**Confidence:** HIGH — all crate versions verified on crates.io; feature patterns drawn from comparable TUI projects (taskwarrior-tui, gitui, lazygit)
 
 ---
 
 ## Executive Summary
 
-This project is a Rust port of an existing, well-understood C# WPF todo.txt manager. Because the reference implementation is directly inspectable, there is no ambiguity about required features, data model, or expected behavior — the C# codebase is the specification. The recommended approach is a Cargo workspace with strict two-crate separation: `todotxt-core` (pure library, mirrors `ToDoLib/`) and `todotxt` (CLI binary, mirrors `Client/` minus WPF), housed under a `rust/` subdirectory to coexist with the existing C# solution. All domain logic belongs in the library crate; the CLI is a thin translation layer from `clap` args to core API calls plus output rendering.
+Building a ratatui-based TUI for todotxt.net is a well-trodden path with a clear, stable stack. The community has converged on `ratatui 0.30` + `crossterm 0.29` + `tui-textarea 0.7` + `color-eyre 0.6` — all verified current, cross-platform, and tokio-compatible. The existing `todotxt-core` crate already provides the `TaskList`, `FileWatcher`, and filter APIs the TUI needs; the new crate is a thin async shell around those primitives.
 
-The recommended stack is mature and well-matched to the problem: `winnow` 1.0 for single-pass parsing (replacing the fragile sequential-regex-strip pattern in the C# code), `serde` + `serde_json` for the JSON output contract that AI agents depend on, `chrono::NaiveDate` for timezone-free date handling, `thiserror` in the library and `anyhow` in the CLI, and `clap` 4.6 with derive macros for the command surface. All versions have been verified against crates.io as of 2025-08-03.
+The biggest architectural risks are not rendering complexity but state-correctness: reloading the file while an editor buffer is open, mutating tasks by visible row position rather than by `source_index`, and letting the watcher's own-save events trigger spurious reloads. These are understood, preventable, and must be addressed in Foundation and Core TUI phases — not retrofitted later. Terminal lifecycle (raw mode, alternate screen, panic restore) must also be solved completely in Foundation before any feature work begins.
 
-The three highest risks are: (1) inheriting C# data bugs — raw-string identity for task lookup causes silent deletion of duplicate tasks, and non-atomic file writes risk corruption; (2) breaking the AI agent JSON contract — schema instability silently corrupts downstream consumers; and (3) cross-platform pitfalls with line endings, UTF-8 BOM, and config paths. All three are preventable by design choices made in Phase 1, before the CLI exists. Address them first.
-
----
-
-## Key Findings
-
-### Recommended Stack
-
-See full details in [STACK.md](./STACK.md).
-
-The library crate (`todotxt-core`) depends only on: `winnow` (parsing), `serde` + `serde_json` (serialization), `chrono` (date handling), `thiserror` (typed errors), `regex` (filter patterns, with `OnceLock` to avoid recompilation), `notify` + `notify-debouncer-mini` (file watching). The CLI binary (`todotxt`) adds: `clap` (arg parsing), `anyhow` (error propagation), `toml` + `directories` (config), `owo-colors` (terminal color), `comfy-table` (list output), `shellexpand` (tilde expansion in paths).
-
-**Core technologies:**
-- `winnow` 1.0.1: Single-pass todo.txt parser — handles edge cases (priority in body, colons in URLs) that pure regex cannot. Direct successor to `nom`.
-- `serde` / `serde_json` 1.0: JSON output contract with AI agents. `schema_version` field must be present from day 1.
-- `chrono` 0.4.44: `NaiveDate` is the exact type for todo.txt dates (YYYY-MM-DD, no timezone). Far better ecosystem integration than `time` crate.
-- `thiserror` 2.0 (lib) / `anyhow` 1.0 (CLI): Correct split — library exposes typed errors callers can match; CLI uses ergonomic `?` propagation.
-- `clap` 4.6 with derive: Industry-standard arg parsing with auto-generated help and shell completions.
-- `notify` 8.2.0 + `notify-debouncer-mini` 0.7: File watching with built-in debounce, matching the C# `FileChangeObserver` 1-second delay behavior.
-- `directories` 6.0: XDG-compliant config paths across all three platforms (not `dirs` — `directories` provides app-namespaced paths).
-
-**Critical version requirements:**
-- `notify` must be **8.2** (stable), not 9.0.0-rc.2
-- `thiserror` **2.x** (not 1.x — different derive macro API)
-- `winnow` **1.0.x** (1.0 stable, not pre-release `nom`)
-
-### Expected Features
-
-See full details in [FEATURES.md](./FEATURES.md).
-
-**Must have (table stakes) — v1.0:**
-- Full CRUD: `add`, `ls`, `do`/`undo`, `del`, `edit`, `app`
-- Filtering: `+Project`, `@Context`, free text, `-negation`, `due:today/past/future/active`, `DONE`/`-DONE`
-- Sorting: priority, due date, file order (default), alphabetical, project, context
-- JSON output (`--json`): stable schema with `schema_version`, consistent exit codes (0–5)
-- Config: TOML at platform-appropriate path + portable mode (config beside binary)
-- Task enrichment: `pri`/`depri`/`inc`/`dec`, `due`/`due-rm`/`postpone`
-- Bulk: `archive` (move completed to done.txt), `del-done`
-- Agent-friendly discovery: `stats`, `projects`, `contexts`
-- `--no-color`, `--quiet`, `NO_COLOR` env var support
-- `--hide-future` (threshold date), `--show-hidden` (h:1)
-
-**Should have (differentiators for agent use):**
-- Consistent exit codes (0=success, 1=not found, 2=IO, 3=parse, 4=config, 5=args)
-- `show <id>` — single task with full JSON detail
-- `add --stdin` — pipe tasks from other tools
-- `inc`/`dec` priority commands — agent ergonomics
-- Shell completions (auto-generated by `clap`)
-
-**Defer to v1.1+:**
-- TUI interface (`ratatui`-based interactive mode)
-- `config` subcommand (UI for reading/writing config; file system works first)
-- `todo.sh` compatibility layer
-- Recurrence rules (`rec:` extension)
-- Fuzzy search, REPL/interactive mode
-
-### Architecture Approach
-
-See full details in [ARCHITECTURE.md](./ARCHITECTURE.md).
-
-Strict two-crate workspace with `todotxt-core` as the domain foundation that CLI, TUI (v1.1), and GUI (v1.2) all consume identically. The core library's public API mirrors the C# `ToDoLib/` surface: `Task` (parsed struct with `raw` canonical field), `TaskList` (file I/O with atomic writes and batch update), `Filter`, `SortType`, and `TodoError`. CLI handlers are thin: parse `clap` args → call core API → render output. No business logic in the CLI layer.
-
-**Major components:**
-1. `todotxt-core/task.rs` — `Task` struct, `winnow` parser, immutable builder mutations (`with_completed`, `with_priority`, etc.)
-2. `todotxt-core/task_list.rs` — `TaskList` file I/O, atomic writes, `batch_update`, reload-on-watch
-3. `todotxt-core/filter.rs` + `sort.rs` — Filter and sort strategies (pure functions over `&[Task]`)
-4. `todotxt-core/error.rs` — `TodoError` enum via `thiserror`
-5. `todotxt/commands/` — One module per subcommand, thin wrappers over core
-6. `todotxt/output.rs` — Human vs JSON rendering, color detection, stdout/stderr discipline
-7. `todotxt/config.rs` — TOML config + `directories` paths + portable mode detection
-
-**Key patterns:**
-- **Raw-as-canonical:** `raw` field is ground truth; parsed fields are derived views; mutations rebuild `raw` via regex substitution (not direct field assignment)
-- **Autonomous file ops:** Every mutation is a read-modify-write; no long-lived in-memory state between CLI invocations
-- **Index-based identity at runtime:** Task IDs (1-based line numbers) are display affordances only; internal mutations use index into `Vec<Task>`, not raw-string comparison (fixes C# bug)
-- **Batch update:** Single file read + single write for multi-task operations
-
-### Critical Pitfalls
-
-See full details in [PITFALLS.md](./PITFALLS.md).
-
-**Top 5 — address before shipping Phase 1:**
-
-1. **Raw-string identity causes silent data loss (C-1)** — The C# `TaskList` uses `t.Raw == task.Raw` for Delete/Update, which silently deletes the first match when two tasks have identical text. Fix: use index-based (`Vec<usize>`) identity internally. Write the duplicate-task test *first*.
-
-2. **Non-atomic file writes corrupt todo.txt (C-2)** — `File::create()` truncates immediately; a crash mid-write loses data permanently. Fix: write to `.tmp` via `tempfile::NamedTempFile::persist()`, then rename. Required from the first `TaskList::save()` implementation.
-
-3. **UTF-8 BOM on first line breaks parsing (C-3)** — Windows Notepad and the C# source files themselves use BOM. Rust's `BufReader::lines()` does not strip it. Fix: `strip_prefix('\u{FEFF}')` on the first line at load time.
-
-4. **Unstable JSON schema breaks AI agent consumers (C-5)** — Field renames or additions silently corrupt downstream agents. Fix: include `"schema_version": 1` from day 1, snapshot-test the JSON shape in CI, treat it as a public API with semver semantics.
-
-5. **Panics instead of structured errors break agent piping (M-4)** — `unwrap()` in CLI code produces unstructured stderr that agents cannot parse. Fix: `fn main() -> anyhow::Result<()>`, top-level error catch that emits JSON error when `--json` is active, zero `unwrap()` outside test code.
-
-**Additional high-priority:**
-- Line ending preservation (C-4): detect CRLF vs LF on load, preserve on write — or the C# GUI and Rust CLI will fight
-- Regex recompilation (C-6): `OnceLock<Regex>` / `LazyLock` — per-task regex compilation tanks parse performance
-- stdout/stderr mixing (M-7): informational messages → stderr, data output → stdout — establish this convention before writing the first command
-- Sequential regex mutation port (m-5): do NOT port the C# strip-by-mutating-string pattern; use single-pass extraction instead
+Feature scope is clear and well-bounded for v1.1: 10 table-stakes features (navigation, mark done, add, edit, delete, filter panel, sort toggle, status bar, theming, file-watch reload) plus a set of differentiators that are genuinely optional. The interaction model follows vim-like conventions, crossterm handles Windows/Unix parity natively, and no exotic dependencies are needed. An opinionated flat module structure (`tui.rs` / `app.rs` / `state.rs` / `ui.rs` / `components/`) is enough architecture without over-engineering.
 
 ---
 
-## Implications for Roadmap
+## Stack Additions
 
-### Suggested Phase Structure
+### Add to `todotxt-tui/Cargo.toml`
 
-#### Phase 1: Workspace Bootstrap + Core Library Foundation
-**Rationale:** Everything depends on the library crate. The parser, Task model, and file I/O must be solid before any CLI work starts. This phase also fixes all C# bugs at the data layer (identity, atomic writes, BOM, line endings) before they can propagate.
-**Delivers:** `todotxt-core` crate with passing tests; no CLI yet
-**Implements:**
-- Cargo workspace under `rust/` (resolve workspace layout decision — see Key Decisions)
-- `error.rs`: `TodoError` enum via `thiserror`
-- `task.rs`: `Task` struct, `winnow` single-pass parser, builder mutations, `OnceLock` regexes
-- `task_list.rs`: `TaskList` with atomic writes (`tempfile`), BOM stripping, line-ending detection/preservation, **index-based identity** (not raw-string)
-- Full unit test suite: parser round-trips (`rstest` + `insta` snapshots), duplicate task deletion, atomic write crash simulation
-**Pitfalls addressed:** C-1, C-2, C-3, C-4, C-6, m-5
-**Research flag:** Standard patterns — no additional research needed
+| Crate | Version | Role |
+|-------|---------|------|
+| `ratatui` | `0.30` | Layout, widgets, rendering |
+| `crossterm` | `0.29` + `event-stream` feature | Terminal backend + async event stream |
+| `tui-textarea` | `0.7` | Inline task input/edit widget |
+| `color-eyre` | `0.6` | Panic-safe terminal restore + rich errors |
+| `futures` | `0.3` | `StreamExt` for `EventStream` |
+| `tokio` | `{ workspace = true }` | Re-use existing workspace dep |
+| `todotxt-core` | `{ path = "../todotxt-core" }` | Task model, file I/O, watcher |
 
----
+**Action:** Promote `ratatui`, `crossterm`, `tui-textarea`, `color-eyre`, `futures` to `[workspace.dependencies]` so versions are pinned once. Run `cargo tree -d` after Foundation to verify no duplicate `crossterm` lines.
 
-#### Phase 2: Core Library Completion (Filter, Sort, File Watching)
-**Rationale:** Complete the library API before building the CLI. TUI and GUI will consume the same API — getting it right now avoids rework.
-**Delivers:** Full `todotxt-core` public API; library is ready for any consumer
-**Implements:**
-- `filter.rs`: `Filter` struct with all filter keywords from FEATURES.md (project, context, text, due:*, DONE, threshold, hidden)
-- `sort.rs`: `SortType` enum + `sort_tasks()` for all 6 sort strategies
-- `task_list.rs`: `batch_update()` for multi-task mutations, `reload()` for file watching
-- `watcher.rs`: `notify` 8.2 + `notify-debouncer-mini` 0.7 wrapper (500ms debounce)
-- `#[non_exhaustive]` on all public enums, `&[Task]` slice returns (not `&Vec<Task>`)
-- JSON schema snapshot test committed to CI
-**Pitfalls addressed:** C-5, M-1, M-2, M-5
-**Research flag:** Standard patterns — no additional research needed
+### Do NOT add
+
+`termion` (Unix-only), `tui-rs` (deprecated), `cursive` / `iocraft` (different frameworks), `dialoguer` / `indicatif` (CLI-only), `async-std` (second runtime), `egui` / `iced` (GUI). No external autocomplete crate is needed — a ~50-line custom popup `List` covers todo.txt tag completion.
 
 ---
 
-#### Phase 3: CLI Foundation — Config + Output + Read Commands
-**Rationale:** Establish all cross-cutting conventions (output routing, error handling, JSON schema) before writing any command logic. Every subsequent command inherits these patterns. Read commands prove the full stack end-to-end.
-**Delivers:** Working `todotxt ls`, `stats`, `projects`, `contexts` commands with JSON + human output
-**Implements:**
-- `config.rs`: TOML config via `toml` + `serde`, `directories` 6.0 for XDG-compliant paths, portable mode detection, `shellexpand` for `~` paths
-- `output.rs`: `OutputFormat::Human | Json`, stdout/stderr discipline (data → stdout, info → stderr), `owo-colors` with tty detection + `NO_COLOR`, `comfy-table` for list formatting
-- `main.rs` + `cli.rs`: `clap` 4.6 derive, global flags (`--file`, `--json`, `--no-color`, `--quiet`, `--hide-future`, `--show-hidden`)
-- Error handling: `fn main() -> anyhow::Result<()>`, JSON error envelope on `--json` + non-zero exit, 0 `unwrap()` in non-test code
-- Exit code convention (0–5) established and documented
-- `commands/list.rs`: `ls [filter...]` with all filter keywords, sorting, `--json`
-- `commands/stats.rs`, `commands/projects.rs`, `commands/contexts.rs`
-- CLI integration tests via `assert_cmd` + `predicates`
-**Pitfalls addressed:** M-3, M-4, M-7, m-1, m-2
-**Research flag:** Standard patterns — `clap` derive, `assert_cmd` are well-documented
+## Feature Table Stakes
+
+All 10 must ship for v1.1 to feel usable. Missing any = product feels broken.
+
+| # | Feature | Key Bindings | Notes |
+|---|---------|-------------|-------|
+| 1 | **Task list navigation** | `j`/`k`, `g`/`G`, `Ctrl+d`/`Ctrl+u`, arrows | `scroll_padding(2)`, truncate long text with `…` |
+| 2 | **Mark done / undo** | `x` (toggle) | In-memory update first, then write; cursor stays on task |
+| 3 | **Add new task** | `a` → type → `Enter` / `Esc` | `tui-textarea` single-line; `@`/`+` autocomplete popup |
+| 4 | **Inline edit** | `e` → edit → `Enter` / `Esc` | Pre-populated with raw text; defer file reload during edit |
+| 5 | **Delete with confirmation** | `d` → `y`/`n` | Modal overlay with task preview; `Esc` = cancel |
+| 6 | **Filter panel** | `f` toggle; `Tab` focus cycle; `Space` toggle; `Ctrl+R` reset | Sidebar (>=60 cols) or full-screen overlay (<60 cols); live ANDed filters |
+| 7 | **Sort toggle** | `s` (forward) / `S` (backward) | 6 modes: Priority -> Due -> File -> Alpha -> Project -> Context |
+| 8 | **Status bar** | — | Counts, mode indicator, transient flash (1.5s) |
+| 9 | **Themeable colors** | — | 2 built-ins (`default`/`light`); `[tui] theme` in config; `NO_COLOR` honored |
+| 10 | **File-watch auto-reload** | `r` (force) | Silent in Normal mode; deferred in Add/Edit; cursor re-anchored by task ID |
+
+**Task IDs always show original todo.txt line number** (not filtered index) to stay consistent with CLI semantics.
 
 ---
 
-#### Phase 4: CLI CRUD Commands — Write Path
-**Rationale:** Once the read path and output conventions are proven, write commands follow a consistent pattern: load → mutate → save → render affected tasks. All mutations use the index-based identity from Phase 1.
-**Delivers:** Full task lifecycle: add, complete, delete, edit, append
-**Implements:**
-- `commands/add.rs`: relative date parsing (today/tomorrow/weekday), creation date auto-prepend, `--stdin` mode
-- `commands/complete.rs` (`do` / `undo`): completion marking per spec (strips priority, sets `x DATE`)
-- `commands/delete.rs`: ID-addressed delete with confirmation bypass
-- `commands/edit.rs` + `commands/append.rs`: full replace and append operations
-- `commands/show.rs`: single task JSON detail
-**Pitfalls addressed:** C-1 (identity bug already fixed in Phase 1, CLI uses it correctly here)
-**Research flag:** Standard patterns
+## Feature Differentiators
+
+Nice-to-have. Do not block v1.1 ship on any of these.
+
+| # | Feature | Key | Effort |
+|---|---------|-----|--------|
+| D1 | Task detail pane | `i` / `Enter` | Medium — right-side split with word-wrap, parsed fields |
+| D2 | Scrollbar in task list | — | Low — 5 lines: `ScrollbarState` bound to `ListState.offset` |
+| D3 | Sort persistence in config | — | Low — write `[tui] sort` on change |
+| D4 | Session undo stack | `u` | Medium — `Vec<Task>` snapshot per mutation |
+| D5 | Quick search via `/` | `/` | Low — bottom-bar live substring filter |
+| D6 | Help overlay | `?` | Low — `Paragraph` in centered `Block::bordered()` popup |
+| D7 | Bulk multi-select | `v` | High — visual mode, bulk mark/delete — defer to v1.2 |
+
+**D2, D5, D6** are the easiest wins if time allows within a Polish phase.
 
 ---
 
-#### Phase 5: Task Enrichment + Bulk Operations
-**Rationale:** All priority and date manipulation commands share the same builder-pattern mutations in `Task`; they're low-risk once the write path is established. Bulk ops (`archive`, `del-done`) use `batch_update` from Phase 2.
-**Delivers:** Complete CLI feature parity with the C# reference implementation
-**Implements:**
-- `commands/priority.rs`: `pri <id> <A-Z>`, `depri <id>`, `inc <id>`, `dec <id>`
-- `commands/due.rs`: `due <id> <date>`, `due-rm <id>`, `postpone <id> <N>` (negative N supported)
-- `commands/archive.rs`: move completed tasks to `done.txt` (configurable path)
-- `commands/delete_done.rs`: destructive bulk completion purge
-- Multi-ID variants for `do`, `undo`, `del` (varargs)
-**Pitfalls addressed:** M-6 (priority case — uppercase-only, warn on lowercase, provide migration note)
-**Research flag:** Standard patterns
+## Architecture Highlights
+
+### Module structure (flat and sufficient)
+
+```
+crates/todotxt-tui/src/
+  main.rs          bootstrap: color-eyre, config, terminal init, tokio runtime
+  tui.rs           terminal lifecycle guard (Drop restore), async event loop, watcher wiring
+  app.rs           AppState owner, Action dispatch, core API calls
+  action.rs        Internal intent enum (MoveDown, BeginEdit, SaveEdit, ReloadFromDisk …)
+  mode.rs          Modal state enum (Normal, Add, Edit, Filter, DeleteConfirm)
+  state.rs         AppState + VisibleTask + FilterState + StatusMessage + AutocompleteState
+  event.rs         Unified AppEvent enum (Input, FileChanged, Tick, Resize, Quit)
+  ui.rs            Frame composition — splits screen into list, filter panel, overlays, status bar
+  config.rs        Loads same TOML schema as CLI; TUI-only keys under [tui] table
+  autocomplete.rs  Tag suggestion extraction + popup state for +/@ completion
+  components/
+    task_list.rs   Render-only list widget
+    editor.rs      tui-textarea wrapper (single-line, popup placement)
+    filter_panel.rs Filter sidebar + focus rendering
+    confirm.rs     Delete confirmation modal
+    status_bar.rs  Footer widget
+```
+
+### Event loop
+
+```
+tokio::select! {
+    terminal_event  -> map to AppEvent::Input
+    watch_rx.recv() -> AppEvent::FileChanged
+    tick_interval   -> AppEvent::Tick        (flash-message expiry)
+    resize          -> redraw signal
+}
+```
+Key events filtered to `KeyEventKind::Press` only. Watcher callback sends only `AppEvent::FileChanged` — no state mutation on the watcher thread.
+
+### State management
+
+- `AppState` owns `TaskList` (source of truth), `visible_tasks: Vec<VisibleTask>` (derived), selection as index into `visible_tasks`.
+- `VisibleTask` carries `source_index` (into `TaskList`) and `display_id` (`source_index + 1`).
+- All mutations resolve through `source_index`, never through visible row position or display ID.
+- `rebuild_visible_tasks()` runs after every mutation, reload, filter change, or sort change; re-anchors selection by prior `source_index`.
+- `pending_reload: bool` defers file-watch reloads while in Add / Edit / DeleteConfirm mode.
+
+### Overlay rendering order (hard rule)
+
+Delete confirmation -> autocomplete popup -> editor -> base task list. Rendered last = drawn on top. Input routed to top active layer only.
 
 ---
 
-#### Phase 6: Cross-Platform CI + Polish
-**Rationale:** Verify cross-platform behavior that unit tests cannot catch: Windows CRLF, config paths on macOS, binary size, shell completions.
-**Delivers:** Shippable v1.0 artifact with CI for Windows, Linux, macOS
-**Implements:**
-- GitHub Actions matrix: `windows-latest`, `ubuntu-latest`, `macos-latest`
-- Cross-platform path tests: `PathBuf` + `tempfile`, no `/tmp` literals
-- Shell completion generation (`clap`'s `generate_to`)
-- Release binary builds with `cargo dist` or manual matrix
-- `cargo clippy --deny warnings`, `cargo fmt --check`
-- `cargo semver-checks` before tagging
-**Pitfalls addressed:** m-3, M-1 (API review before tag)
-**Research flag:** May need research on `cargo dist` vs manual release workflow
+## Watch Out For
+
+Top 5 pitfalls — each has a one-line prevention.
+
+| # | Pitfall | Prevention |
+|---|---------|------------|
+| 1 | **Reload during active edit clobbers user input** | In Add/Edit/DeleteConfirm, set `pending_reload = true`; apply reload only after save or cancel |
+| 2 | **Mutating by visible row instead of `source_index`** | Every write call uses `visible_tasks[sel].source_index`; never use `sel` or `display_id` directly |
+| 3 | **Panic / early return leaves terminal in raw mode** | `tui.rs` guard type with `Drop` restore; `color-eyre` panic hook calls `ratatui::restore()` first |
+| 4 | **TUI's own saves trigger spurious file-watch reloads** | After each local mutation, mark one watcher event as self-originated before coalescing events |
+| 5 | **Workspace dependency skew (duplicate `crossterm`)** | Add `ratatui`, `crossterm`, `tui-textarea` to `[workspace.dependencies]`; `cargo tree -d` check in Foundation |
+
+**Honorable mentions:** Filter `KeyEventKind::Press` only (prevents key duplication on Windows). Configure `tui-textarea` in single-line mode explicitly (prevents Enter/newline leaking into add/edit). Always recompute layout from `frame.area()` per draw (prevents stale geometry after resize). Start from ratatui 0.30 docs only, not community blog posts (prevents `Frame::size()` and import breakage).
 
 ---
 
-### Phase Ordering Rationale
+## Build Order Recommendation
 
-- **Library before CLI** (Phases 1–2 before 3–5): Architecture.md's build order graph is unambiguous — `todotxt-core` must reach stable public API before `todotxt-cli` can progress. This also concentrates all C# bug fixes in the core where they're isolated and testable.
-- **Read commands before write commands** (Phase 3 before 4): Establishes output conventions and JSON schema stability before any mutation logic. A broken read command is low-stakes; a broken write command can corrupt data.
-- **Enrichment after CRUD** (Phase 5 after 4): Priority and date manipulation are pure builders on top of the already-tested write path. No new patterns introduced.
-- **CI last** (Phase 6): Full feature completeness before CI hardening; avoids iterating CI config on an incomplete binary.
+Suggested phase sequence for the roadmapper, in dependency order:
 
-### Research Flags
+| Phase | Name | Delivers | Rationale |
+|-------|------|----------|-----------|
+| 1 | **Foundation** | New `todotxt-tui` crate, workspace deps pinned, `tui.rs` terminal guard, `color-eyre` panic hook, tokio event loop skeleton, watcher bridge, config loader | Must be airtight before any visible work. Terminal restore bugs are the hardest to retrofit. |
+| 2 | **Core TUI** | Task list rendering, navigation (`j`/`k`/`g`/`G`/half-page), mark-done toggle, status bar, sort toggle, visible-list rebuild with `source_index` anchoring | Gets the app usable for read + mark-done. All identity and selection patterns established here. |
+| 3 | **Edit Mode** | Add new task (`a`), inline edit (`e`), delete confirmation (`d`), `@`/`+` autocomplete popup, deferred reload during edit | Layered on top of the stable state model. Overlay ordering and single-line textarea config solved here. |
+| 4 | **Filter Panel** | Filter sidebar (`f`), text search, context/project toggles, due-date bucket, show-done toggle, live ANDed filtering, `Ctrl+R` reset, narrow-terminal overlay fallback | Depends on stable visible-list rebuild from Phase 2. |
+| 5 | **Theming** | `Theme` struct, `default`/`light` built-ins, `[tui] theme` config, custom theme TOML, `NO_COLOR` support, priority/done/overdue/selected color slots | Isolated rendering concern; no state dependencies. Can run in parallel with Phase 4 if needed. |
+| 6 | **Polish** | Scrollbar (D2), quick search `/` (D5), help overlay `?` (D6), Unicode width fixes, narrow-terminal edge cases, `TestBackend` render smoke tests, state-machine unit tests | Everything that raises quality without blocking core functionality. |
 
-**Needs research during planning:**
-- **Phase 6:** `cargo dist` for cross-platform binary releases — good documentation but tool is still evolving. Verify whether `cargo-dist` or a manual GitHub Actions matrix better fits this project's release cadence.
-
-**Standard patterns (skip research-phase):**
-- **Phases 1–2:** Well-established Rust library patterns; `winnow`, `thiserror`, `notify` all have comprehensive docs
-- **Phases 3–5:** `clap` derive, `assert_cmd`, `serde_json` are flagship crates with extensive examples
-- **Phase 5:** `batch_update` pattern is entirely internal to the crate
-
----
-
-## Key Decisions Required
-
-These are open decisions identified across research files that must be resolved before or during Phase 1:
-
-| # | Decision | Options | Recommendation | Phase |
-|---|----------|---------|----------------|-------|
-| 1 | **Workspace layout** | STACK.md: `rust/Cargo.toml` at root of `rust/` subdir; ARCHITECTURE.md: `crates/` under repo root | **Use `rust/` subdir** — avoids `Cargo.toml` collision with VS solution, cleaner coexistence with C# project | Phase 1 |
-| 2 | **Task identity for mutations** | Raw-string equality (C# pattern — has known bug) vs. in-memory index | **Use Vec index** — fixes duplicate-task silent deletion bug (Pitfall C-1) | Phase 1 |
-| 3 | **JSON schema field naming** | `snake_case` vs `camelCase` | **`snake_case`** — matches Rust field names, matches `serde` defaults, consistent with `jq` / unix tooling conventions | Phase 1/3 |
-| 4 | **Priority case handling** | Preserve C# bug (accept `(a)`) vs. fix to spec (uppercase only) | **Fix to spec** — emit a warning on load for lowercase priorities, document migration | Phase 1 |
-| 5 | **File watching scope** | Core library (`watcher.rs` in `todotxt-core`) vs. CLI only | **CLI only** — `notify` is a UI concern; core library should be pure domain logic. Expose `TaskList::reload()` for consumers to call when they detect changes | Phase 1/2 |
-| 6 | **`serde` on `Task` in library** | Derive `Serialize`/`Deserialize` on `Task` in core vs. separate DTO in CLI | **Derive in core with `#[serde(default)]` on all optional fields** — simplifies JSON output, avoids DTO duplication; risk managed by `#[serde(default)]` on every optional field | Phase 1 |
-
----
-
-## Confidence Assessment
-
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Stack | HIGH | All versions verified via crates.io API 2025-08-03; alternatives considered and rejected with documented rationale |
-| Features | HIGH | Derived directly from inspectable C# reference implementation; no guesswork about required behavior |
-| Architecture | HIGH | Direct port of a known codebase with established Rust workspace patterns; build dependency graph is unambiguous |
-| Pitfalls | HIGH | Mix of direct code inspection (C# bugs verified in source) and production Rust experience; all pitfalls have concrete prevention code |
-
-**Overall confidence: HIGH**
-
-### Gaps to Address
-
-- **`cargo dist` / release tooling** (Phase 6): Not researched in detail. Needs a short planning spike to choose between `cargo dist`, `cargo-release`, or manual GitHub Actions before tagging v1.0.
-- **Binary size targets**: No research on acceptable binary size or `cargo` profile tuning (LTO, opt-level, strip). Low priority — todo.txt files are small, startup time is not a concern.
-- **Shell completion UX**: `clap` generates completions, but which shells to target and how to distribute them (install script? system package?) is unresolved. Defer to Phase 6 planning.
-- **Workspace layout discrepancy**: STACK.md and ARCHITECTURE.md disagree on the Cargo workspace root location (`rust/` vs `crates/`). Decision #1 above resolves this as `rust/` — but must be explicitly confirmed before Phase 1 begins.
+**Research flags for planning:**
+- Phase 1 (Foundation): standard patterns — no deep research needed; ratatui quickstart template covers >80%.
+- Phase 3 (Edit Mode): consider a brief research pass on `tui-textarea` single-line configuration to confirm the exact API for disabling multiline defaults in v0.7.
+- Phase 4 (Filter Panel): standard patterns — ratatui `List` + `Block` sidebar is well-documented.
+- Phase 6 (Polish): `ratatui::backend::TestBackend` usage worth a quick research pass before writing tests.
 
 ---
 
 ## Sources
 
-### Primary (HIGH confidence)
-- C# reference implementation (`ToDoLib/Task.cs`, `ToDoLib/TaskList.cs`, `Client/MainWindowViewModel.cs`) — direct code inspection
-- crates.io API (live query, 2025-08-03) — all crate versions verified
-- todo.txt format spec: https://github.com/todotxt/todo.txt
-- Rust API Guidelines: https://rust-lang.github.io/api-guidelines/
-- `winnow` 1.0.1 docs: https://docs.rs/winnow/1.0.1/winnow/
-- `notify` 8.2 stable changelog: https://crates.io/crates/notify
-- `clap` 4.6 derive guide: https://docs.rs/clap/4.6.0/clap/_derive/index.html
-- `thiserror` 2.0 migration: https://crates.io/crates/thiserror
-- `directories` 6.0: https://crates.io/crates/directories
-- Cargo workspace docs: https://doc.rust-lang.org/cargo/reference/workspaces.html
-
-### Secondary (MEDIUM confidence)
-- `owo-colors` over `colored` — technical rationale verified but community still prefers `colored` by download count
-- `comfy-table` over `tabled` — API simplicity comparison based on docs review; both maintained
-
----
-
-*Research completed: 2025-08-03*
-*Ready for roadmap: yes*
+- STACK.md: crates.io (ratatui 0.30.0, crossterm 0.29.0, tui-textarea 0.7.0, color-eyre 0.6.5), ratatui.rs event-handling docs
+- FEATURES.md: taskwarrior-tui, gitui, lazygit UX patterns; ratatui widget docs; todo.txt format spec
+- ARCHITECTURE.md: ratatui component architecture guides; todotxt-core existing API surface
+- PITFALLS.md: crossterm 0.29 docs (KeyEventKind, resize); ratatui 0.30 breaking changes; tui-textarea 0.7 docs; todotxt-core watcher and TaskList source

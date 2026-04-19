@@ -1,258 +1,123 @@
-# Technology Stack — Rust todotxt-core + CLI
+# Stack Research — v1.1 TUI Interface
 
-**Project:** todotxt.net → Rust Port (v1.0: Core + CLI)
-**Researched:** 2025-08-03
-**Confidence:** HIGH (all versions verified against crates.io API)
+**Researched:** 2026-04-18  
+**Confidence:** HIGH (all versions verified via crates.io)
 
----
+## Core TUI Stack
 
-## Recommended Stack
+| Crate | Version | Role | Rationale |
+|-------|---------|------|-----------|
+| `ratatui` | 0.30.0 | TUI framework — layout, widgets, rendering | Current community-maintained fork of tui-rs; active, well-documented, crossterm is its default backend. Provides `List`, `Paragraph`, `Block`, `Table`, `Popup`, `Scrollbar` widgets out of the box. |
+| `crossterm` | 0.29.0 | Terminal backend for ratatui | Cross-platform (Windows + Unix), the default backend ratatui ships with. Handles raw mode, alternate screen, cursor, color. Enable the `event-stream` feature for tokio integration. |
+| `tui-textarea` | 0.7.0 | Inline text editing widget | Drop-in ratatui widget for task input/editing. Supports undo/redo, Emacs shortcuts, single-line mode, validation hooks, and cursor-line highlighting. No need to hand-roll a text input field. |
+| `color-eyre` | 0.6.5 | Error handling and panic hooks | Required to properly restore the terminal on panic. Call `color_eyre::install()` before `ratatui::init()` — prevents garbled terminal state on crash. Ratatui's own quickstart templates use it. |
 
-### Core Library (`todotxt-core`)
+## Optional / Situational
 
-| Crate | Version | Purpose | Why |
-|-------|---------|---------|-----|
-| `winnow` | 1.0.1 | todo.txt line parser | Zero-copy, composable, replaces nom. todo.txt's grammar (optional priority, dates, key:value tags scattered in free text) benefits from parser combinators over regex — edge cases like `(A)` in task body are handled correctly. |
-| `serde` | 1.0.228 | Serialize/deserialize Task model | Industry standard; derive macros on `Task` struct enable both JSON output and config round-tripping with zero boilerplate. |
-| `serde_json` | 1.0.149 | JSON serialization | CLI's structured output mode requires it; keeping it in core means CLI gets JSON for free. |
-| `chrono` | 0.4.44 | Date parsing and arithmetic | `NaiveDate` is the exact right type for todo.txt dates (YYYY-MM-DD, no timezone). Better ecosystem integration than `time` crate; `chrono::format::strftime` handles parsing. |
-| `thiserror` | 2.0.18 | Library error types | Library crates must expose typed errors — `anyhow` is wrong here. `thiserror` 2.x derive macros generate clean `ParseError`, `IoError`, etc. with zero runtime overhead. |
-| `notify` | 8.2.0 | File system events | Stable release (not 9.0.0-rc.2). Cross-platform FSEvents/inotify/ReadDirectoryChangesW abstraction. |
-| `notify-debouncer-mini` | 0.7.0 | Debounced file watching | Raw `notify` events fire multiple times per save. `debouncer-mini` coalesces into single events after a quiet period — matches what the C# `FileChangeObserver` does (1-second delay before reload). |
-| `regex` | 1.12.3 | Supplemental pattern matching | Used for filter expressions (project/context/text search). After `winnow` parses the Task, `regex` handles runtime user-supplied search patterns. |
+| Crate | Version | Role | When to Add |
+|-------|---------|------|-------------|
+| `tokio` | existing (re-use) | Async runtime | Already in `todotxt-core`. **Do not add a second runtime.** |
+| `futures` | ~0.3 | `StreamExt` trait for `EventStream` | Only needed if using `crossterm::event::EventStream` (the tokio-compatible event stream). May already be transitively present. |
 
-### CLI Binary (`todotxt`)
+## Integration Notes
 
-| Crate | Version | Purpose | Why |
-|-------|---------|---------|-----|
-| `clap` | 4.6.0 | Argument parsing | The standard. Derive macros (`#[derive(Parser)]`) produce type-safe arg structs, auto-generated `--help`, subcommands, and shell completions. No alternative worth considering. |
-| `anyhow` | 1.0.102 | CLI error propagation | Binaries don't need typed errors — `anyhow` gives `?`-everywhere ergonomics and clean error output. Pair with `thiserror` in the library layer. |
-| `directories` | 6.0.0 | Cross-platform config paths | Returns `AppDirs` with `config_dir()`, `data_dir()`, `cache_dir()` per platform (XDG on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows). Use this directly over `dirs` — it provides app-namespaced paths. |
-| `toml` | 1.1.2 | Config file format | `TOML + serde` is the Rust-native config idiom. Human-editable, self-documenting, no YAML footguns. Parse directly into a typed `Config` struct. |
-| `owo-colors` | 4.3.0 | Terminal color output | Compile-time color support, no global state (contrast: `colored` uses a global mutex). Supports `NO_COLOR` env var. Use for human-readable output; JSON mode gets no color. |
-| `comfy-table` | 7.2.2 | Tabular output formatting | For `list` command human output. Handles Unicode width, dynamic column sizing, cross-platform rendering. `tabled` is an alternative but `comfy-table` has simpler API for this use case. |
-| `tracing` | 0.1.44 | Structured logging | Prefer over `log` + `env_logger`. `tracing` spans work well for tracking file-watch events and parse errors. Add `tracing-subscriber` for the CLI subscriber. |
-| `shellexpand` | 3.1.2 | `~` path expansion in config | Config files will contain `~/todo.txt` style paths. `shellexpand::tilde()` handles this cross-platform before passing to `std::path`. |
+### Tokio + crossterm event loop
 
-### Shared Dev / Test
+`crossterm` ships an `event-stream` feature that exposes `EventStream` — an async `futures::Stream<Item = Result<Event>>`. This integrates directly with `tokio::select!` so a single async task can multiplex:
 
-| Crate | Version | Purpose | Notes |
-|-------|---------|---------|-------|
-| `tempfile` | 3.27.0 | Temp files in tests | `NamedTempFile` + `TempDir` for file I/O tests in `todotxt-core`. |
-| `assert_cmd` | 2.2.0 | CLI integration tests | Runs the binary as a subprocess, asserts on stdout/stderr/exit code. The right way to test a CLI. |
-| `predicates` | 3.1.4 | Assertions for `assert_cmd` | Fluent string/regex matchers; used with `assert_cmd`. |
-| `insta` | 1.47.2 | Snapshot testing | Run `cargo insta review` to accept/update snapshots. Ideal for parser round-trip tests and CLI output formatting — catches regressions in `Task::to_string()` and JSON shape. |
-| `rstest` | 0.26.1 | Parameterized tests | `#[rstest]` table-driven tests for the parser. Each todo.txt format variant (priority only, date only, both dates, key:value pairs, completed, etc.) gets a row. |
-
----
-
-## Cargo Workspace Structure
-
-```
-todotxt.net/              ← git root (C# app stays here, untouched)
-├── ToDo.Net.sln
-├── Client/
-├── ToDoLib/
-├── ...
-└── rust/                 ← NEW: Rust workspace root
-    ├── Cargo.toml        ← [workspace] members = ["todotxt-core", "todotxt"]
-    ├── Cargo.lock        ← committed (binary crate in workspace)
-    ├── .cargo/
-    │   └── config.toml   ← workspace-level Cargo config (lint levels, etc.)
-    ├── todotxt-core/
-    │   ├── Cargo.toml    ← lib crate; no [[bin]]
-    │   ├── src/
-    │   │   ├── lib.rs
-    │   │   ├── task.rs       ← Task struct + serde derives
-    │   │   ├── parser.rs     ← winnow parser
-    │   │   ├── task_list.rs  ← TaskList + file I/O
-    │   │   ├── filter.rs     ← filter/sort logic
-    │   │   ├── watcher.rs    ← notify + debouncer wrapper
-    │   │   └── error.rs      ← thiserror error types
-    │   └── tests/
-    │       ├── parser_tests.rs
-    │       └── task_list_tests.rs
-    └── todotxt/
-        ├── Cargo.toml    ← bin crate; depends on todotxt-core
-        ├── src/
-        │   ├── main.rs
-        │   ├── cli.rs        ← clap derive structs
-        │   ├── commands/
-        │   │   ├── add.rs
-        │   │   ├── list.rs
-        │   │   ├── complete.rs
-        │   │   ├── delete.rs
-        │   │   ├── edit.rs
-        │   │   └── archive.rs
-        │   ├── output.rs     ← human vs JSON output formatting
-        │   └── config.rs     ← toml config + directories paths
-        └── tests/
-            └── cli_tests.rs  ← assert_cmd integration tests
-```
-
-**Workspace `Cargo.toml` skeleton:**
+- Terminal key/mouse events (from `EventStream`)  
+- File-change notifications (from `todotxt-core`'s `notify`/tokio watcher channel)
 
 ```toml
-[workspace]
-members = ["todotxt-core", "todotxt"]
-resolver = "2"
+# todotxt-tui/Cargo.toml
+[dependencies]
+ratatui        = "0.30"
+crossterm      = { version = "0.29", features = ["event-stream"] }
+tui-textarea   = "0.7"
+color-eyre     = "0.6"
+tokio          = { workspace = true }           # re-use workspace dep
+todotxt-core   = { path = "../todotxt-core" }
 
-[workspace.dependencies]
-# Pin versions once; all crates inherit with `workspace = true`
-serde       = { version = "1.0", features = ["derive"] }
-serde_json  = "1.0"
-thiserror   = "2.0"
-anyhow      = "1.0"
-chrono      = { version = "0.4", features = ["serde"] }
-winnow      = "1.0"
-regex       = "1.12"
-notify      = "8.2"
-notify-debouncer-mini = "0.7"
-clap        = { version = "4.6", features = ["derive"] }
-toml        = "1.1"
-directories = "6.0"
-owo-colors  = "4.3"
-comfy-table = "7.2"
-tracing     = "0.1"
-shellexpand = "3.1"
-tempfile    = "3.27"
-assert_cmd  = "2.2"
-predicates  = "3.1"
-insta       = "1.47"
-rstest      = "0.26"
-
-[workspace.lints.rust]
-unsafe_code = "forbid"
+futures        = "0.3"                          # for StreamExt on EventStream
 ```
 
----
+```rust
+// Skeleton of the TUI event loop
+use crossterm::event::{EventStream, Event, KeyCode};
+use futures::StreamExt;
+use tokio::sync::mpsc::Receiver;
 
-## Alternatives Considered and Rejected
+async fn run(mut file_rx: Receiver<todotxt_core::WatchEvent>) -> color_eyre::Result<()> {
+    let mut terminal = ratatui::init();
+    let mut events = EventStream::new();
 
-| Category | Recommended | Rejected | Why Rejected |
-|----------|-------------|----------|--------------|
-| Parsing | `winnow` 1.0.1 | `nom` 8.0 | `winnow` IS nom's successor; nom 8 introduced its own breaking changes. Same author, winnow has cleaner error types and `&str`-first API. |
-| Parsing | `winnow` 1.0.1 | `pest` | PEG grammar files add a build step and complexity for a line-based format. `winnow` composables are simpler to maintain. |
-| Parsing | `winnow` 1.0.1 | pure `regex` | Regex works for the happy path but struggles with todo.txt edge cases: `(A)` appearing inside task body, key:value pairs with colons in URLs, etc. |
-| Date/time | `chrono` 0.4 | `time` 0.3 | Both are maintained. `chrono`'s `NaiveDate` is the canonical "date without timezone" type; `chrono` has far more serde/format integrations. `time` is better for timestamp math — not needed here. |
-| Config | `toml` + `serde` | `config` (config-rs) | `config-rs` supports layered sources (env, file, defaults) — useful for complex apps. Overkill here; adds ~10 transitive dependencies for features we don't need. |
-| Config | `toml` + `serde` | `figment` | Same story as config-rs. `figment` is excellent for web frameworks with many config sources. A CLI tool with one config file doesn't need it. |
-| Config | `toml` + `serde` | `confy` | `confy` wraps `directories` + `serde` but forces opinionated naming and doesn't support portable mode (config beside binary). We need portable mode parity with the C# app. |
-| File watching | `notify` 8.2 | `notify` 9.0.0-rc.2 | RC releases are not production-ready. `notify` 8.2 is the current stable, released 2025-08-03. |
-| Colors | `owo-colors` 4.3 | `colored` 3.1 | `colored` uses a global `AtomicBool` for NO_COLOR detection and a mutex around color state. `owo-colors` is zero-global-state; colors are opt-in per value. Better for a library that might be embedded. |
-| Error handling (lib) | `thiserror` 2.0 | `anyhow` | `anyhow` in a library hides error type information from downstream users. `thiserror` produces `std::error::Error` impl with a concrete type — callers can match on it. |
-| Error handling (CLI) | `anyhow` 1.0 | `thiserror` | CLI binaries don't expose errors to callers — ergonomic `?` propagation and human-readable error chains are what matter. `anyhow` is correct here. |
-| Arg parsing | `clap` 4.6 | `argh`, `pico-args`, `lexopt` | `clap` derive is the industry standard with shell completion, rich help generation, and subcommand support. The alternatives are faster to compile but lack subcommand ergonomics needed for a multi-command CLI. |
-| Tables | `comfy-table` 7.2 | `tabled` 0.20 | `tabled` is powerful (derives, styles) but API is more complex. `comfy-table` is simpler for dynamic runtime table construction. |
+    loop {
+        terminal.draw(|f| ui(f, &state))?;
 
----
+        tokio::select! {
+            Some(Ok(event)) = events.next() => {
+                handle_key(event, &mut state);
+            }
+            Some(change) = file_rx.recv() => {
+                state.reload_from_disk(change);
+            }
+        }
 
-## Cross-Platform Specifics
+        if state.should_quit { break; }
+    }
 
-### Config File Paths (via `directories` crate)
-
-```
-Windows:  %APPDATA%\todotxt\config.toml   (e.g. C:\Users\user\AppData\Roaming\todotxt\config.toml)
-macOS:    ~/Library/Application Support/todotxt/config.toml
-Linux:    ~/.config/todotxt/config.toml   (XDG_CONFIG_HOME)
+    ratatui::restore();
+    Ok(())
+}
 ```
 
-**Portable mode** (C# parity): If a `config.toml` exists beside the binary, use it instead of the platform path. Check `std::env::current_exe()` parent directory first, fall back to `directories::ProjectDirs`.
+**Key constraint:** `ratatui::init()` / `ratatui::restore()` must bracket the TUI session. `color-eyre`'s panic hook ensures `restore()` is called even on crash, preventing a broken terminal.
 
-### File Watching
+### Theming / color
 
-`notify` 8.x uses:
-- **Windows**: `ReadDirectoryChangesW`
-- **macOS**: FSEvents
-- **Linux**: inotify
+Ratatui has built-in `Style`, `Color` (16-color, 256-color ANSI, and RGB), and `Modifier` (bold, italic, dim, etc.) — no separate theming crate is needed. Define a `Theme` struct in-crate holding named `Style` constants.
 
-All three are wrapped uniformly. The C# `FileChangeObserver` had a 1-second sleep to let the writer release the file lock — replicate this with `notify-debouncer-mini`'s `Duration` argument.
+### Autocomplete
 
-### Path Handling
+No mature standalone autocomplete widget crate exists for ratatui that is worth adding. For todo.txt context (project `+tag`, context `@tag` completion), implement a simple popup `List` widget driven by a filtered `Vec<&str>` from `todotxt-core`'s tag index. This is ~50 lines and avoids a dependency for a single feature.
 
-- Always use `std::path::Path` / `PathBuf` — never raw strings for file paths
-- `shellexpand::tilde()` before converting user-supplied path strings to `PathBuf`
-- On Windows, `notify` watches require absolute paths — call `.canonicalize()` on the watch path
+## Crates to Skip
 
-### Line Endings
+| Crate | Why Skip |
+|-------|---------|
+| `termion` | Unix-only; crossterm already handles cross-platform. Adding both wastes compile time and creates backend conflicts. |
+| `tui-rs` | Deprecated predecessor of ratatui. Do not mix. |
+| `cursive` | Separate framework with its own event loop; incompatible with the existing tokio runtime approach. |
+| `iocraft` | Declarative/React-style TUI, different paradigm, immature compared to ratatui for this use case. |
+| `indicatif` | Progress bars for CLI output. Not a TUI widget; redundant inside ratatui's render loop. |
+| `dialoguer` | CLI prompt library (stdin-based). Incompatible with full-screen TUI; use tui-textarea for input instead. |
+| `console` / `ansi_term` | Low-level ANSI styling. Ratatui's `Style` API already abstracts this. |
+| `crossbeam-channel` | Not needed — tokio's `mpsc` and `select!` cover all inter-task communication between the file watcher and the TUI loop. |
+| `async-std` | Second async runtime. Conflicts with tokio. Never mix runtimes. |
+| `egui` / `iced` | GUI frameworks, not terminal. |
 
-- `todo.txt` files may have `\r\n` on Windows, `\n` on Linux/macOS
-- Parse with `.trim_end_matches(|c| c == '\r' || c == '\n')` before passing to winnow
-- Write with `\n` (Unix line endings) — standard for todo.txt format
-
----
-
-## Installation Snippet
+## Cargo.toml Snippet (todotxt-tui)
 
 ```toml
-# rust/todotxt-core/Cargo.toml
 [package]
-name = "todotxt-core"
+name    = "todotxt-tui"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-winnow      = { workspace = true }
-serde       = { workspace = true }
-serde_json  = { workspace = true }
-thiserror   = { workspace = true }
-chrono      = { workspace = true }
-regex       = { workspace = true }
-notify      = { workspace = true }
-notify-debouncer-mini = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }
-insta    = { workspace = true }
-rstest   = { workspace = true }
-```
-
-```toml
-# rust/todotxt/Cargo.toml
-[package]
-name = "todotxt"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
+ratatui      = "0.30"
+crossterm    = { version = "0.29", features = ["event-stream"] }
+tui-textarea = "0.7"
+color-eyre   = "0.6"
+futures      = "0.3"
+tokio        = { workspace = true }
 todotxt-core = { path = "../todotxt-core" }
-clap         = { workspace = true }
-anyhow       = { workspace = true }
-serde_json   = { workspace = true }
-toml         = { workspace = true }
-directories  = { workspace = true }
-owo-colors   = { workspace = true }
-comfy-table  = { workspace = true }
-tracing      = { workspace = true }
-shellexpand  = { workspace = true }
-
-[dev-dependencies]
-assert_cmd  = { workspace = true }
-predicates  = { workspace = true }
-tempfile    = { workspace = true }
 ```
-
----
-
-## Confidence Assessment
-
-| Area | Confidence | Source |
-|------|------------|--------|
-| All crate versions | HIGH | Verified via crates.io API, 2025-08-03 |
-| `winnow` for parsing | HIGH | Current successor to `nom`; 1.0.0 stable released |
-| `notify` 8.2 stability | HIGH | Verified stable branch; 9.x is still RC |
-| `thiserror` 2.x | HIGH | 2.0 released, actively maintained |
-| `directories` 6.0 vs `dirs` | HIGH | `directories` provides app-namespaced paths; `dirs` only provides raw OS dirs |
-| `owo-colors` over `colored` | MEDIUM | Technical rationale verified; community preference still `colored` by download count but `owo-colors` is architecturally cleaner |
-| `comfy-table` over `tabled` | MEDIUM | Both maintained; `comfy-table` API simpler for this use case based on docs review |
-
----
 
 ## Sources
 
-- crates.io API (live query, 2025-08-03): https://crates.io/api/v1/crates/{name}
-- `winnow` docs: https://docs.rs/winnow/1.0.1/winnow/
-- `notify` changelog: https://crates.io/crates/notify
-- `thiserror` 2.0 migration: https://crates.io/crates/thiserror
-- `directories` crate: https://crates.io/crates/directories
-- `clap` derive guide: https://docs.rs/clap/4.6.0/clap/_derive/index.html
+- crates.io/crates/ratatui — v0.30.0 (4 months ago, MSRV 1.86.0)
+- crates.io/crates/crossterm — v0.29.0 (event-stream feature verified)
+- crates.io/crates/tui-textarea — v0.7.0 (ratatui + crossterm support verified)
+- crates.io/crates/color-eyre — v0.6.5
+- ratatui.rs/concepts/event-handling — EventStream + tokio::select! pattern

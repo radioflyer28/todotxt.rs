@@ -1,541 +1,414 @@
-# Architecture Patterns: Rust todo.txt Port
+# Architecture Research — v1.1 TUI Interface
 
-**Domain:** CLI tool / cross-platform library + binary  
-**Researched:** 2025-01-31  
-**Confidence:** HIGH — direct port of a well-understood C# codebase, well-established Rust workspace patterns
+## Module Structure
 
----
+Recommended crate layout:
 
-## Recommended Architecture
-
-A Cargo workspace with a strict two-layer separation mirroring the existing C#
-`ToDoLib` / `Client` split — but structured for future TUI and GUI growth:
-
-```
-todotxt.net/                    ← git repo root (existing)
-├── Cargo.toml                  ← workspace root
-├── crates/
-│   ├── todotxt-core/           ← library crate (= ToDoLib equivalent)
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs          ← re-exports public API
-│   │       ├── task.rs         ← Task struct, parser, serialiser
-│   │       ├── task_list.rs    ← TaskList file I/O
-│   │       ├── filter.rs       ← filter/search logic
-│   │       ├── sort.rs         ← sort strategies
-│   │       └── error.rs        ← TodoError enum (thiserror)
-│   └── todotxt-cli/            ← binary crate (= Client equivalent, minus UI)
-│       ├── Cargo.toml
-│       └── src/
-│           ├── main.rs         ← entry point; clap CLI setup
-│           ├── commands/       ← one module per subcommand
-│           │   ├── add.rs
-│           │   ├── list.rs
-│           │   ├── complete.rs
-│           │   ├── delete.rs
-│           │   ├── edit.rs
-│           │   ├── archive.rs
-│           │   └── mod.rs
-│           ├── output.rs       ← human-readable vs JSON rendering
-│           ├── config.rs       ← settings persistence (dirs crate)
-│           └── watch.rs        ← file-watching daemon (notify crate)
-├── Client/                     ← existing C# WPF app (untouched)
-├── ToDoLib/                    ← existing C# library (untouched)
-└── ...
+```text
+crates/
+  todotxt-tui/
+    Cargo.toml
+    src/
+      main.rs
+      app.rs
+      action.rs
+      mode.rs
+      state.rs
+      event.rs
+      tui.rs
+      ui.rs
+      config.rs
+      autocomplete.rs
+      components/
+        mod.rs
+        task_list.rs
+        editor.rs
+        filter_panel.rs
+        confirm.rs
+        status_bar.rs
 ```
 
-### Why `crates/` subdirectory (not root-level)
+Purpose of each module:
 
-Placing all Rust crates under `crates/` avoids Cargo.toml collisions with the
-existing VS solution structure and makes the workspace root unambiguous.
-The existing C# source directories (Client/, ToDoLib/, etc.) are unaffected.
+- `main.rs`: bootstrap. Install `color-eyre`, load config, resolve `todo.txt` path, create terminal, start tokio runtime, run the app, and always restore the terminal on exit.
+- `app.rs`: high-level application controller. Owns `AppState`, handles `Action`s, calls core APIs, decides when to quit and when to redraw.
+- `action.rs`: internal intent enum. Converts raw terminal or watcher events into app-level actions such as `MoveDown`, `BeginEdit`, `SaveEdit`, `ReloadFromDisk`, `ToggleSort`, `ConfirmDelete`.
+- `mode.rs`: modal state definitions. Keeps mode switching explicit and prevents keybinding ambiguity.
+- `state.rs`: `AppState` plus small helper structs for selection, flash messages, overlay state, and derived visible rows.
+- `event.rs`: event unification layer. Defines the async event enum received by the app loop, combining crossterm input, watcher notifications, resize, tick, and optional render tick.
+- `tui.rs`: terminal lifecycle and async event loop. Encapsulates raw mode, alternate screen, `EventStream`, teardown, and watcher channel wiring.
+- `ui.rs`: top-level frame composition. Splits the screen into list area, optional filter panel, transient overlays, and status bar.
+- `config.rs`: TUI-facing config loader and adapter. Prefer reusing the same TOML schema as CLI, either by extracting it into shared code later or initially duplicating only the deserialization shape.
+- `autocomplete.rs`: tag suggestion extraction and popup state for `+project` and `@context` completion inside add/edit inputs.
+- `components/task_list.rs`: render-only task table/list widget. Knows how to draw selected row, completion styling, due styling, and empty states.
+- `components/editor.rs`: add/edit input widget wrapper around `tui-textarea`, including single-line behavior and popup placement.
+- `components/filter_panel.rs`: filter sidebar widget plus focus rendering for filter sections.
+- `components/confirm.rs`: delete confirmation modal.
+- `components/status_bar.rs`: footer widget for mode, counts, sort, filters, and transient success/error messages.
 
----
+This is intentionally flatter than the full ratatui component template. For a focused workspace binary, the important split is:
 
-## Cargo Workspace Root
+- terminal lifecycle and event ingestion in `tui.rs`
+- business state and mutations in `app.rs` and `state.rs`
+- pure rendering in `ui.rs` and `components/*`
 
-```toml
-# Cargo.toml (repo root)
-[workspace]
-members = [
-    "crates/todotxt-core",
-    "crates/todotxt-cli",
-    # future: "crates/todotxt-tui",
-    # future: "crates/todotxt-gui",
-]
-resolver = "2"
+That is enough structure without drifting into a mini framework.
 
-[workspace.dependencies]
-# Pin shared dependency versions here — individual crates inherit via
-# `dependency = { workspace = true }`
-chrono      = { version = "0.4", features = ["serde"] }
-regex       = "1"
-serde       = { version = "1", features = ["derive"] }
-serde_json  = "1"
-thiserror   = "1"
-```
+## App State
 
----
-
-## Component Boundaries
-
-| Crate | Responsibility | Public API Exports | May NOT depend on |
-|-------|---------------|-------------------|-------------------|
-| `todotxt-core` | Parse, represent, persist, filter, sort todo.txt tasks | `Task`, `TaskList`, `Filter`, `SortType`, `TodoError` | Any UI crate, `clap`, `notify`, `dirs` |
-| `todotxt-cli` | Command routing, output rendering, config, file watching | (binary — no public API) | TUI/GUI crates |
-| `todotxt-tui` _(future)_ | Interactive terminal UI | (binary or library) | GUI crates |
-| `todotxt-gui` _(future)_ | Native desktop GUI | (binary) | TUI crates |
-
-**Rule:** `todotxt-core` is the only crate allowed to touch `Task` and `TaskList`
-internals. All other crates consume the public API surface only.
-
----
-
-## Core Library Public API (`todotxt-core`)
-
-This is the direct Rust translation of `ToDoLib/Task.cs` and `ToDoLib/TaskList.cs`.
-The `Raw`-as-canonical-string approach from C# maps perfectly to Rust.
-
-### `Task` struct
+Recommended state shape:
 
 ```rust
-// src/task.rs
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Task {
-    // Canonical representation — serialize/deserialize always goes through this
-    pub raw: String,
-
-    // Parsed fields (derived from raw; kept in sync)
-    pub completed: bool,
-    pub priority: Option<char>,          // 'A'–'Z', None if no priority
-    pub creation_date: Option<NaiveDate>,
-    pub completion_date: Option<NaiveDate>,
-    pub due_date: Option<NaiveDate>,
-    pub threshold_date: Option<NaiveDate>,
-    pub projects: Vec<String>,           // sorted, deduplicated (+Project)
-    pub contexts: Vec<String>,           // sorted, deduplicated (@Context)
-    pub body: String,                    // remainder after stripping metadata
+pub struct AppState {
+    pub task_list: todotxt_core::TaskList,
+    pub visible_tasks: Vec<VisibleTask>,
+    pub selected: Option<usize>,
+    pub mode: Mode,
+    pub filter_state: FilterState,
+    pub sort_order: SortChoice,
+    pub status: StatusMessage,
+    pub config: TuiConfig,
+    pub should_quit: bool,
+    pub dirty_render: bool,
+    pub pending_reload: bool,
+    pub autocomplete: Option<AutocompleteState>,
 }
 
-impl Task {
-    /// Parse a single todo.txt line. Relative dates (today/tomorrow/weekday)
-    /// are resolved to absolute dates at parse time, matching C# behaviour.
-    pub fn parse(raw: &str) -> Result<Self, TodoError>;
-
-    /// Serialise back to todo.txt line format.
-    /// Prefers the stored `raw` field (preserves user's original layout)
-    /// and mutates only completion status if changed — same as C# ToString().
-    pub fn to_raw(&self) -> String;
-
-    /// Mutation helpers — return new Task with updated raw string
-    pub fn with_completed(self, completed: bool) -> Self;
-    pub fn with_priority(self, p: Option<char>) -> Self;
-    pub fn inc_priority(self) -> Self;
-    pub fn dec_priority(self) -> Self;
-    pub fn with_due_date(self, date: Option<NaiveDate>) -> Self;
-
-    /// Due status (not-due / today / overdue)
-    pub fn due_status(&self) -> DueStatus;
+pub struct VisibleTask {
+    pub source_index: usize,
+    pub display_id: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DueStatus { NotDue, Today, Overdue }
+pub enum Mode {
+    Normal,
+    Add(EditorState),
+    Edit(EditSession),
+    Filter(FilterFocus),
+    DeleteConfirm(DeleteTarget),
+}
 ```
 
-**Design note:** Mutation methods take `self` by value and return a new `Task`
-(builder/consume-transform pattern). This is more idiomatic Rust than C#'s
-mutable-fields approach and makes the CLI's "apply transform, write back"
-pattern natural.
+Additional supporting structs:
 
-### `TaskList` struct
+- `FilterState`: text query, selected projects, selected contexts, due bucket, show/hide completed, show/hide hidden, show/hide future threshold.
+- `EditorState`: `tui_textarea::TextArea`, prompt label, cursor anchor for popup placement, optional validation error.
+- `EditSession`: original `source_index`, original raw text, current `EditorState`. Keep the original index and text together so cancel and save are trivial.
+- `FilterFocus`: which panel section is focused, plus per-list cursor positions for projects and contexts.
+- `DeleteTarget`: source index and a short preview string for the modal.
+- `StatusMessage`: persistent summary plus optional transient flash message with expiry.
+- `TuiConfig`: resolved todo path plus a small set of TUI-only knobs such as keymap choice, watch enabled, show_done default, and perhaps initial sort.
+- `AutocompleteState`: trigger kind (`Project` or `Context`), query fragment, suggestions, highlighted suggestion index.
+
+What lives in state versus what is derived on render:
+
+Keep in state:
+
+- `TaskList`, because all mutations and reloads go through it.
+- Current mode and overlay state.
+- Current selection as an index into `visible_tasks`, not into `TaskList` directly.
+- Filter inputs and sort choice.
+- Textareas for add, edit, and filter text input.
+- Pending reload flag when an external file change arrives during add or edit.
+- Transient status message state.
+
+Derive on refresh, not per-widget:
+
+- `visible_tasks`: recompute after any mutation, reload, filter change, or sort change.
+- Counts for visible, overdue, due today.
+- Active filter summary string.
+- Current task reference from `selected` plus `visible_tasks[source_index]`.
+- Autocomplete candidates from existing tasks, unless profiling later shows this needs caching.
+
+Why this split works:
+
+- Core remains the source of truth for file-backed tasks.
+- The TUI never mutates a filtered or sorted copy of tasks directly.
+- Selection is resilient because it is tracked against a derived visible list but can be re-anchored by `source_index` after reloads and resorting.
+
+Recommended visible-list refresh method:
 
 ```rust
-// src/task_list.rs
-pub struct TaskList {
-    path: PathBuf,
-    pub tasks: Vec<Task>,
-    pub projects: BTreeSet<String>,   // derived metadata
-    pub contexts: BTreeSet<String>,
-    pub priorities: BTreeSet<char>,
-    preferred_line_ending: LineEnding,
-}
+fn rebuild_visible_tasks(&mut self) {
+    let filter = self.filter_state.to_core_filter();
+    let mut rows: Vec<VisibleTask> = self
+        .task_list
+        .filter(&filter)
+        .into_iter()
+        .map(|(source_index, _task)| VisibleTask {
+            source_index,
+            display_id: source_index + 1,
+        })
+        .collect();
 
-impl TaskList {
-    /// Load from file. Skips blank lines by default (preserve_whitespace = false).
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, TodoError>;
-
-    /// Reload from disk (used after external file change).
-    pub fn reload(&mut self) -> Result<(), TodoError>;
-
-    /// Append a task to the file and in-memory list.
-    pub fn add(&mut self, task: Task) -> Result<(), TodoError>;
-
-    /// Remove a task by raw-string identity (matches C# Remove-by-Raw).
-    pub fn delete(&mut self, raw: &str) -> Result<(), TodoError>;
-
-    /// Replace one task with another (full-file-rewrite, matches C# Update).
-    pub fn update(&mut self, old_raw: &str, new_task: Task) -> Result<(), TodoError>;
-
-    /// Batch update — disables intermediate writes; single file write at end.
-    /// This matches the C# ModifySelectedTasks pattern.
-    pub fn batch_update<F>(&mut self, f: F) -> Result<(), TodoError>
-    where F: FnMut(&Task) -> Option<Task>;  // None = leave unchanged
-
-    /// Save current in-memory state to disk.
-    pub fn save(&self) -> Result<(), TodoError>;
-
-    /// Return derived metadata (projects/contexts/priorities are always current).
-    pub fn metadata(&self) -> TaskListMetadata;
+    self.sort_order.sort_visible(&mut rows, self.task_list.tasks());
+    self.reconcile_selection();
 }
 ```
 
-### `Filter` struct
+Important detail: use `source_index + 1` as the displayed task id so the TUI stays aligned with existing CLI semantics.
+
+## Event Loop
+
+Recommended runtime model:
+
+- Use `#[tokio::main]` in `main.rs`.
+- Use `crossterm::event::EventStream` with the `event-stream` feature enabled.
+- Convert file-watch callbacks into a tokio `mpsc::UnboundedSender<AppEvent>`.
+- Centralize all event intake in `tui.rs` and send normalized `AppEvent`s to the app loop.
+
+Suggested event enum:
 
 ```rust
-// src/filter.rs
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Filter {
-    pub text: Option<String>,
-    pub projects: Vec<String>,
-    pub contexts: Vec<String>,
-    pub priority: Option<char>,
-    pub due_before: Option<NaiveDate>,
-    pub hide_completed: bool,
-    pub hide_future: bool,   // threshold date in future
-}
-
-impl Filter {
-    pub fn matches(&self, task: &Task) -> bool;
-    pub fn apply<'a>(&self, tasks: &'a [Task]) -> Vec<&'a Task>;
+pub enum AppEvent {
+    Init,
+    Input(crossterm::event::Event),
+    FileChanged,
+    Tick,
+    Render,
+    Error(String),
+    Quit,
 }
 ```
 
-### `SortType` enum
+Recommended loop shape:
 
 ```rust
-// src/sort.rs
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum SortType {
-    Alphabetical,
-    Priority,
-    DueDate,
-    Project,
-    Context,
-    None,  // preserve file order
-}
-
-pub fn sort_tasks(tasks: &mut Vec<&Task>, sort: SortType);
-```
-
-### Error type
-
-```rust
-// src/error.rs
-#[derive(Debug, thiserror::Error)]
-pub enum TodoError {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Parse error on line {line}: {message}")]
-    Parse { line: usize, message: String },
-    #[error("Task not found: {raw}")]
-    TaskNotFound { raw: String },
-}
-```
-
----
-
-## CLI Binary Architecture (`todotxt-cli`)
-
-### Command Structure (clap)
-
-```
-todotxt [OPTIONS] <SUBCOMMAND>
-
-OPTIONS:
-  --file <PATH>         todo.txt path (overrides config)
-  --json                Output as JSON array
-  --no-color            Disable ANSI colour
-
-SUBCOMMANDS:
-  add     <TEXT>        Add a task
-  list    [FILTER]      List (and filter) tasks
-  done    <ID|--all>    Mark complete
-  undone  <ID>          Mark incomplete
-  del     <ID>          Delete
-  edit    <ID> <TEXT>   Replace task text
-  archive               Move completed tasks to done.txt
-  config                Show/set configuration
-```
-
-`ID` is the 1-based line index in the file (same as todo.sh convention).
-
-### Output Layer (`output.rs`)
-
-Two rendering paths, selected by `--json` flag:
-
-```rust
-pub enum OutputFormat { Human, Json }
-
-pub fn render_tasks(tasks: &[&Task], format: OutputFormat);
-pub fn render_task(task: &Task, index: usize, format: OutputFormat);
-pub fn render_error(err: &TodoError, format: OutputFormat);
-```
-
-JSON output shape:
-```json
-[
-  {
-    "id": 1,
-    "raw": "(A) 2024-01-15 Fix the bug +Project @Context due:2024-01-31",
-    "completed": false,
-    "priority": "A",
-    "projects": ["+Project"],
-    "contexts": ["@Context"],
-    "due_date": "2024-01-31",
-    "threshold_date": null,
-    "creation_date": "2024-01-15",
-    "body": "Fix the bug",
-    "due_status": "overdue"
-  }
-]
-```
-
-### Config (`config.rs`)
-
-Uses `directories` crate for cross-platform paths:
-- **Normal mode:** `~/.config/todotxt/config.toml` (Linux/macOS), `%APPDATA%\todotxt\config.toml` (Windows)
-- **Portable mode:** `config.toml` beside the binary (detected if file exists at that path)
-
-```rust
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct Config {
-    pub todo_file: PathBuf,
-    pub done_file: Option<PathBuf>,
-    pub sort: SortType,
-    pub filter_presets: Vec<(String, Filter)>,  // up to 9 named presets
-    pub auto_creation_date: bool,
-    pub preserve_whitespace: bool,
-}
-```
-
-Config is loaded once at startup; individual `--file` overrides take precedence.
-
-### File Watch (`watch.rs`)
-
-Uses `notify` crate. Only relevant for daemon/watch mode (explicit `--watch` flag).
-Not used by default single-shot CLI invocations.
-
----
-
-## Data Flow
-
-### Single-shot CLI command
-
-```
-argv
-  │
-  ▼
-main.rs → clap parse args → Config::load()
-  │
-  ▼
-TaskList::load(path)          ← reads file, constructs Vec<Task>
-  │
-  ▼
-Filter::apply(&tasks)         ← if list/done command has filter args
-  │
-  ▼
-sort_tasks(&mut tasks, sort)  ← applies sort from config or --sort flag
-  │
-  ▼
-output::render_tasks(...)     ← human table or JSON array
-  │
-  ▼
-exit(0)
-```
-
-### Mutation command (add / done / delete / edit)
-
-```
-TaskList::load(path)
-  │
-  ▼
-task operation:
-  add    → TaskList::add(Task::parse(text)?)
-  done   → TaskList::batch_update(|t| Some(t.clone().with_completed(true)))
-  delete → TaskList::delete(raw)
-  edit   → TaskList::update(old_raw, Task::parse(new_text)?)
-  │
-  ▼
-(TaskList::save called internally after each mutation)
-  │
-  ▼
-output::render_tasks(affected_tasks, format)
-```
-
-**Key principle:** Every mutation is an autonomous read-modify-write on the file
-(same as C# TaskList). No long-lived in-memory state between CLI invocations.
-File is always the source of truth.
-
----
-
-## Build Order (Phase Dependency Graph)
-
-```
-Phase 1: todotxt-core
-  ├─ error.rs           (no deps within crate)
-  ├─ task.rs            (depends on: error.rs, chrono, regex)
-  ├─ task_list.rs       (depends on: task.rs, error.rs)
-  ├─ filter.rs          (depends on: task.rs)
-  └─ sort.rs            (depends on: task.rs)
-
-Phase 2: todotxt-cli
-  ├─ config.rs          (depends on: todotxt-core::SortType/Filter)
-  ├─ output.rs          (depends on: todotxt-core::Task)
-  ├─ commands/list.rs   (depends on: core, config, output)
-  ├─ commands/add.rs    (depends on: core, config, output)
-  ├─ commands/...       (depends on: core, config, output)
-  ├─ watch.rs           (depends on: core, config; optional feature)
-  └─ main.rs            (depends on: all commands, clap)
-
-Phase 3 (future): todotxt-tui
-  └─ depends on: todotxt-core (same API as CLI uses)
-
-Phase 4 (future): todotxt-gui
-  └─ depends on: todotxt-core (same API as CLI uses)
-```
-
-**Implication:** `todotxt-core` must reach a stable public API before `todotxt-cli`
-can progress. Within `todotxt-core`, `Task` parsing must be solid before `TaskList`
-and `Filter` can be built. Tests belong in `todotxt-core` — they test the domain
-model in isolation, exactly as `ToDoTests/` tests `ToDoLib` in isolation.
-
----
-
-## TUI / GUI Extensibility
-
-Future UI crates need **nothing added** to `todotxt-core` to support basic use.
-They consume the same `TaskList`, `Task`, `Filter`, and `SortType` types as the CLI.
-
-What they will add:
-- **TUI** (`todotxt-tui`): event loop, keybindings, ratatui widgets; `TaskList`
-  held in app state rather than loaded per-command; `FileWatcher` from `notify`
-  used for live reload. `Task` mutation still goes through `TaskList::update`.
-- **GUI** (`todotxt-gui`): same as TUI but with a windowing framework (egui/iced/slint).
-  Settings would share the same `Config` struct from CLI or a new GUI-specific
-  extension of it.
-
-The only core API addition TUI/GUI will likely need is **change notification** — a
-callback or channel when `TaskList` mutates. This is the Rust equivalent of the C#
-`TaskList.Modified` event. Design recommendation: add a `notify_tx:
-Option<Sender<()>>` field to `TaskList` in a future phase, or use a simple
-`Arc<Mutex<TaskList>>` with the UI polling/subscribing externally.
-
----
-
-## Key Patterns to Follow
-
-### Pattern 1: Raw-as-canonical (from C# `Task.Raw`)
-
-The `raw` field is the ground truth. All serialisation goes through `to_raw()`.
-Parsed fields are derived views. When a task is "mutated", the mutation rebuilds
-`raw` using regex substitution on the original string — preserving the user's
-original layout (project/context position in the line), exactly as C# does.
-
-```rust
-// Good — preserves original raw, mutates only the changed part
-pub fn with_completed(self, completed: bool) -> Self {
-    let new_raw = if completed {
-        let without_priority = PRIORITY_RE.replace(&self.raw, "");
-        format!("x {} {}", today_str(), without_priority.trim())
-    } else {
-        COMPLETED_RE.replace(&self.raw, "").trim().to_string()
+loop {
+    let event = tokio::select! {
+        maybe_term = terminal_events.next() => map_terminal_event(maybe_term),
+        maybe_watch = watch_rx.recv() => map_watch_event(maybe_watch),
+        _ = tick_interval.tick() => AppEvent::Tick,
+        _ = render_interval.tick() => AppEvent::Render,
     };
-    Self::parse(&new_raw).unwrap_or(self)
+
+    let action = app.handle_event(event)?;
+    if action.requests_draw() {
+        terminal.draw(|frame| ui::render(frame, &app.state))?;
+    }
+    if app.state.should_quit {
+        break;
+    }
 }
 ```
 
-### Pattern 2: Autonomous file operations (from C# TaskList)
+Design recommendations:
 
-Every public `TaskList` mutation method reads the file first (via `reload`) if
-the file may have changed, applies the mutation in memory, then writes the full
-file. This is identical to the C# pattern and minimises concurrent conflict risk
-with external editors.
+- Filter terminal key events to `KeyEventKind::Press`. Ratatui's own guidance calls this out because Windows emits both press and release events.
+- Keep the watcher callback dumb. It should only send `AppEvent::FileChanged`; actual reload logic belongs in `app.rs`.
+- Do not call `TaskList::reload()` inside the watcher thread.
+- Use `Tick` for flash-message expiry and minor housekeeping.
+- Use `Render` only if you want a bounded frame rate; otherwise a simpler dirty-render model is enough for this app. For a focused todo TUI, redraw-on-change plus resize is sufficient and simpler.
 
-### Pattern 3: Batch update for multi-task operations
+Recommended practical simplification:
+
+- Start without a separate render FPS.
+- Redraw after every handled input, watcher reload, and resize event.
+- Keep only a low-frequency `Tick` for message expiry.
+
+That gives a simpler loop:
 
 ```rust
-// CLI: mark all filtered tasks complete
-task_list.batch_update(|t| {
-    if filter.matches(t) {
-        Some(t.clone().with_completed(true))
-    } else {
-        None
+loop {
+    let event = tokio::select! {
+        maybe_term = terminal_events.next() => map_terminal_event(maybe_term),
+        maybe_watch = watch_rx.recv() => map_watch_event(maybe_watch),
+        _ = tick_interval.tick() => AppEvent::Tick,
+    };
+
+    let redraw = app.handle_event(event)?;
+    if redraw {
+        terminal.draw(|frame| ui::render(frame, &app.state))?;
     }
-})?;
+    if app.state.should_quit {
+        break;
+    }
+}
 ```
 
-`batch_update` does a single file read + single file write for the entire
-batch — critical for correctness when completing many tasks at once.
+File watch behavior:
 
----
+- In `Normal` or `Filter` mode: reload immediately, rebuild visible rows, preserve selection by prior `source_index` when possible, flash `Reloaded from disk`.
+- In `Add` or `Edit` mode: set `pending_reload = true` and flash `File changed on disk; reload pending`. Apply the reload after the user confirms or cancels the editor.
+- In `DeleteConfirm`: also defer reload until the modal closes. This avoids deleting against a just-shifted index.
 
-## Anti-Patterns to Avoid
+## Component Breakdown
 
-### Anti-Pattern 1: Fat binary — business logic in `todotxt-cli`
+Recommended UI components and responsibilities:
 
-**What:** Putting filter logic, sort logic, or task mutation in CLI command handlers.  
-**Why bad:** TUI/GUI crates would have to duplicate or re-import from the CLI.  
-**Instead:** All logic lives in `todotxt-core`. CLI handlers are thin translators
-from `clap::ArgMatches` to core API calls + output rendering.
+- `task_list` widget: main scrollable task view. Takes `visible_tasks`, selected row, current terminal area, and styling helpers. It should not know anything about file I/O or modes besides whether inline editing is active for the selected row.
+- `editor` widget: reused by add and edit modes. Owns single-line textarea rendering, popup placement for autocomplete, and input hint text.
+- `filter_panel` widget: sidebar or narrow-screen overlay. Renders current filters and focus state. It does not own filter application logic.
+- `confirm` modal: delete confirmation overlay with clear/cancel background and explicit yes/no prompt.
+- `status_bar` widget: always-visible footer. Shows total and visible counts, due stats, sort order, active filter summary, and mode label.
+- `ui::render`: screen layout coordinator. Chooses between full-width list or list plus sidebar, then renders overlays in strict order.
 
-### Anti-Pattern 2: Mutable `Task` fields without updating `raw`
+Suggested render order:
 
-**What:** Setting `task.priority = Some('B')` directly without regenerating `raw`.  
-**Why bad:** `raw` and fields diverge; serialisation produces wrong output.  
-**Instead:** All mutations go through `with_*` builder methods that rebuild `raw`.
+1. Main list area
+2. Filter sidebar if open
+3. Inline editor or add editor if active
+4. Autocomplete popup if active
+5. Delete confirmation modal last
+6. Status bar always last on the base layer, but modal overlays visually sit above content area
 
-### Anti-Pattern 3: ID-by-index as stable identity
+Complexity estimate per component:
 
-**What:** Storing the 1-based file-line index as a task's stable identifier.  
-**Why bad:** Any add/delete operation shifts all subsequent IDs. C# used raw-string
-equality for identity; this is the right model.  
-**Instead:** Use `raw` string as identity for update/delete operations internally.
-The 1-based index is a display/UX affordance only — regenerated at each `list`.
-Document this clearly in the CLI help.
+| Component | Complexity | Notes |
+|----------|------------|-------|
+| Terminal wrapper and event loop | Medium | Straightforward once watcher channel is decided |
+| App state and selection reconciliation | Medium | Most important correctness logic in the crate |
+| Task list renderer | Low | Mostly formatting and scroll behavior |
+| Add and edit editor wrapper | Medium | `tui-textarea` integration plus single-line constraints |
+| Filter panel | Medium | More state than rendering difficulty |
+| Delete confirmation modal | Low | Small isolated overlay |
+| Autocomplete popup | Medium | Needs token parsing and focus handoff but stays local |
+| File-watch reload integration | Medium | Mainly mode-sensitive behavior and selection preservation |
+| Status bar and flash messages | Low | Small but high-value polish |
 
-### Anti-Pattern 4: Global mutable state in core
+## Build Order
 
-**What:** `static mut` or `lazy_static` task storage in `todotxt-core`.  
-**Why bad:** Prevents multiple simultaneous `TaskList` instances (tests, TUI tabs).  
-**Instead:** `TaskList` owns its state; callers hold the instance.
+Suggested phased implementation order:
 
----
+1. Terminal shell and crate wiring
+   - Create `crates/todotxt-tui`.
+   - Add workspace member and dependencies (`ratatui`, `crossterm` with `event-stream`, `tokio`, `futures`, `tui-textarea`, `color-eyre`).
+   - Implement `tui.rs` setup/teardown and minimal `main.rs`.
+   - Rationale: nothing else matters until raw mode, alternate screen, and controlled exit are reliable.
 
-## Scalability Considerations
+2. Read-only task list view
+   - Load config and `TaskList`.
+   - Implement `AppState`, `visible_tasks`, selection, and the task list renderer.
+   - Support navigation keys, resize handling, and quit.
+   - Rationale: establishes the core data flow from `todotxt-core` into a ratatui view without mutation complexity.
 
-| Concern | Small files (<1K tasks) | Large files (10K+ tasks) | Notes |
-|---------|------------------------|--------------------------|-------|
-| Parse speed | Trivial | Linear scan, ~ms | Regex compilation should use `lazy_static`/`once_cell` |
-| File write | Full rewrite always | Still acceptable at 10K | todo.txt files rarely exceed a few thousand tasks |
-| Filter | In-memory scan | In-memory scan | No indexing needed at this scale |
-| File watching | `notify` crate | Same | Debounce needed (same 1s delay as C#) |
+3. Filter and sort foundation
+   - Add `FilterState`, conversion into `todotxt_core::Filter`, and sort cycling against `SortOrder`.
+   - Rebuild visible rows after state changes.
+   - Add status bar summaries.
+   - Rationale: filtering and sorting define the list identity and selection behavior that all later edits depend on.
 
-todo.txt files in practice top out at hundreds to low thousands of tasks. Full
-in-memory + full file rewrite is the correct model here — no database needed.
+4. Add mode
+   - Add `EditorState`, single-line textarea wrapper, validation, and `TaskList::add()`.
+   - Re-anchor selection on the newly inserted task.
+   - Rationale: simplest mutation path and good proof that editing state plus redraw works.
 
----
+5. Edit mode
+   - Inline selected-row editing using raw task text.
+   - Save with `TaskList::update(source_index, Task::parse(new_raw))`.
+   - Handle cancel and reload deferral.
+   - Rationale: same editor machinery as add mode, but with higher correctness pressure around index stability.
 
-## Sources
+6. Delete confirmation
+   - Modal overlay and `TaskList::delete(source_index)`.
+   - Reconcile selection after deletion.
+   - Rationale: small mutation feature that exercises confirmation flow and modal precedence.
 
-- C# reference: `ToDoLib/Task.cs`, `ToDoLib/TaskList.cs` (analyzed 2025-01-31)
-- C# architecture: `.planning/codebase/ARCHITECTURE.md`
-- Cargo workspace docs: https://doc.rust-lang.org/cargo/reference/workspaces.html
-- todo.txt format spec: https://github.com/todotxt/todo.txt
-- Rust `thiserror`: https://docs.rs/thiserror
-- Rust `notify` (file watching): https://docs.rs/notify
-- Rust `directories` (config paths): https://docs.rs/directories
-- Rust `clap` v4 (CLI): https://docs.rs/clap
+7. File-watch auto-reload
+   - Bridge watcher notifications into the async loop.
+   - Add deferred reload behavior for editor modes.
+   - Rationale: adds concurrency after the basic state machine is already stable.
 
----
+8. Autocomplete popup
+   - Extract tags from current tasks and offer project/context completion while editing.
+   - Accept suggestion insertion and popup navigation.
+   - Rationale: purely ergonomic layer that depends on the editor modes already existing.
 
-*Architecture research: 2025-01-31*
+9. Polish and resilience
+   - Flash messages, better empty states, key help, terminal restore tests where possible, and panic-safe teardown.
+   - Rationale: final hardening after the interaction model is stable.
+
+Dependency rationale:
+
+- Selection reconciliation must exist before sort, edit, delete, and reload are trustworthy.
+- Add/edit share editor infrastructure, so add should come first to reduce risk.
+- Watcher integration should come after edit mode so deferred reload semantics have something real to protect.
+- Autocomplete should come after add/edit because it is an enhancement, not a foundation.
+
+## Codebase Integration Points
+
+Direct `todotxt-core` touchpoints:
+
+- `TaskList::load(path)`: initial file load.
+- `TaskList::reload()`: external-change refresh.
+- `TaskList::tasks()`: read-only access for rendering, autocomplete extraction, counts, and sort comparisons.
+- `TaskList::filter(&Filter)`: base filtered row set with stable source indices.
+- `TaskList::add(Task)`: add flow.
+- `TaskList::update(index, Task)`: edit flow and completion toggle if implemented as update-in-place.
+- `TaskList::delete(index)`: delete flow.
+- `Task::parse(raw)`: add/edit submit path from textarea text.
+- `Task::with_completed(bool)`: toggle done/undo from the list.
+- `Filter::from_query(...)` or a TUI-built `Filter`: map panel state into core filtering rules.
+- `SortOrder`: reuse existing sort semantics instead of inventing TUI-local ordering.
+- `FileWatcher` behind the `watching` feature: preferred watch implementation if it can be bridged cleanly into the tokio loop.
+
+Recommended watcher integration approach:
+
+- Reuse `todotxt_core::FileWatcher` instead of reimplementing `notify` in the TUI.
+- In `tui.rs`, create an unbounded tokio sender and pass an `Arc<dyn Fn()>` callback that calls `watch_tx.send(AppEvent::FileChanged)`.
+- Keep the watcher instance alive in a small wrapper owned by `App` or `TuiRuntime`.
+
+Why reuse core watcher:
+
+- The core watcher already handles the important atomic-write detail by watching the parent directory instead of the file.
+- Reimplementing this in the TUI duplicates the exact subtlety that core already solved.
+
+Likely core changes worth considering:
+
+1. Move config schema out of CLI if both binaries should share it.
+   - Today `Config` lives in `crates/todotxt-cli/src/config.rs`, which the TUI cannot reuse without duplicating code or creating a library target in CLI.
+   - Best long-term fix: extract config types and path resolution into either `todotxt-core` or a new tiny shared crate such as `crates/todotxt-app` or `crates/todotxt-config`.
+   - Short-term acceptable fallback: duplicate the deserialization struct in TUI and keep the schema identical.
+
+2. Add a core helper for metadata extraction if autocomplete/filter lists need it often.
+   - The TUI can derive projects and contexts from `task_list.tasks()` initially.
+   - No core change is required for v1.1, but a helper like `TaskList::projects()` and `TaskList::contexts()` would reduce repeated iteration in multiple frontends later.
+
+3. Consider a non-callback watcher API only if the callback bridge becomes awkward.
+   - Not required now. The existing callback-based watcher is sufficient for the TUI.
+
+New files expected:
+
+- `crates/todotxt-tui/Cargo.toml`
+- `crates/todotxt-tui/src/main.rs`
+- `crates/todotxt-tui/src/app.rs`
+- `crates/todotxt-tui/src/action.rs`
+- `crates/todotxt-tui/src/mode.rs`
+- `crates/todotxt-tui/src/state.rs`
+- `crates/todotxt-tui/src/event.rs`
+- `crates/todotxt-tui/src/tui.rs`
+- `crates/todotxt-tui/src/ui.rs`
+- `crates/todotxt-tui/src/config.rs`
+- `crates/todotxt-tui/src/autocomplete.rs`
+- `crates/todotxt-tui/src/components/mod.rs`
+- `crates/todotxt-tui/src/components/task_list.rs`
+- `crates/todotxt-tui/src/components/editor.rs`
+- `crates/todotxt-tui/src/components/filter_panel.rs`
+- `crates/todotxt-tui/src/components/confirm.rs`
+- `crates/todotxt-tui/src/components/status_bar.rs`
+
+Modified existing files expected:
+
+- `Cargo.toml` at repo root to add the new workspace member and shared workspace dependencies.
+- Potentially `crates/todotxt-core/Cargo.toml` only if the watcher feature wiring needs adjustment for the TUI build.
+- Potentially `crates/todotxt-core/src/lib.rs` only if new shared config or metadata helpers are extracted later.
+- Potentially CLI config code only if config is moved into shared code.
+
+Recommendation on config reuse:
+
+- Reuse the same TOML file and schema.
+- Do not create a separate TUI config file for v1.1 unless the TUI genuinely needs settings that would confuse CLI users.
+- If TUI-only settings appear, nest them under a dedicated table such as `[tui]` in the same config file rather than splitting config ownership.
+
+Recommendation on error handling:
+
+- Use `color-eyre` in `main.rs` and install it before terminal setup.
+- Wrap the terminal lifecycle in a guard type from `tui.rs` whose `Drop` implementation restores raw mode, cursor, and alternate screen.
+- Do not rely only on normal-path teardown. Panic-safe restoration matters more for a TUI than for the CLI.
+- Return rich `Result<()>` from app methods and convert operational errors into status-bar flashes when recovery is possible.
+- Reserve process-level error returns for startup failures, terminal initialization failures, and unrecoverable runtime failures.
+
+Practical recommendation:
+
+- Startup errors: bubble up and let `color-eyre` print them after terminal restore.
+- In-app mutation errors: catch in `app.rs`, flash in status bar, keep running.
+- Watcher errors: treat as non-fatal if the watcher drops or cannot notify, but show a one-time warning.
