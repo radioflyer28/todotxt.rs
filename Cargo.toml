@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/todotxt-core", "crates/todotxt-cli"]
+members = ["crates/todotxt-core", "crates/todotxt-cli", "crates/todotxt-tui"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -20,3 +20,6 @@ toml = "0.8"
 assert_cmd = "2"
 assert_fs = "1"
 predicates = "3"
+ratatui    = "0.30"
+crossterm  = "0.29"
+color-eyre = "0.6"
