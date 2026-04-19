@@ -126,16 +126,11 @@ impl App {
                     }
 
                     // ── Done / undo (D-10, D-11, D-12) ──────────────────────
-                    // x toggles completion; u is an alias (D-12) but only when
-                    // no modifier is held (Ctrl+u is claimed for half-page up).
+                    // Toggle done (x)
                     KeyCode::Char('x') if task_count > 0 => {
                         self.toggle_done();
                     }
-                    KeyCode::Char('u')
-                        if key.modifiers == KeyModifiers::NONE && task_count > 0 =>
-                    {
-                        self.toggle_done();
-                    }
+                    // u → edit selected task (Phase 11); not wired yet.
 
                     _ => {}
                 }
@@ -278,7 +273,7 @@ impl App {
             file_name, total, visible, due_today, overdue
         );
         // D-15: right segment — key hints.
-        let right = "q quit | x done | j/k nav";
+        let right = "q quit | x done | u edit | j/k nav";
 
         // D-16: simple Span approach — agent discretion for layout.
         // D-17: monochrome in Phase 10; Phase 13 adds theme colors.
