@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: TUI Interface
-current_phase: 10
-status: Phase complete
+current_phase: 11
+status: active
 last_updated: "2026-04-19T00:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
   completed_plans: 3
-  percent: 20
----
+  percent: 40
 
 # Project State
 
@@ -24,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 
 ## Current Position
 
-Phase: 10 next (Phase 9 complete)
+Phase: 11 next (Phase 10 complete)
 Plan: —
-Status: Phase 9 complete — ready for Phase 10
-Last activity: 2026-04-19 — Phase 9 executed (commits 97a4e43, edc0d63, 045406f)
+Status: Phase 10 complete — ready for Phase 11
+Last activity: 2026-04-19 — Phase 10 executed (commits 3e2ecd6, cd1e505, 7647054, 2970e0c)
 
 ## Next Step
 
-Run `/gsd-plan-phase 10` to start Phase 10: TUI Task Display & Navigation.
+Run `/gsd-discuss-phase 11` to start Phase 11: Edit Mode.
 
 ## Pending Decisions
 
@@ -55,3 +54,4 @@ Phase 08: Retroactive verification for all phases. 207 tests, 0 clippy warnings,
 
 **v1.1 in progress:**
 Phase 09 ✓: TUI Foundation — `crates/todotxt-tui` crate, ratatui 0.30 + crossterm 0.29 + color-eyre 0.6, TuiConfig, TerminalGuard (RAII), two-sender event loop (crossterm + FileWatcher → mpsc), App::run + App::draw, plain-text task list, q/Ctrl+C quit, file-change auto-refresh.
+Phase 10 ✓: Core TUI — List+ListState render, j/k/g/G/Ctrl+d/Ctrl+u navigation, x toggle done, status bar (filename, counts, due today, overdue, key hints), u reserved for edit.

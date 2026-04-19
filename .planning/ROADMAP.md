@@ -73,9 +73,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 10-01-PLAN.md — List+ListState upgrade, navigation keybinds (j/k/g/G/Ctrl+d/Ctrl+u)
-- [ ] 10-02-PLAN.md — Done/undo toggle (x/u) + status bar (Layout split + footer)
-- [ ] 10-03-PLAN.md — CI checks (clippy/tests) + human-verify checkpoint
++ [x] 10-01-PLAN.md — List+ListState upgrade, navigation keybinds (j/k/g/G/Ctrl+d/Ctrl+u)
++ [x] 10-02-PLAN.md — Done/undo toggle (x) + status bar (Layout split + footer); u remapped to edit
++ [x] 10-03-PLAN.md — CI checks (clippy/tests) + human-verify checkpoint
 
 **UI hint**: yes
 
