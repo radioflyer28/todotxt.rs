@@ -47,7 +47,12 @@ See full phase details: .planning/milestones/v1.0-ROADMAP.md
 4. The event loop is connected to `todotxt-core`'s `FileWatcher` and receives file-change events
 5. A panic in the TUI (simulated) does not leave the terminal in a broken state
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Workspace scaffold: add todotxt-tui member + ratatui/crossterm/color-eyre workspace deps
+- [ ] 09-02-PLAN.md — Config (TuiConfig) + terminal lifecycle (TerminalGuard RAII)
+- [ ] 09-03-PLAN.md — Event loop (two-sender threads + mpsc::recv()), App::draw(), FileWatcher integration + human verify
 
 ---
 
