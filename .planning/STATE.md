@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: TUI Interface
 current_phase: —
-status: Defining requirements
+status: Roadmap defined
 last_updated: "2026-04-18T00:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,18 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone v1.1 — TUI Interface (defining requirements)
+**Current focus:** Milestone v1.1 — TUI Interface (roadmap defined, ready for Phase 9)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (Phase 9 next)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-18 — Milestone v1.1 started
+Status: Roadmap defined
+Last activity: 2026-04-18 — Roadmap created (Phases 9–13)
 
 ## Next Step
 
-Run `/gsd-plan-phase 9` to start execution of the first TUI phase.
+Run `/gsd-plan-phase 9` to start execution of Phase 9: TUI Foundation.
 
 ## Pending Decisions
 

@@ -71,28 +71,28 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TUI-INFRA-01 | — | Pending |
-| TUI-INFRA-02 | — | Pending |
-| TUI-INFRA-03 | — | Pending |
-| TUI-NAV-01 | — | Pending |
-| TUI-NAV-02 | — | Pending |
-| TUI-NAV-03 | — | Pending |
-| TUI-NAV-04 | — | Pending |
-| TUI-ACT-01 | — | Pending |
-| TUI-ACT-02 | — | Pending |
-| TUI-ACT-03 | — | Pending |
-| TUI-ACT-04 | — | Pending |
-| TUI-ACT-05 | — | Pending |
-| TUI-ACT-06 | — | Pending |
-| TUI-FILTER-01 | — | Pending |
-| TUI-FILTER-02 | — | Pending |
-| TUI-FILTER-03 | — | Pending |
-| TUI-FILTER-04 | — | Pending |
-| TUI-UX-01 | — | Pending |
-| TUI-UX-02 | — | Pending |
-| TUI-UX-03 | — | Pending |
-| TUI-UX-04 | — | Pending |
-| TUI-UX-05 | — | Pending |
-| TUI-THEME-01 | — | Pending |
-| TUI-THEME-02 | — | Pending |
-| TUI-THEME-03 | — | Pending |
+| TUI-INFRA-01 | Phase 9 | Pending |
+| TUI-INFRA-02 | Phase 9 | Pending |
+| TUI-INFRA-03 | Phase 10 | Pending |
+| TUI-NAV-01 | Phase 10 | Pending |
+| TUI-NAV-02 | Phase 10 | Pending |
+| TUI-NAV-03 | Phase 10 | Pending |
+| TUI-NAV-04 | Phase 10 | Pending |
+| TUI-ACT-01 | Phase 10 | Pending |
+| TUI-ACT-02 | Phase 10 | Pending |
+| TUI-ACT-03 | Phase 11 | Pending |
+| TUI-ACT-04 | Phase 11 | Pending |
+| TUI-ACT-05 | Phase 11 | Pending |
+| TUI-ACT-06 | Phase 11 | Pending |
+| TUI-FILTER-01 | Phase 12 | Pending |
+| TUI-FILTER-02 | Phase 12 | Pending |
+| TUI-FILTER-03 | Phase 12 | Pending |
+| TUI-FILTER-04 | Phase 12 | Pending |
+| TUI-UX-01 | Phase 10 | Pending |
+| TUI-UX-02 | Phase 13 | Pending |
+| TUI-UX-03 | Phase 11 | Pending |
+| TUI-UX-04 | Phase 13 | Pending |
+| TUI-UX-05 | Phase 10 | Pending |
+| TUI-THEME-01 | Phase 13 | Pending |
+| TUI-THEME-02 | Phase 13 | Pending |
+| TUI-THEME-03 | Phase 13 | Pending |
