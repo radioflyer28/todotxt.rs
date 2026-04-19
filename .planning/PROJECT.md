@@ -1,5 +1,21 @@
 # todotxt.net — Rust Port
 
+## Current Milestone: v1.1 TUI Interface
+
+**Goal:** Add an interactive full-screen terminal UI (`todotxt-tui` binary, new crate) built on ratatui, giving terminal users a keyboard-driven task management experience backed by the existing `todotxt-core` library.
+
+**Target features:**
+- Full-screen task list with keyboard navigation (j/k, arrows)
+- Mark done / undo, add task, inline edit (press `e`), delete with confirmation
+- Filter panel (by context, project, due date) + sort toggle (priority, due date, alphabetical)
+- Status bar (total, filtered, due today, overdue)
+- @context and +project autocomplete when adding/editing
+- Themeable colors
+- Auto-reload via file watching (reuses `todotxt-core` watcher)
+- New crate `crates/todotxt-tui` — separate `todotxt-tui` binary in Cargo workspace
+
+---
+
 ## What This Is
 
 A Rust port of todotxt.net — a todo.txt manager that runs cross-platform (Windows, Linux, macOS). The project provides a strict todo.txt-compatible core library (`todotxt-core`) plus a full-featured CLI (`todotxt-cli`) for human and AI agent use. A TUI (interactive terminal UI) and native GUI (desktop app) are seeded for future milestones.
@@ -38,9 +54,14 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 - ✓ Shell completions (bash, zsh, fish, PowerShell) — v1.0
 - ✓ Cross-platform builds and CI (Windows, Linux, macOS) — v1.0 (CI workflow present)
 
-### Active (v1.1+)
+### Active (v1.1)
 
-- [ ] TUI interface (ratatui) — v1.1
+- [ ] TUI interface (ratatui) — `todotxt-tui` crate, separate binary, full-screen keyboard-driven UI
+- [ ] Filter panel, sort toggle, status bar, inline edit, add, done/undo, delete with confirm
+- [ ] @context/+project autocomplete, themeable colors, file-watch auto-reload
+
+### Active (v1.2+)
+
 - [ ] GUI interface (native desktop) — v1.2
 - [ ] todo.sh compatibility layer — future
 
@@ -88,4 +109,4 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 4. Audit Out of Scope — reasons still valid?
 
 ---
-*Last updated: 2026-04-16 after v1.0 milestone*
+*Last updated: 2026-04-18 — v1.1 milestone started*
