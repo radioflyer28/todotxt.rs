@@ -70,7 +70,13 @@ Plans:
 4. Status bar shows total, visible, due-today, and overdue task counts at all times
 5. User can quit with `q` or `Ctrl+c`; binary compiles and runs correctly on Windows, Linux, and macOS
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — List+ListState upgrade, navigation keybinds (j/k/g/G/Ctrl+d/Ctrl+u)
+- [ ] 10-02-PLAN.md — Done/undo toggle (x/u) + status bar (Layout split + footer)
+- [ ] 10-03-PLAN.md — CI checks (clippy/tests) + human-verify checkpoint
+
 **UI hint**: yes
 
 ---
