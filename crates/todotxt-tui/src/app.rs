@@ -52,17 +52,8 @@ impl App {
         // Initial draw before waiting for the first event.
         terminal.draw(|f| self.draw(f))?;
 
-        loop {
-            match rx.recv() {
-                Ok(event) => {
-                    self.handle_event(event, terminal)?;
-                }
-                Err(_) => {
-                    // All senders dropped (both threads exited). Exit cleanly.
-                    break;
-                }
-            }
-
+        while let Ok(event) = rx.recv() {
+            self.handle_event(event, terminal)?;
             if self.should_quit {
                 break;
             }
