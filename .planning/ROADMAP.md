@@ -143,7 +143,13 @@ Plans:
 4. When the todo.txt file changes externally in normal mode, the TUI silently reloads within 500ms and re-anchors the cursor to the same task
 5. Terminal state (raw mode, alternate screen) is fully restored on exit — including on panic — leaving no terminal artifacts
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — Theme module (Theme enum + StyleSheet) + config TuiSection + App wiring + NO_COLOR startup check
+- [ ] 13-02-PLAN.md — Apply StyleSheet colors in render_task_list() (priority A/B/C + overdue)
+- [ ] 13-03-PLAN.md — Human verify: both themes, NO_COLOR, terminal restore, auto-reload
+
 **UI hint**: yes
 
 ---
