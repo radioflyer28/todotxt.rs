@@ -88,8 +88,15 @@ fn main() -> color_eyre::Result<()> {
     // D-09: RAII terminal guard — Drop restores terminal on all exit paths.
     let mut guard = TerminalGuard::new()?;
 
+    let mut presets: Vec<(String, String)> = config
+        .presets
+        .into_iter()
+        .filter_map(|(name, p)| p.filter.map(|f| (name, f)))
+        .collect();
+    presets.sort_by(|(a, _), (b, _)| a.cmp(b));
+
     // Run the event loop.
-    let mut app = App::new(task_list, todo_path, Vec::new());
+    let mut app = App::new(task_list, todo_path, presets);
     app.run(&mut guard.terminal, rx)?;
 
     // Guard drops here → disable_raw_mode + LeaveAlternateScreen.

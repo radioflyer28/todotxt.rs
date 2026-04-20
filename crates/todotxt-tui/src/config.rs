@@ -6,8 +6,15 @@
 
 use directories::ProjectDirs;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use todotxt_core::resolve_config_path;
+
+/// A named filter preset from the [presets] TOML section.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct TuiPreset {
+    pub filter: Option<String>,
+}
 
 /// Phase 9 config fields. Mirrors the CLI's top-level TOML fields exactly.
 /// A `[tui]` subsection will be added in Phase 13.
@@ -21,6 +28,9 @@ pub struct TuiConfig {
     /// Automatically prepend today's date to new tasks.
     #[serde(default)]
     pub auto_creation_date: bool,
+    /// Named filter presets. Keys are preset names (e.g. "work", "today").
+    #[serde(default)]
+    pub presets: HashMap<String, TuiPreset>,
 }
 
 impl TuiConfig {
