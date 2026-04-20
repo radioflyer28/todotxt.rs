@@ -146,8 +146,8 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 13-01-PLAN.md — Theme module (Theme enum + StyleSheet) + config TuiSection + App wiring + NO_COLOR startup check
-- [ ] 13-02-PLAN.md — Apply StyleSheet colors in render_task_list() (priority A/B/C + overdue)
+- [x] 13-01-PLAN.md — Theme module (Theme enum + StyleSheet) + config TuiSection + App wiring + NO_COLOR startup check
+- [x] 13-02-PLAN.md — Apply StyleSheet colors in render_task_list() (priority A/B/C + overdue)
 - [ ] 13-03-PLAN.md — Human verify: both themes, NO_COLOR, terminal restore, auto-reload
 
 **UI hint**: yes
