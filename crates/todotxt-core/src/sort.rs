@@ -18,6 +18,12 @@ pub enum SortOrder {
     Project,
     /// First `@Context` token alphabetically. Tasks with no context sort last.
     Context,
+    /// Canonical file order — no reordering applied. Used as the cycle start/end.
+    FileOrder,
+    /// Earliest completion date first. Tasks with no completion date sort last.
+    CompletedDate,
+    /// Earliest creation date first. Tasks with no creation date sort last.
+    CreationDate,
 }
 
 impl SortOrder {
@@ -61,6 +67,23 @@ impl SortOrder {
                     (None, _) => Ordering::Greater,
                     (_, None) => Ordering::Less,
                     (Some(ca), Some(cb)) => ca.cmp(cb),
+                }
+            }
+            SortOrder::FileOrder => Ordering::Equal,
+            SortOrder::CompletedDate => {
+                match (a.completion_date, b.completion_date) {
+                    (None, None) => Ordering::Equal,
+                    (None, _) => Ordering::Greater,
+                    (_, None) => Ordering::Less,
+                    (Some(da), Some(db)) => da.cmp(&db),
+                }
+            }
+            SortOrder::CreationDate => {
+                match (a.creation_date, b.creation_date) {
+                    (None, None) => Ordering::Equal,
+                    (None, _) => Ordering::Greater,
+                    (_, None) => Ordering::Less,
+                    (Some(da), Some(db)) => da.cmp(&db),
                 }
             }
         }
