@@ -7,9 +7,9 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
-use todotxt_core::TaskList;
+use todotxt_core::{Task, TaskList};
 use tui_textarea::TextArea;
 
 use crate::event::AppEvent;
@@ -17,7 +17,6 @@ use crate::tui::Tui;
 
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum AppMode {
     Normal,
     Adding,
@@ -37,14 +36,11 @@ pub struct App {
     /// Used to compute half-page step for Ctrl+d / Ctrl+u (D-09).
     pub list_height: u16,
     /// Current interaction mode (D-01).
-    #[allow(dead_code)]
     pub mode: AppMode,
     /// Single-line text editor used in Adding and Editing modes (D-03).
-    #[allow(dead_code)]
     pub editor: TextArea<'static>,
     /// When true, a `FileChanged` event arrived while not in Normal mode and
     /// will be applied on the next Normal-mode entry (D-10).
-    #[allow(dead_code)]
     pub pending_reload: bool,
 }
 
@@ -86,7 +82,7 @@ impl App {
         Ok(())
     }
 
-    /// Handle a single `AppEvent`. All state mutation is here (D-03).
+    /// Handle a single `AppEvent`. Dispatches on current mode (D-01).
     fn handle_event(
         &mut self,
         event: AppEvent,
@@ -99,95 +95,214 @@ impl App {
                 if key.kind != KeyEventKind::Press {
                     return Ok(());
                 }
-
-                let task_count = self.task_list.len();
-
-                match key.code {
-                    // ── Quit ────────────────────────────────────────────────
-                    KeyCode::Char('q') => {
-                        self.should_quit = true;
-                        return Ok(());
+                // AppMode is Copy — match copies the value, releasing the borrow.
+                match self.mode {
+                    AppMode::Normal => self.handle_normal_key(key)?,
+                    AppMode::Adding | AppMode::Editing { .. } => {
+                        self.handle_editor_key(key)?;
                     }
-                    KeyCode::Char('c')
-                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
-                        self.should_quit = true;
-                        return Ok(());
-                    }
-
-                    // ── Navigation (D-08, D-09) — only meaningful on non-empty lists ──
-                    // Move down 1
-                    KeyCode::Char('j') | KeyCode::Down if task_count > 0 => {
-                        self.selected = (self.selected + 1).min(task_count - 1);
-                    }
-                    // Move up 1
-                    KeyCode::Char('k') | KeyCode::Up if task_count > 0 => {
-                        self.selected = self.selected.saturating_sub(1);
-                    }
-                    // Jump to first (g)
-                    KeyCode::Char('g') if task_count > 0 => {
-                        self.selected = 0;
-                    }
-                    // Jump to last (G)
-                    KeyCode::Char('G') if task_count > 0 => {
-                        self.selected = task_count - 1;
-                    }
-                    // Half-page down (Ctrl+d)
-                    KeyCode::Char('d')
-                        if key.modifiers.contains(KeyModifiers::CONTROL)
-                            && task_count > 0 =>
-                    {
-                        let half = (self.list_height / 2).max(1) as usize;
-                        self.selected = (self.selected + half).min(task_count - 1);
-                    }
-                    // Half-page up (Ctrl+u)
-                    KeyCode::Char('u')
-                        if key.modifiers.contains(KeyModifiers::CONTROL)
-                            && task_count > 0 =>
-                    {
-                        let half = (self.list_height / 2).max(1) as usize;
-                        self.selected = self.selected.saturating_sub(half);
-                    }
-
-                    // ── Done / undo (D-10, D-11, D-12) ──────────────────────
-                    // Toggle done (x)
-                    KeyCode::Char('x') if task_count > 0 => {
-                        self.toggle_done();
-                    }
-                    // u → edit selected task (Phase 11); not wired yet.
-
-                    _ => {}
+                    AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
-                // Reload task list on external file change.
-                self.task_list.reload().map_err(|e| {
-                    color_eyre::eyre::eyre!(
-                        "Failed to reload {}: {}",
-                        self.todo_path.display(),
-                        e
-                    )
-                })?;
-                // Clamp selected so it stays in bounds after reload (D-07).
-                let task_count = self.task_list.len();
-                if task_count > 0 {
-                    self.selected = self.selected.min(task_count - 1);
+                // Reload guard (D-10): queue during editing, apply immediately in Normal.
+                if self.mode == AppMode::Normal {
+                    self.task_list.reload().map_err(|e| {
+                        color_eyre::eyre::eyre!(
+                            "Failed to reload {}: {}",
+                            self.todo_path.display(),
+                            e
+                        )
+                    })?;
+                    self.clamp_selection();
                 } else {
-                    self.selected = 0;
+                    self.pending_reload = true;
                 }
             }
             AppEvent::Resize(_, rows) => {
-                // Update list_height on resize; subtract 1 for the status bar row (D-14).
                 self.list_height = rows.saturating_sub(1);
             }
-            AppEvent::Error(_msg) => {
-                // Non-fatal: swallow silently.
-            }
+            AppEvent::Error(_) => {}
         }
 
-        // Redraw after every event (including resize and file change).
         terminal.draw(|f| self.draw(f))?;
         Ok(())
+    }
+
+    // ── Normal mode key handler ───────────────────────────────────────────────
+
+    fn handle_normal_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        let task_count = self.task_list.len();
+        match key.code {
+            // ── Quit ────────────────────────────────────────────────────────
+            KeyCode::Char('q') => {
+                self.should_quit = true;
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.should_quit = true;
+            }
+
+            // ── Navigation ──────────────────────────────────────────────────
+            KeyCode::Char('j') | KeyCode::Down if task_count > 0 => {
+                self.selected = (self.selected + 1).min(task_count - 1);
+            }
+            KeyCode::Char('k') | KeyCode::Up if task_count > 0 => {
+                self.selected = self.selected.saturating_sub(1);
+            }
+            KeyCode::Char('g') if task_count > 0 => {
+                self.selected = 0;
+            }
+            KeyCode::Char('G') if task_count > 0 => {
+                self.selected = task_count - 1;
+            }
+            // Ctrl+U half-page up — must come before plain 'u' (edit).
+            KeyCode::Char('u')
+                if key.modifiers.contains(KeyModifiers::CONTROL) && task_count > 0 =>
+            {
+                let half = (self.list_height / 2).max(1) as usize;
+                self.selected = self.selected.saturating_sub(half);
+            }
+            // Ctrl+D half-page down — must come before plain 'd' (delete).
+            KeyCode::Char('d')
+                if key.modifiers.contains(KeyModifiers::CONTROL) && task_count > 0 =>
+            {
+                let half = (self.list_height / 2).max(1) as usize;
+                self.selected = (self.selected + half).min(task_count - 1);
+            }
+
+            // ── Done toggle ──────────────────────────────────────────────────
+            KeyCode::Char('x') if task_count > 0 => {
+                self.toggle_done();
+            }
+
+            // ── Add task — always available even on empty list ───────────────
+            KeyCode::Char('n') => {
+                self.editor = TextArea::default();
+                self.mode = AppMode::Adding;
+            }
+
+            // ── Edit task (u or e) — after Ctrl+U arm ───────────────────────
+            KeyCode::Char('u') | KeyCode::Char('e') if task_count > 0 => {
+                let raw = self.task_list.tasks()[self.selected].to_raw().to_string();
+                let mut ed = TextArea::default();
+                ed.insert_str(&raw);
+                self.editor = ed;
+                self.mode = AppMode::Editing { original_idx: self.selected };
+            }
+
+            // ── Delete task — after Ctrl+D arm ──────────────────────────────
+            KeyCode::Char('d') if task_count > 0 => {
+                self.mode = AppMode::DeleteConfirm;
+            }
+
+            _ => {}
+        }
+        Ok(())
+    }
+
+    // ── Editor mode key handler ───────────────────────────────────────────────
+
+    fn handle_editor_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.exit_edit_mode()?;
+            }
+            KeyCode::Enter => {
+                self.save_and_exit()?;
+            }
+            _ => {
+                // Route all other keys through tui-textarea without default shortcuts
+                // (PITFALLS: "Single-line editors inheriting multiline and shortcut behavior").
+                self.editor.input_without_shortcuts(Event::Key(key));
+            }
+        }
+        Ok(())
+    }
+
+    // ── Delete confirm key handler ────────────────────────────────────────────
+
+    fn handle_delete_confirm_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        if key.code == KeyCode::Char('y') {
+            let idx = self.selected;
+            self.task_list
+                .delete(idx)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
+            self.clamp_selection();
+        }
+        // Any key (including Esc and non-y keys) returns to Normal (D-07).
+        self.mode = AppMode::Normal;
+        self.apply_pending_reload()?;
+        Ok(())
+    }
+
+    // ── Edit mode helpers ─────────────────────────────────────────────────────
+
+    /// Discard changes and return to Normal mode, applying any queued reload (D-10).
+    fn exit_edit_mode(&mut self) -> color_eyre::Result<()> {
+        self.editor = TextArea::default();
+        self.mode = AppMode::Normal;
+        self.apply_pending_reload()
+    }
+
+    /// Persist editor content and return to Normal mode (D-12, D-13).
+    fn save_and_exit(&mut self) -> color_eyre::Result<()> {
+        let text = self.editor.lines().first().cloned().unwrap_or_default();
+        let task = Task::parse(&text);
+        let mode = self.mode; // Copy
+        match mode {
+            AppMode::Adding => {
+                self.task_list
+                    .add(task)
+                    .map_err(|e| color_eyre::eyre::eyre!("Failed to add task: {}", e))?;
+                // Move selection to the newly added task (D-13).
+                self.selected = self.task_list.len().saturating_sub(1);
+            }
+            AppMode::Editing { original_idx } => {
+                self.task_list
+                    .update(original_idx, task)
+                    .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
+                self.selected = original_idx;
+            }
+            _ => {}
+        }
+        self.editor = TextArea::default();
+        self.mode = AppMode::Normal;
+        self.apply_pending_reload()
+    }
+
+    /// Apply a queued `FileChanged` reload if `pending_reload` is set (D-10).
+    fn apply_pending_reload(&mut self) -> color_eyre::Result<()> {
+        if self.pending_reload {
+            self.pending_reload = false;
+            self.task_list.reload().map_err(|e| {
+                color_eyre::eyre::eyre!(
+                    "Failed to reload {}: {}",
+                    self.todo_path.display(),
+                    e
+                )
+            })?;
+            self.clamp_selection();
+        }
+        Ok(())
+    }
+
+    /// Clamp `selected` to `[0, task_count - 1]`, or 0 on empty list.
+    fn clamp_selection(&mut self) {
+        let count = self.task_list.len();
+        if count == 0 {
+            self.selected = 0;
+        } else {
+            self.selected = self.selected.min(count - 1);
+        }
     }
 
     /// Toggle the completion state of the currently selected task and persist to disk.
