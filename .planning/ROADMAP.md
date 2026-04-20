@@ -50,9 +50,9 @@ See full phase details: .planning/milestones/v1.0-ROADMAP.md
 **Plans:** 3 plans
 
 Plans:
-- [ ] 09-01-PLAN.md — Workspace scaffold: add todotxt-tui member + ratatui/crossterm/color-eyre workspace deps
-- [ ] 09-02-PLAN.md — Config (TuiConfig) + terminal lifecycle (TerminalGuard RAII)
-- [ ] 09-03-PLAN.md — Event loop (two-sender threads + mpsc::recv()), App::draw(), FileWatcher integration + human verify
+- [x] 09-01-PLAN.md — Workspace scaffold: add todotxt-tui member + ratatui/crossterm/color-eyre workspace deps
+- [x] 09-02-PLAN.md — Config (TuiConfig) + terminal lifecycle (TerminalGuard RAII)
+- [x] 09-03-PLAN.md — Event loop (two-sender threads + mpsc::recv()), App::draw(), FileWatcher integration + human verify
 
 ---
 
@@ -98,8 +98,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 11-01-PLAN.md — Add tui-textarea dep + AppMode + add/edit/delete + reload guard
-- [ ] 11-02-PLAN.md — @/+ autocomplete popup (Down-focus, Tab/Enter/Space accept)
+- [x] 11-01-PLAN.md — Add tui-textarea dep + AppMode + add/edit/delete + reload guard
+- [x] 11-02-PLAN.md — @/+ autocomplete popup (Down-focus, Tab/Enter/Space accept)
 
 **UI hint**: yes
 
@@ -166,8 +166,8 @@ Plans:
 | 6. Cross-Platform Polish | v1.0 | 4/4 | Complete | 2026-04-15 |
 | 7. Retroactive Core Verification | v1.0 | 2/2 | Complete | 2026-04-16 |
 | 8. Retroactive CLI Verification | v1.0 | 3/3 | Complete | 2026-04-16 |
-| 9. TUI Foundation | v1.1 | 0/? | Not started | — |
-| 10. Core TUI | v1.1 | 0/? | Not started | — |
-| 11. Edit Mode | v1.1 | 0/? | Not started | — |
+| 9. TUI Foundation | v1.1 | 3/3 | Complete | 2026-04-20 |
+| 10. Core TUI | v1.1 | 3/3 | Complete | 2026-04-20 |
+| 11. Edit Mode | v1.1 | 2/2 | Complete | 2026-04-20 |
 | 12. Filter + Sort | v1.1 | 3/3 | Complete | 2026-04-20 |
-| 13. Theming + Polish | v1.1 | 0/? | Not started | — |
+| 13. Theming + Polish | v1.1 | 3/3 | Complete | 2026-04-20 |
