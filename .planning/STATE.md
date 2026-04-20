@@ -4,13 +4,13 @@ milestone: v1.1
 milestone_name: TUI Interface
 current_phase: 11
 status: active
-last_updated: "2026-04-19T00:00:00.000Z"
+last_updated: "2026-04-20T00:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
-  percent: 40
+  completed_phases: 3
+  total_plans: 5
+  completed_plans: 5
+  percent: 60
 
 # Project State
 
@@ -23,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 
 ## Current Position
 
-Phase: 11 next (Phase 10 complete)
+Phase: 12 next (Phase 11 complete)
 Plan: —
-Status: Phase 10 complete — ready for Phase 11
-Last activity: 2026-04-19 — Phase 10 executed (commits 3e2ecd6, cd1e505, 7647054, 2970e0c)
+Status: Phase 11 complete — add/edit/delete + @/+ autocomplete popup fully working
+Last activity: 2026-04-20 — Phase 11 executed (commits aa59f04, edbf324, cd501ac, a887bb7, 0affd77, 1aa8cb8)
 
 ## Next Step
 
-Run `/gsd-discuss-phase 11` to start Phase 11: Edit Mode.
+Run `/gsd-next` or `/gsd-discuss-phase 12` to continue.
 
 ## Pending Decisions
 
@@ -54,4 +54,4 @@ Phase 08: Retroactive verification for all phases. 207 tests, 0 clippy warnings,
 
 **v1.1 in progress:**
 Phase 09 ✓: TUI Foundation — `crates/todotxt-tui` crate, ratatui 0.30 + crossterm 0.29 + color-eyre 0.6, TuiConfig, TerminalGuard (RAII), two-sender event loop (crossterm + FileWatcher → mpsc), App::run + App::draw, plain-text task list, q/Ctrl+C quit, file-change auto-refresh.
-Phase 10 ✓: Core TUI — List+ListState render, j/k/g/G/Ctrl+d/Ctrl+u navigation, x toggle done, status bar (filename, counts, due today, overdue, key hints), u reserved for edit.
+Phase 11 ✓: Edit Mode — AppMode enum (Normal/Adding/Editing/DeleteConfirm), tui-textarea 0.7 footer swap for add/edit, n=add/u=edit/d=delete keybindings, @/+ autocomplete popup with Down-focus/Tab/Enter/Space accept, pending_reload guard for file-change events during editing. ratatui downgraded 0.30→0.29 for tui-textarea compatibility.
