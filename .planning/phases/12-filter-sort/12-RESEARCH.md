@@ -4,305 +4,365 @@
 
 ### Core Architecture: display_indices
 
-**New fields on `App`:**
+**The problem:** Currently `selected` is a direct index into `task_list.tasks()`. After Phase 12, the visible row order differs from the canonical storage order (due to filtering and sorting). A mapping layer is required.
+
+**New field on `App`:**
 ```rust
-pub display_indices: Vec<usize>,        // maps display row -> canonical task index
-pub sort_order: SortOrder,              // current active sort (FileOrder = no sort)
-pub filter_query: String,               // raw text of active filter (empty = no filter)
-pub filter_state: Option<FilteringState>, // Some when filter panel is open
-pub presets: Vec<(String, String)>,     // (name, query) sorted alphabetically
+pub display_indices: Vec<usize>,  // maps display_row → canonical task index
+pub sort_order: SortOrder,        // current display sort (FileOrder = no sort)
+pub active_filter: Option<String>, // raw query string (None = no filter)
 ```
+`SortOrder::FileOrder` is the new "no-sort" sentinel (canonical order).
 
-**New struct:**
-```rust
-pub struct FilteringState {
-    pub editor: TextArea<'static>,  // tui-textarea for free-text input
-    pub selected_preset: usize,     // highlight position in preset list (0-based)
-}
-```
-
-**`SortOrder::FileOrder` (new variant):** When `sort_order == SortOrder::FileOrder`, display_indices = 0..task_list.len() (after filtering). No sorting is applied.
-
-**`rebuild_display_indices()` — new private method on App:**
+**Rebuild function (called after every filter/sort/mutation change):**
 ```rust
 fn rebuild_display_indices(&mut self) {
-    let filter_q = self.filter_query.trim();
-    let pairs: Vec<(usize, &Task)> = if filter_q.is_empty() {
-        self.task_list.tasks().iter().enumerate().collect()
+    use todotxt_core::Filter;
+
+    // Step 1: apply filter (or take all)
+    let mut pairs: Vec<(usize, &Task)> = if let Some(ref q) = self.active_filter {
+        let f = Filter::from_query(q);
+        self.task_list.filter(&f)     // returns Vec<(usize, &Task)>
     } else {
-        let f = Filter::from_query(filter_q);
-        self.task_list.filter(&f)
+        self.task_list.tasks().iter().enumerate().collect()
     };
-    let mut pairs: Vec<(usize, &Task)> = pairs;
+
+    // Step 2: sort pairs if sort_order != FileOrder
     if self.sort_order != SortOrder::FileOrder {
         pairs.sort_by(|(_, a), (_, b)| self.sort_order.compare(a, b));
+        // sort_by is stable — ties preserve canonical order
     }
-    self.display_indices = pairs.into_iter().map(|(idx, _)| idx).collect();
+
+    // Step 3: collect canonical indices
+    self.display_indices = pairs.into_iter().map(|(i, _)| i).collect();
 }
 ```
 
-**Rebuild triggers:**
-| Event | Action |
-|-------|--------|
-| Keystroke in Filtering mode | `rebuild_display_indices()` after updating `filter_query` from editor |
-| Arrow key / number key loads preset | Set `filter_query` from preset, `rebuild_display_indices()` |
-| `o` key cycles sort | Advance `sort_order`, `rebuild_display_indices()` |
-| `FileChanged` reload applied | `task_list.reload()`, then `rebuild_display_indices()`, then `clamp_selection()` |
-| Task mutated (add/update/delete) | `rebuild_display_indices()` then re-anchor selection |
+**Canonical index lookup:** `let canonical = self.display_indices[self.selected];`
 
-**Selection tracking (D-12):** After rebuild, try to preserve the canonical index under the cursor:
+**When to call `rebuild_display_indices()`:**
+| Trigger | Location |
+|---------|----------|
+| Filter query changes (keystroke) | `handle_filtering_key()` |
+| Sort order cycles (`o` key) | `handle_normal_key()` |
+| Preset loaded | `handle_filtering_key()` |
+| Esc clears filter | `handle_filtering_key()` |
+| Task added (`save_and_exit` Adding branch) | after `task_list.add()` |
+| Task updated (`save_and_exit` Editing branch) | after `task_list.update()` |
+| Task deleted (`handle_delete_confirm_key`) | after `task_list.delete()` |
+| File reloaded (`apply_pending_reload`, `FileChanged`) | after `task_list.reload()` |
+
+**Initialization in `App::new()`:**
 ```rust
-fn rebuild_and_reanchor(&mut self) {
-    let old_canonical = self.display_indices.get(self.selected).copied();
-    self.rebuild_display_indices();
-    self.selected = old_canonical
-        .and_then(|ci| self.display_indices.iter().position(|&x| x == ci))
-        .unwrap_or(0);
-    self.clamp_selection();
-}
+// After building the App struct, call rebuild_display_indices() to populate.
+// Initial state: no filter, FileOrder → display_indices = 0..task_list.len()
 ```
 
-**`clamp_selection()` — updated:**
-```rust
-fn clamp_selection(&mut self) {
-    let count = self.display_indices.len();
-    if count == 0 { self.selected = 0; } else { self.selected = self.selected.min(count - 1); }
-}
-```
+---
 
-**`canonical_selected()` — new guard helper:**
-```rust
-fn canonical_selected(&self) -> Option<usize> {
-    self.display_indices.get(self.selected).copied()
-}
-```
-All write operations (toggle done, edit, delete) must use `canonical_selected()` and return early if `None`.
+### Methods in `app.rs` that currently use `task_list` directly and must change
 
-**`App::new()` initialization:**
-```rust
-let n = task_list.len();
-App {
-    display_indices: (0..n).collect(),
-    sort_order: SortOrder::FileOrder,
-    filter_query: String::new(),
-    filter_state: None,
-    presets,      // passed in from main.rs
-    // ... existing fields unchanged
-}
-```
+**`handle_normal_key()`**
+- `let task_count = self.task_list.len();` → `let task_count = self.display_indices.len();`
+- Navigation clamps: same expressions, now over display row count
+- `self.task_list.tasks()[self.selected]` (edit branch) → `self.task_list.tasks()[self.display_indices[self.selected]]`
 
-**Edge case — delete shifts canonical indices:** After `task_list.delete(canonical_idx)`, all indices above `canonical_idx` shift down by 1. display_indices must be fully rebuilt (not patched) — `rebuild_display_indices()` re-enumerates from scratch and handles this correctly.
+**`clamp_selection()`**
+- `let count = self.task_list.len();` → `let count = self.display_indices.len();`
+- All clamp arithmetic stays the same
 
-**Edge case — add:** After `task_list.add(task)`, the new task is at `task_list.len()-1` canonically. Rebuild display_indices; find the display position of the new canonical index and move selection there.
+**`toggle_done()`**
+- `let count = self.task_list.len();` → `let count = self.display_indices.len();`
+- `let idx = self.selected;` → `let idx = self.display_indices[self.selected];`
+- Post-update re-clamp: `self.task_list.len()` is still correct (canonical count)
+- After mutation: call `rebuild_display_indices()` then `clamp_selection()`
+
+**`save_and_exit()` (Adding branch)**
+- After `task_list.add()`: call `rebuild_display_indices()`
+- New task canonical index = `task_list.len() - 1`; find its display row: `self.display_indices.iter().position(|&i| i == canonical).unwrap_or(0)`
+
+**`save_and_exit()` (Editing branch)**
+- After `task_list.update(original_idx, ...)`: call `rebuild_display_indices()`
+- `original_idx` is still valid (update doesn't shift indices)
+- Restore display selection: `self.selected = self.display_indices.iter().position(|&i| i == original_idx).unwrap_or(0)`
+
+**`handle_delete_confirm_key()`**
+- `let idx = self.selected;` → `let idx = self.display_indices[self.selected];`
+- After `task_list.delete(idx)`: call `rebuild_display_indices()` then `clamp_selection()`
+
+**`render_task_list()`**
+- Currently iterates `self.task_list.tasks().iter().enumerate()`
+- Phase 12: iterate `self.display_indices.iter().enumerate()`:
+  ```rust
+  let items: Vec<ListItem> = if self.display_indices.is_empty() {
+      vec![ListItem::new("(no tasks)")]
+  } else {
+      self.display_indices.iter().enumerate().map(|(display_row, &canonical_idx)| {
+          let t = &self.task_list.tasks()[canonical_idx];
+          // canonical_idx + 1 is the file line number (TUI-NAV-03)
+          let content = format!("{}: {}", canonical_idx + 1, t.to_raw());
+          let style = if t.completed { Style::default().add_modifier(Modifier::DIM) }
+                      else { Style::default() };
+          ListItem::new(content).style(style)
+      }).collect()
+  };
+  ```
+- `list_state.with_selected(Some(self.selected))` is unchanged (still a display-row index)
+
+**`render_status_bar()`**
+- `let total = tasks.len();` stays (canonical count)
+- `let visible = total;` → `let visible = self.display_indices.len();`
+- due_today / overdue counts now iterate `display_indices` (visible tasks only)
 
 ---
 
 ### SortOrder Extension
 
-**Three new variants to add to `crates/todotxt-core/src/sort.rs`:**
+Two new variants added to `crates/todotxt-core/src/sort.rs`. `SortOrder` is `#[non_exhaustive]` so adding variants is non-breaking for external users; internal `match` arms in `compare()` and any TUI sort-cycle code must be exhaustive.
 
+**New variant: `FileOrder`** (sentinel for "no sort applied — use canonical order")
 ```rust
-/// Original file order — no sort applied (display baseline).
+/// Canonical file order — no reordering applied. Used as the cycle start/end.
 FileOrder,
+```
+`compare()` arm: `SortOrder::FileOrder => Ordering::Equal` (stable sort preserves order).
+
+**New variant: `CompletedDate`**
+```rust
 /// Earliest completion date first. Tasks with no completion date sort last.
 CompletedDate,
+```
+`compare()` arm:
+```rust
+SortOrder::CompletedDate => {
+    match (a.completion_date, b.completion_date) {
+        (None, None)   => Ordering::Equal,
+        (None, _)      => Ordering::Greater, // None sorts last
+        (_, None)      => Ordering::Less,
+        (Some(da), Some(db)) => da.cmp(&db),
+    }
+}
+```
+
+**New variant: `CreationDate`**
+```rust
 /// Earliest creation date first. Tasks with no creation date sort last.
 CreationDate,
 ```
-
-**Add to `SortOrder::compare()` match arms:**
-
+`compare()` arm:
 ```rust
-SortOrder::FileOrder => Ordering::Equal, // never called in practice
-SortOrder::CompletedDate => {
-    match (a.completion_date, b.completion_date) {
-        (None, None)         => Ordering::Equal,
-        (None, _)            => Ordering::Greater,
-        (_, None)            => Ordering::Less,
-        (Some(da), Some(db)) => da.cmp(&db),
-    }
-}
 SortOrder::CreationDate => {
     match (a.creation_date, b.creation_date) {
-        (None, None)         => Ordering::Equal,
-        (None, _)            => Ordering::Greater,
-        (_, None)            => Ordering::Less,
+        (None, None)   => Ordering::Equal,
+        (None, _)      => Ordering::Greater,
+        (_, None)      => Ordering::Less,
         (Some(da), Some(db)) => da.cmp(&db),
     }
 }
 ```
 
-**Task fields used** (confirmed from `task.rs`):
-- `completion_date: Option<NaiveDate>`
-- `creation_date: Option<NaiveDate>`
+**Task fields used:** `completion_date: Option<NaiveDate>` and `creation_date: Option<NaiveDate>` — both already exist on `Task`.
 
-Both follow the same None-sorts-last pattern as the existing `DueDate` variant.
-
-**Sort cycle helper (D-09):**
+**Sort cycle order (D-09):**
+```
+FileOrder → Alphabetical → CompletedDate → Context → DueDate → CreationDate → Priority → Project → FileOrder
+```
+Implement as:
 ```rust
-fn cycle_sort(current: SortOrder) -> SortOrder {
+fn next_sort(current: SortOrder) -> SortOrder {
     match current {
-        SortOrder::FileOrder      => SortOrder::Alphabetical,
-        SortOrder::Alphabetical   => SortOrder::CompletedDate,
-        SortOrder::CompletedDate  => SortOrder::Context,
-        SortOrder::Context        => SortOrder::DueDate,
-        SortOrder::DueDate        => SortOrder::CreationDate,
-        SortOrder::CreationDate   => SortOrder::Priority,
-        SortOrder::Priority       => SortOrder::Project,
-        SortOrder::Project        => SortOrder::FileOrder,
-        _ => SortOrder::FileOrder,
+        SortOrder::FileOrder     => SortOrder::Alphabetical,
+        SortOrder::Alphabetical  => SortOrder::CompletedDate,
+        SortOrder::CompletedDate => SortOrder::Context,
+        SortOrder::Context       => SortOrder::DueDate,
+        SortOrder::DueDate       => SortOrder::CreationDate,
+        SortOrder::CreationDate  => SortOrder::Priority,
+        SortOrder::Priority      => SortOrder::Project,
+        SortOrder::Project       => SortOrder::FileOrder,
     }
 }
 ```
-
-**`SortOrder` is `#[non_exhaustive]`** — adding variants is safe. Fix all exhaustive match arms in `sort.rs` tests and in any match on `SortOrder` in the TUI crate.
 
 ---
 
 ### Filter Panel Layout
 
-**Panel height:** `panel_height = 1 + min(preset_count, 5)` — 1 row for text input, up to 5 rows for preset list. Minimum 1 (no presets configured).
+**Constraints (D-01, D-02):**
+```rust
+let preset_count = self.filtering_state.presets.len();
+let panel_height = 1 + (preset_count as u16).min(5);  // 1 input + up to 5 preset rows
 
-**Layout split in `draw()` for `AppMode::Filtering`:**
+let chunks = Layout::vertical([Min(0), Length(panel_height)]).split(frame.area());
+// chunks[0] = task list area
+// chunks[1] = filter panel area
+```
+
+**Panel internal layout:**
+```rust
+// Row 0 of panel = text input (tui-textarea)
+let input_rect = Rect { y: chunks[1].y, height: 1, ..chunks[1] };
+
+// Rows 1.. = preset list
+let preset_rect = Rect {
+    y: chunks[1].y + 1,
+    height: chunks[1].height.saturating_sub(1),
+    ..chunks[1]
+};
+```
+
+**Text input rendering:**
+```rust
+// FilteringState holds `editor: TextArea<'static>`
+frame.render_widget(&self.filtering_state.editor, input_rect);
+```
+No border on the input row — it consumes exactly 1 row.
+
+**Preset list rendering:**
+```rust
+let items: Vec<ListItem> = self.filtering_state.presets.iter().enumerate()
+    .map(|(i, (name, query))| {
+        ListItem::new(format!("{}. {} — {}", i + 1, name, query))
+    })
+    .collect();
+
+let list = List::new(items)
+    .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+
+let mut list_state = ListState::default();
+if !self.filtering_state.presets.is_empty() {
+    list_state = list_state.with_selected(Some(self.filtering_state.selected_preset));
+}
+
+frame.render_stateful_widget(list, preset_rect, &mut list_state);
+```
+
+**`AppMode::Filtering` branch in `draw()`:**
 ```rust
 AppMode::Filtering => {
-    let panel_height = 1 + (self.presets.len() as u16).min(5);
-    let chunks = Layout::vertical([Min(0), Length(panel_height), Length(1)])
-        .split(frame.area());
+    let preset_count = self.filtering_state.presets.len();
+    let panel_height = 1 + (preset_count as u16).min(5);
+    let chunks = Layout::vertical([Min(0), Length(panel_height)]).split(frame.area());
     self.render_task_list(frame, chunks[0]);
     self.render_filter_panel(frame, chunks[1]);
-    self.render_status_bar(frame, chunks[2]);
+    // No separate status bar row — filter panel serves as the bottom chrome
 }
 ```
+When filter is open, the status bar is replaced by the filter panel. The key hint row is omitted; the input field itself signals the mode.
 
-**Rendering the filter panel:**
-```rust
-fn render_filter_panel(&mut self, frame: &mut Frame, area: Rect) {
-    // Row 0: tui-textarea text input
-    let input_area = Rect { height: 1, ..area };
-    if let Some(ref state) = self.filter_state {
-        frame.render_widget(&state.editor, input_area);
-    }
-    // Rows 1..: numbered preset list
-    if area.height > 1 && !self.presets.is_empty() {
-        let list_area = Rect { y: area.y + 1, height: area.height - 1, ..area };
-        let selected_preset = self.filter_state.as_ref().map(|s| s.selected_preset);
-        let items: Vec<ListItem> = self.presets.iter().enumerate()
-            .map(|(i, (name, query))| {
-                ListItem::new(format!("{}. {} - {}", i + 1, name, query))
-            })
-            .collect();
-        let list = List::new(items)
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        let mut list_state = ListState::default().with_selected(selected_preset);
-        frame.render_stateful_widget(list, list_area, &mut list_state);
-    }
-}
-```
-
-No `ratatui::widgets::Clear` needed — the layout split owns the area exclusively.
+**`AppMode::Normal` branch** still renders status bar. When filter is *active but panel is closed*, the normal status bar shows the filter/sort info (D-13).
 
 ---
 
 ### Preset Support
 
-**New struct in `crates/todotxt-tui/src/config.rs`:**
+**New structs in `crates/todotxt-tui/src/config.rs`:**
 ```rust
-/// Named filter preset from the [presets] TOML section.
-/// Mirrors CLI's PresetConfig — duplicated to avoid cross-crate dependency.
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Deserialize, Default)]
 pub struct TuiPreset {
     pub filter: Option<String>,
 }
+
+#[derive(Debug, Deserialize, Default)]
+pub struct TuiConfig {
+    pub todo_file: Option<PathBuf>,
+    pub done_file: Option<PathBuf>,
+    #[serde(default)]
+    pub auto_creation_date: bool,
+    /// Named filter presets. Each entry: { filter = "query string" }
+    #[serde(default)]
+    pub presets: HashMap<String, TuiPreset>,
+}
 ```
 
-**Field added to `TuiConfig`:**
-```rust
-/// Named filter presets. Max 9 per CFG-02. Keys are preset names.
-#[serde(default)]
-pub presets: HashMap<String, TuiPreset>,
-```
-
-**Ordering for stable 1-9 numbering:** HashMap iteration is unordered. Convert to sorted Vec in `main.rs` before passing to `App::new()`:
-```rust
-let mut presets: Vec<(String, String)> = config.presets
-    .into_iter()
-    .filter_map(|(name, p)| p.filter.map(|f| (name, f)))
-    .collect();
-presets.sort_by(|(a, _), (b, _)| a.cmp(b)); // alphabetical by preset name
-```
-
-**`App::new()` signature:**
-```rust
-pub fn new(task_list: TaskList, todo_path: PathBuf, presets: Vec<(String, String)>) -> Self
-```
-
-**Number key access:** `self.presets.get(digit as usize - 1)` for `Char('1')..='Char('9')` — 0-based index = key digit - 1. No-op if index >= presets.len().
-
-**TOML config shape** (same as CLI):
+**TOML format (mirrors CLI `[presets]` table):**
 ```toml
 [presets.work]
-filter = "+work @office"
+filter = "@work -DONE"
 
 [presets.today]
 filter = "due:today"
 ```
 
+**Stable 1-9 ordering:** `HashMap` does not preserve insertion order. Sort preset names alphabetically before storing in `App`:
+```rust
+let mut sorted_presets: Vec<(String, String)> = config.presets
+    .into_iter()
+    .filter_map(|(name, p)| p.filter.map(|q| (name, q)))
+    .collect();
+sorted_presets.sort_by(|(a, _), (b, _)| a.cmp(b));
+// Only first 9 are addressable by number keys; all are navigable by arrow keys
+```
+
+**`FilteringState` struct on `App`:**
+```rust
+pub struct FilteringState {
+    pub editor: TextArea<'static>,
+    pub presets: Vec<(String, String)>,  // (name, query) sorted by name
+    pub selected_preset: usize,           // highlight index in preset list
+}
+```
+
+**`App::new()` signature change:**
+```rust
+pub fn new(task_list: TaskList, todo_path: PathBuf, presets: Vec<(String, String)>) -> Self
+```
+Caller (main.rs) loads config, builds sorted preset vec, passes to `App::new()`.
+
 ---
 
 ### Key Dispatch in Filtering Mode
 
-**Full dispatch table for `handle_filtering_key()`:**
+**`handle_filtering_key()` dispatch table:**
 
 | Key | Action |
 |-----|--------|
-| `Esc` | Clear `filter_query = ""`; reset `filter_state = None`; `mode = AppMode::Normal`; `rebuild_display_indices()` |
-| `Enter` | `filter_state = None`; `mode = AppMode::Normal`; keep `filter_query` (filter stays applied) |
-| `Down` | `selected_preset = min(selected_preset + 1, presets.len() - 1)`; load preset query into `filter_query` and editor; `rebuild_display_indices()` |
-| `Up` | `selected_preset = selected_preset.saturating_sub(1)`; load preset query; `rebuild_display_indices()` |
-| `Char('1')..='Char('9')` | Compute `idx = digit - '1'`; if `idx < presets.len()`: load preset query into `filter_query` and editor; `rebuild_display_indices()` |
-| Any other key | `state.editor.input_without_shortcuts(Event::Key(key))`; sync `filter_query = state.editor.lines().first().cloned().unwrap_or_default()`; `rebuild_display_indices()` |
+| `Esc` | Clear `active_filter`, close panel (`mode = AppMode::Normal`), rebuild display_indices (now unfiltered), clamp selection |
+| `Enter` | Close panel keeping filter active (`mode = AppMode::Normal`); display_indices already up to date |
+| `Down` | `selected_preset = (selected_preset + 1).min(presets.len() - 1)`; load preset query into editor and into active_filter live; rebuild display_indices |
+| `Up` | `selected_preset = selected_preset.saturating_sub(1)`; same live-load behavior |
+| `Char('1')..='Char('9')` | `let idx = (c as usize - '1' as usize)`; if `idx < presets.len()`, load `presets[idx].1` into editor and active_filter; rebuild display_indices; `selected_preset = idx` |
+| Any other key | `self.filtering_state.editor.input_without_shortcuts(Event::Key(key))`; read back `editor.lines()[0]` as new `active_filter`; rebuild display_indices |
 
-**Opening filter panel (`f` in Normal mode, D-08):**
+**Opening the filter panel (`f` in Normal mode):**
 ```rust
 KeyCode::Char('f') => {
-    let mut editor = TextArea::default();
-    editor.insert_str(&self.filter_query); // restore prior query if panel was closed with Enter
-    self.filter_state = Some(FilteringState { editor, selected_preset: 0 });
+    // Preserve any existing active_filter in the editor
+    let mut ed = TextArea::default();
+    if let Some(ref q) = self.active_filter {
+        ed.insert_str(q);
+    }
+    self.filtering_state.editor = ed;
     self.mode = AppMode::Filtering;
 }
 ```
 
-**Cycling sort (`o` in Normal mode, D-08):**
+**`o` key (sort cycle) in Normal mode:**
 ```rust
 KeyCode::Char('o') => {
-    self.sort_order = cycle_sort(self.sort_order);
-    self.rebuild_and_reanchor();
+    self.sort_order = next_sort(self.sort_order);
+    self.rebuild_display_indices();
+    self.clamp_selection();
 }
 ```
 
-**Write ops blocked in Filtering mode:** `n`, `u`, `e`, `d`, `x` are only bound in `handle_normal_key()`. Since `handle_event()` dispatches on `AppMode` first, these keys are routed to `handle_filtering_key()` which passes them to `editor.input_without_shortcuts()` — correct behavior (typing in the filter query).
-
-**`pending_reload` guard in Filtering mode:** Same as Adding/Editing — set `pending_reload = true` on `FileChanged` if mode is Filtering. Call `apply_pending_reload()` (which calls `rebuild_and_reanchor()`) when transitioning to Normal via Esc or Enter.
+**Key blocking note:** In `Filtering` mode, all keys except `Esc`/`Enter`/`Down`/`Up`/digits are routed to `input_without_shortcuts()`. Keys `n`, `u`, `e`, `d`, `x`, `q` are absorbed by the text area — this is correct behavior (D-07 "text input captures them"). The `AppMode` check in `handle_event()` already ensures Normal-mode handlers never fire while Filtering.
 
 ---
 
 ### Status Bar Changes
 
-**Current format:**
+**Current format (Normal mode, no active filter):**
 ```
 {file} | {total} tasks | {visible} visible | {due_today} due today | {overdue} overdue
 ```
 
-**New format when filter or sort active (D-13):**
+**New format (Normal mode, filter OR sort active):**
 ```
 {file} | {visible}/{total} tasks | {filter_query} | sort: {sort_name}
 ```
-- Middle filter section shown only when `!filter_query.trim().is_empty()`
-- Sort section shown only when `sort_order != SortOrder::FileOrder`
-- Both can appear simultaneously
+Omit `| {filter_query}` segment when `active_filter` is None. Omit `| sort: {sort_name}` when `sort_order == SortOrder::FileOrder`.
 
-**Sort name strings:**
+**Sort name lookup:**
 ```rust
 fn sort_name(order: SortOrder) -> &'static str {
     match order {
@@ -314,101 +374,151 @@ fn sort_name(order: SortOrder) -> &'static str {
         SortOrder::CreationDate  => "created",
         SortOrder::Priority      => "priority",
         SortOrder::Project       => "project",
-        _ => "?",
     }
 }
 ```
 
-**Due today / overdue counts in filtered view:** Compute from `display_indices` only:
+**Truncation strategy:**
 ```rust
-let due_today = self.display_indices.iter()
-    .filter(|&&ci| { let t = &tasks[ci]; !t.completed && t.due_status() == DueStatus::Today })
-    .count();
+let width = frame.area().width as usize;
+let left_max = width.min(width / 2 + 20).min(60); // generous left budget
+let left = if left.len() > left_max { format!("{}…", &left[..left_max - 1]) } else { left };
 ```
+Full right-side key hint string is appended with `"  "` separator; terminal clips naturally.
 
-**Truncation approach:** `total_width = frame.area().width as usize`. Build left, middle, right strings separately; truncate middle (filter query) with `…` if left+middle+right exceeds total_width. Right (key hints) is the lowest priority — omit if no space.
+**`render_status_bar()` updated logic:**
+```rust
+let total = self.task_list.len();
+let visible = self.display_indices.len();
+let due_today = self.display_indices.iter()
+    .filter(|&&i| { let t = &tasks[i]; !t.completed && t.due_status() == DueStatus::Today })
+    .count();
+let overdue = self.display_indices.iter()
+    .filter(|&&i| { let t = &tasks[i]; !t.completed && t.due_status() == DueStatus::Overdue })
+    .count();
+
+let filter_is_active = self.active_filter.is_some();
+let sort_is_active = self.sort_order != SortOrder::FileOrder;
+
+let left = if filter_is_active || sort_is_active {
+    let mut parts = vec![format!("{} | {}/{} tasks", file_name, visible, total)];
+    if let Some(ref q) = self.active_filter { parts.push(q.clone()); }
+    if sort_is_active { parts.push(format!("sort: {}", sort_name(self.sort_order))); }
+    parts.join(" | ")
+} else {
+    format!("{} | {} tasks | {} visible | {} due today | {} overdue",
+        file_name, total, visible, due_today, overdue)
+};
+```
 
 ---
 
 ## Architecture Patterns
 
-**Methods that use `self.task_list.len()` / `self.task_list.tasks()[idx]` directly and must change:**
+**`FilteringState` as a nested struct** — Keeps filtering state cohesive and avoids bloating `App` fields:
+```rust
+pub struct FilteringState {
+    pub editor: TextArea<'static>,
+    pub presets: Vec<(String, String)>,
+    pub selected_preset: usize,
+}
+```
+`App` holds `pub filtering_state: FilteringState` (always present, initialized in `App::new()`).
 
-| Method | Current | Change |
-|--------|---------|--------|
-| `handle_normal_key()` navigation | `task_count = self.task_list.len()` | `display_count = self.display_indices.len()` |
-| `handle_normal_key()` j/k/g/G/Ctrl+D/Ctrl+U | `.min(task_count - 1)` | `.min(display_count - 1)` |
-| `handle_normal_key()` edit (u/e) | `self.task_list.tasks()[self.selected]` | `self.task_list.tasks()[self.display_indices[self.selected]]` |
-| `handle_normal_key()` edit: `original_idx` | `original_idx: self.selected` | `original_idx: self.display_indices[self.selected]` (canonical) |
-| `handle_delete_confirm_key()` | `self.task_list.delete(self.selected)` | `self.task_list.delete(self.display_indices[self.selected])` |
-| `toggle_done()` | `self.task_list.tasks()[self.selected]` | `self.task_list.tasks()[self.display_indices[self.selected]]` |
-| `save_and_exit()` Adding | `self.selected = self.task_list.len() - 1` | rebuild then find display pos of new canonical idx |
-| `save_and_exit()` Editing | `self.selected = original_idx` (canonical) | rebuild then find display pos of `original_idx` |
-| `render_task_list()` | `tasks.iter().enumerate()` | `self.display_indices.iter().map(\|&ci\| (ci, &tasks[ci]))` |
-| `render_status_bar()` | `visible = total` | `visible = self.display_indices.len()` |
-| `render_delete_confirm()` | `tasks[self.selected]` | `tasks[self.display_indices[self.selected]]` |
-| `clamp_selection()` | `self.task_list.len()` | `self.display_indices.len()` |
-| `FileChanged` handler | `clamp_selection()` | `rebuild_and_reanchor()` |
+**`active_filter: Option<String>` stays on `App` top level** (not inside `FilteringState`) because it affects `rebuild_display_indices()` which is called from many sites — avoids nested borrow gymnastics.
 
-**New methods needed:**
-- `rebuild_display_indices(&mut self)` — core rebuild logic
-- `rebuild_and_reanchor(&mut self)` — rebuild + preserve selection by canonical index
-- `canonical_selected(&self) -> Option<usize>` — safe accessor for write ops
-- `cycle_sort(SortOrder) -> SortOrder` — (free function or method)
-- `sort_name(SortOrder) -> &'static str` — (free function)
-- `handle_filtering_key(&mut self, key) -> Result<()>` — Filtering mode dispatcher
-- `render_filter_panel(&mut self, frame, area)` — filter panel renderer
+**`sort_order: SortOrder` stays on `App` top level** for the same reason.
+
+**`display_indices` initialization order in `App::new()`:**
+```rust
+let mut app = App { ..., display_indices: Vec::new(), ... };
+app.rebuild_display_indices(); // populates from empty filter + FileOrder
+app
+```
+
+**`AppMode::Filtering` in existing dispatch:**
+- `handle_event()` match arm: `AppMode::Filtering => self.handle_filtering_key(key)?`
+- `draw()` match arm: `AppMode::Filtering => { ... render filter panel ... }`
+- `apply_pending_reload()` — reload is permitted while in Filtering mode (panel is read-only relative to the file); just call `rebuild_display_indices()` after reload and clamp selection.
+
+**`clamp_selection()` updated:**
+```rust
+fn clamp_selection(&mut self) {
+    let count = self.display_indices.len();
+    if count == 0 { self.selected = 0; } else { self.selected = self.selected.min(count - 1); }
+}
+```
 
 ---
 
 ## Common Pitfalls
 
-1. **`TaskList::sort()` mutates canonical order (D-10):** Never call `task_list.sort()` for display. Use `display_indices` exclusively. Mitigation: `rebuild_display_indices()` uses `sort_by()` on the local `pairs` Vec — the task_list itself is never mutated for sorting.
+1. **`TaskList::sort()` mutates canonical order — never call it for display.**
+   - `sort()` reorders `self.tasks` in-place; all saved canonical indices become wrong.
+   - Mitigation: sort `(idx, &Task)` pairs in `rebuild_display_indices()` only. `TaskList::sort()` is never called from the TUI.
 
-2. **Post-delete index shift:** After `task_list.delete(canonical_idx)`, every stored canonical index > canonical_idx is now off by 1. Mitigation: always call `rebuild_and_reanchor()` after any delete — full re-enumeration from the current task_list fixes all indices.
+2. **After `delete(canonical_idx)`: all indices above it shift down.**
+   - Patching `display_indices` in-place is fragile. Always call `rebuild_display_indices()` from scratch after any mutation.
+   - The `display_indices` rebuild is O(n) and imperceptibly fast for todo.txt sizes.
 
-3. **Post-add selection:** After `task_list.add()`, the new task is at `task_list.len()-1` canonically but its display position depends on active sort/filter. Mitigation: after rebuild, do `self.display_indices.iter().position(|&x| x == new_canonical_idx)` to find and set the display position. If the new task is filtered out (e.g., filter is active and it doesn't match), stay at current position.
+3. **After `add()`: new task is at `task_list.len()-1` canonically, but may appear at any display position after sort.**
+   - Find the display row by scanning `display_indices` for the new canonical index after rebuild.
+   - Do NOT assume `selected = display_indices.len() - 1`.
 
-4. **`f` key captured by editor in Filtering mode:** When the filter panel is open, typing `f` goes into the tui-textarea — correct behavior, not a bug. The panel is closed with `Esc` (clear filter) or `Enter` (keep filter). Document this in key hints.
+4. **`HashMap` preset ordering is non-deterministic.**
+   - Sort preset names alphabetically immediately after loading from config.
+   - The `Vec<(String, String)>` on `FilteringState` is the stable source of truth.
 
-5. **Preset ordering instability:** `HashMap` has no guaranteed iteration order. Mitigation: convert to `Vec<(String, String)>` sorted alphabetically by name immediately after loading from `TuiConfig`. Store the sorted Vec on App. Key `1` always maps to presets[0], etc.
+5. **`tui-textarea` absorbs `f` key in Filtering mode.**
+   - This is intentional — the text area captures all printable characters.
+   - Closing the panel requires `Esc` or `Enter` (not `f`). Document this in key hints.
 
-6. **`selected_preset` out of bounds:** If presets are reloaded or panel is reopened, reset `selected_preset = 0` in `FilteringState::new()`.
+6. **Selection validity after filter change.**
+   - After rebuild, `selected` may be out of bounds (e.g. selected row 5 but only 3 tasks match filter).
+   - Always call `clamp_selection()` immediately after `rebuild_display_indices()`.
 
-7. **Empty display_indices on write ops:** When active filter matches nothing, `display_indices` is empty. All write-path code must call `canonical_selected()` and return early on `None`. Guards: `if self.display_indices.is_empty() { return Ok(()); }` at the top of `handle_normal_key()` for all mutation branches.
+7. **`pending_reload` while Filtering.**
+   - Unlike edit mode (where a queued reload could overwrite in-progress edits), filtering is read-only.
+   - Safe approach: allow immediate reload while in Filtering mode (same as Normal mode). The filter is re-applied over the fresh task list. No special guard needed.
 
-8. **`pending_reload` during Filtering mode:** `FileChanged` while Filtering must set `pending_reload = true` and not reload immediately. On Esc/Enter exit from Filtering mode, `apply_pending_reload()` fires — but `apply_pending_reload()` must call `rebuild_and_reanchor()` not just `clamp_selection()` after reload.
+8. **`Editing { original_idx }` — original_idx is canonical, not display.**
+   - When saving an edit: `task_list.update(original_idx, ...)` is correct.
+   - After rebuild, restore display selection by scanning `display_indices` for `original_idx`.
+   - Do NOT use `original_idx` as a display row index directly.
 
-9. **tui-textarea borrow conflicts in render:** `render_filter_panel` needs `&mut self` for the tui-textarea widget. Accessing `self.presets` after borrowing `self.filter_state` requires care — extract `selected_preset` before the mutable render call, or split the rendering into two steps.
-
-10. **Non-exhaustive SortOrder match after new variants:** Adding `FileOrder`, `CompletedDate`, `CreationDate` will cause compile errors in existing exhaustive matches (tests in `sort.rs`, any match in TUI code). Fix all match arms; add `_ => Ordering::Equal` guard where `#[non_exhaustive]` semantics require it for external crates.
+9. **`FileOrder` variant is `#[non_exhaustive]`-safe but requires exhaustive match inside the crate.**
+   - All `match sort_order` arms in `app.rs` and `sort.rs` must include `FileOrder`.
+   - `compare()` for `FileOrder` returns `Ordering::Equal` (stable sort preserves order).
 
 ---
 
 ## Implementation Order
 
-**Step 1 — display_indices + SortOrder extension (foundation; no visible UX change except sort cycle)**
-1. Add `FileOrder`, `CompletedDate`, `CreationDate` to `SortOrder` in `todotxt-core/src/sort.rs`; fix all match arms; add tests for new variants
-2. Add `display_indices`, `sort_order`, `filter_query`, `filter_state`, `presets` to `App`; implement `rebuild_display_indices()`, `rebuild_and_reanchor()`, `canonical_selected()`, `clamp_selection()` (updated), `cycle_sort()`
-3. Update `render_task_list()`, `render_delete_confirm()` to use `display_indices`
-4. Update all write operations (`toggle_done`, `save_and_exit`, `handle_delete_confirm_key`) to use `canonical_selected()`
-5. Wire `o` key in `handle_normal_key()` to sort cycle
-6. Update `FileChanged` handler to call `rebuild_and_reanchor()`
-7. **Verify:** Sort cycles with `o`, file not mutated, selection preserved
+### Step 1 — Core data model (no visible behavior change)
+1. Add `FileOrder`, `CompletedDate`, `CreationDate` to `SortOrder` in `todotxt-core/src/sort.rs`
+2. Add `display_indices: Vec<usize>`, `sort_order: SortOrder`, `active_filter: Option<String>` to `App`
+3. Implement `rebuild_display_indices()` on `App`
+4. Update `App::new()` to call `rebuild_display_indices()`
+5. Update `render_task_list()` to use `display_indices`
+6. Update `clamp_selection()` to use `display_indices.len()`
+7. Update `handle_normal_key()` navigation to use `display_indices.len()`
+8. Update `toggle_done()`, `handle_delete_confirm_key()`, `save_and_exit()` to translate via `display_indices`
+9. Wire `rebuild_display_indices()` into all mutation + reload paths
+10. Compile + run: list display and all task actions must work identically to before
 
-**Step 2 — filter panel + key dispatch**
-1. Add `AppMode::Filtering` variant; add `FilteringState` struct
-2. Add `TuiPreset` + `presets` field to `TuiConfig`; add sorted Vec conversion in `main.rs`; update `App::new()` signature
-3. Implement `handle_filtering_key()` with full dispatch table
-4. Implement `render_filter_panel()` with tui-textarea + numbered preset List
-5. Add `AppMode::Filtering` arm to `draw()` with 3-way layout split
-6. Wire `f` key in `handle_normal_key()` to open filter panel
-7. Add `pending_reload` guard for Filtering mode; update `apply_pending_reload()` to call `rebuild_and_reanchor()`
-8. **Verify:** live filtering, Esc clears, Enter keeps, presets load on arrow/number keys
+### Step 2 — Sort cycle + filter panel + key dispatch
+1. Implement `next_sort()` helper in `app.rs`
+2. Add `o` key in `handle_normal_key()` → sort cycle → rebuild
+3. Add `FilteringState` struct; add `filtering_state` field to `App`
+4. Add `AppMode::Filtering` variant
+5. Add `f` key in `handle_normal_key()` to open panel
+6. Implement `handle_filtering_key()` with full dispatch table
+7. Add `AppMode::Filtering` arm to `draw()` calling `render_filter_panel()`
+8. Implement `render_filter_panel()` with textarea + numbered preset list
+9. Test: open panel, type query, see list narrow live; Esc clears; `o` cycles sort
 
-**Step 3 — status bar + polish**
-1. Update `render_status_bar()` with new format: visible/total, filter query, sort name, truncation
-2. Add `sort_name()` helper
-3. Update due_today/overdue counts to use `display_indices`
-4. Update right-side key hints to include `f filter | o sort`
-5. End-to-end verify TUI-FILTER-01 through TUI-FILTER-04 requirements
+### Step 3 — Status bar + preset config support
+1. Extend `TuiConfig` with `TuiPreset` struct and `presets: HashMap<String, TuiPreset>`
+2. Update `main.rs` to build sorted `Vec<(String, String)>` and pass to `App::new()`
+3. Update `render_status_bar()` with new format strings and filter/sort display
+4. Test: TOML preset loading, 1-9 number keys, arrow-key navigation, status bar display
