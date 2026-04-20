@@ -80,6 +80,8 @@ pub struct App {
     pub presets: Vec<(String, String)>,
     /// Pre-computed color styles for the active theme (D-08, D-09 in 13-CONTEXT.md).
     pub styles: StyleSheet,
+    /// Active theme selected at startup.
+    pub theme: Theme,
 }
 
 impl App {
@@ -100,6 +102,7 @@ impl App {
             filter_state: None,
             presets,
             styles: StyleSheet::from_theme(theme, no_color),
+            theme,
         };
         app.rebuild_display_indices();
         app
@@ -759,6 +762,13 @@ impl App {
         }
 
         let mut middle = String::new();
+        let theme_label = match self.theme {
+            Theme::Default => "default",
+            Theme::Light => "light",
+        };
+        middle.push_str(" | theme:");
+        middle.push_str(theme_label);
+
         let trimmed_filter = self.filter_query.trim();
         if !trimmed_filter.is_empty() {
             middle.push_str(" | ");
