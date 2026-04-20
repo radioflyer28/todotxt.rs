@@ -181,9 +181,7 @@ All commands accept a global `--json` flag. When set, output is a JSON envelope.
 |----|------------------------|
 | Linux | `~/.config/todotxt/config.toml` |
 | macOS | `~/.config/todotxt/config.toml` |
-| Windows | `%APPDATA%\todotxt\config\config.toml` |
-
-Windows compatibility note: `%APPDATA%\todotxt\config.toml` is also accepted as a legacy fallback path.
+| Windows | `%APPDATA%\todotxt\config.toml` |
 
 ### Portable mode
 

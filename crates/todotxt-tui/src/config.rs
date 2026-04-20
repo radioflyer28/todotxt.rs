@@ -51,11 +51,21 @@ impl TuiConfig {
     /// Returns the platform-appropriate config file path.
     ///
     /// - Linux:   ~/.config/todotxt/config.toml
-    /// - Windows: %APPDATA%\todotxt\config\config.toml
+    /// - Windows: %APPDATA%\todotxt\config.toml
     /// - macOS:   ~/Library/Application Support/todotxt/config.toml
     pub fn default_path() -> Option<PathBuf> {
-        ProjectDirs::from("", "", "todotxt")
-            .map(|dirs| dirs.config_dir().join("config.toml"))
+        ProjectDirs::from("", "", "todotxt").map(|dirs| {
+            let config_dir = dirs.config_dir();
+            // Normalize Windows `%APPDATA%\todotxt\config` to `%APPDATA%\todotxt\config.toml`.
+            if config_dir.file_name().map(|n| n == "config").unwrap_or(false) {
+                config_dir
+                    .parent()
+                    .unwrap_or(config_dir)
+                    .join("config.toml")
+            } else {
+                config_dir.join("config.toml")
+            }
+        })
     }
 
     /// Resolves the config path, applying portable mode:
@@ -69,25 +79,7 @@ impl TuiConfig {
         let config_dir = platform_path
             .parent()
             .expect("platform config path must have a parent directory");
-        let resolved = resolve_config_path(&binary_dir, config_dir).join("config.toml");
-
-        // Backward compatibility: older docs and user setups on Windows used
-        // %APPDATA%\todotxt\config.toml. If that legacy file exists and the
-        // primary path does not, prefer the legacy file.
-        if !resolved.exists() {
-            if let Some(file_name) = config_dir.file_name() {
-                if file_name == "config" {
-                    if let Some(parent) = config_dir.parent() {
-                        let legacy = parent.join("config.toml");
-                        if legacy.exists() {
-                            return legacy;
-                        }
-                    }
-                }
-            }
-        }
-
-        resolved
+        resolve_config_path(&binary_dir, config_dir).join("config.toml")
     }
 
     /// Load config from `path`. Returns defaults silently if the file does
