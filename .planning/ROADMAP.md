@@ -118,7 +118,13 @@ Plans:
 3. User can cycle sort order (priority → due date → alphabetical, and back) with a single keybind
 4. The status bar shows all active filters and the current sort order at all times
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — display_indices + SortOrder extension (FileOrder/CompletedDate/CreationDate)
+- [ ] 12-02-PLAN.md — TuiPreset config + AppMode::Filtering + filter panel + key dispatch
+- [ ] 12-03-PLAN.md — Status bar polish + human verify checkpoint
+
 **UI hint**: yes
 
 ---
