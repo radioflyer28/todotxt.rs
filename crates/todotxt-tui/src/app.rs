@@ -709,9 +709,26 @@ impl App {
     fn render_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::text::{Line, Span};
         use ratatui::widgets::Paragraph;
+        use todotxt_core::DueStatus;
+
         let tasks = self.task_list.tasks();
         let total = tasks.len();
         let visible = self.display_indices.len();
+
+        let due_today = self
+            .display_indices
+            .iter()
+            .filter(|&&ci| {
+                !tasks[ci].completed && tasks[ci].due_status() == DueStatus::Today
+            })
+            .count();
+        let overdue = self
+            .display_indices
+            .iter()
+            .filter(|&&ci| {
+                !tasks[ci].completed && tasks[ci].due_status() == DueStatus::Overdue
+            })
+            .count();
 
         let file_name = self
             .todo_path
@@ -720,22 +737,55 @@ impl App {
             .unwrap_or("todo.txt");
 
         let mut left = format!("{} | {}/{} tasks", file_name, visible, total);
+        if due_today > 0 || overdue > 0 {
+            left.push_str(&format!(" | {} due today | {} overdue", due_today, overdue));
+        }
+
+        let mut middle = String::new();
         let trimmed_filter = self.filter_query.trim();
         if !trimmed_filter.is_empty() {
-            left.push_str(" | ");
-            left.push_str(trimmed_filter);
+            middle.push_str(" | ");
+            middle.push_str(trimmed_filter);
         }
         if self.sort_order != SortOrder::FileOrder {
-            left.push_str(" | sort: ");
-            left.push_str(sort_name(self.sort_order));
+            middle.push_str(" | sort: ");
+            middle.push_str(sort_name(self.sort_order));
         }
-        let right = "q quit | n add | u edit | d del | x done | j/k nav | f filter | o sort";
 
-        let status_line = Line::from(vec![
-            Span::raw(left),
-            Span::raw("  "),
-            Span::raw(right),
-        ]);
+        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | o sort";
+        let total_width = area.width as usize;
+        let left_len = left.len();
+        let middle_len = middle.len();
+        let right_len = right.len();
+
+        let show_hints = left_len + middle_len + right_len <= total_width;
+
+        let middle_display = if show_hints || left_len + middle_len <= total_width {
+            middle
+        } else {
+            let available = total_width.saturating_sub(left_len);
+            if available == 0 {
+                String::new()
+            } else if available == 1 {
+                "…".to_string()
+            } else {
+                let truncated: String = middle.chars().take(available - 1).collect();
+                format!("{}…", truncated)
+            }
+        };
+
+        let status_line = if show_hints {
+            Line::from(vec![
+                Span::raw(left),
+                Span::raw(middle_display),
+                Span::raw(right),
+            ])
+        } else {
+            Line::from(vec![
+                Span::raw(left),
+                Span::raw(middle_display),
+            ])
+        };
 
         frame.render_widget(Paragraph::new(status_line), area);
     }
