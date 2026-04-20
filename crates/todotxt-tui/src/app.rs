@@ -10,9 +10,20 @@ use std::sync::mpsc::Receiver;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
 use todotxt_core::TaskList;
+use tui_textarea::TextArea;
 
 use crate::event::AppEvent;
 use crate::tui::Tui;
+
+/// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum AppMode {
+    Normal,
+    Adding,
+    Editing { original_idx: usize },
+    DeleteConfirm,
+}
 
 /// Top-level application state.
 pub struct App {
@@ -25,6 +36,16 @@ pub struct App {
     /// Height of the list area in terminal rows. Kept in sync with `Resize` events.
     /// Used to compute half-page step for Ctrl+d / Ctrl+u (D-09).
     pub list_height: u16,
+    /// Current interaction mode (D-01).
+    #[allow(dead_code)]
+    pub mode: AppMode,
+    /// Single-line text editor used in Adding and Editing modes (D-03).
+    #[allow(dead_code)]
+    pub editor: TextArea<'static>,
+    /// When true, a `FileChanged` event arrived while not in Normal mode and
+    /// will be applied on the next Normal-mode entry (D-10).
+    #[allow(dead_code)]
+    pub pending_reload: bool,
 }
 
 impl App {
@@ -35,6 +56,9 @@ impl App {
             todo_path,
             selected: 0,
             list_height: 0,
+            mode: AppMode::Normal,
+            editor: TextArea::default(),
+            pending_reload: false,
         }
     }
 

@@ -16,3 +16,4 @@ toml         = { workspace = true }
 thiserror    = { workspace = true }
 directories  = { workspace = true }
 todotxt-core = { path = "../todotxt-core", features = ["watching"] }
+tui-textarea = { workspace = true }
