@@ -18,9 +18,10 @@ pub enum Theme {
 
 impl Theme {
     /// Parse a theme name from config. Returns `Theme::Default` for `""`, `"default"`,
-    /// or any unrecognized value — never panics (D-03 in 13-CONTEXT.md).
+    /// `"dark"`, or any unrecognized value — never panics (D-03 in 13-CONTEXT.md).
     pub fn from_str(s: &str) -> Self {
-        match s {
+        let normalized = s.trim().to_ascii_lowercase();
+        match normalized.as_str() {
             "light" => Theme::Light,
             _ => Theme::Default,
         }
@@ -77,5 +78,25 @@ impl StyleSheet {
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Theme;
+
+    #[test]
+    fn parses_light_theme_case_insensitive() {
+        assert_eq!(Theme::from_str("light"), Theme::Light);
+        assert_eq!(Theme::from_str("LIGHT"), Theme::Light);
+        assert_eq!(Theme::from_str(" Light "), Theme::Light);
+    }
+
+    #[test]
+    fn parses_default_aliases_and_unknowns() {
+        assert_eq!(Theme::from_str("default"), Theme::Default);
+        assert_eq!(Theme::from_str("dark"), Theme::Default);
+        assert_eq!(Theme::from_str(""), Theme::Default);
+        assert_eq!(Theme::from_str("unknown"), Theme::Default);
     }
 }

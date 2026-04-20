@@ -22,6 +22,7 @@ Wired through three existing files:
 - D-04/D-05: `[tui]` block has only `theme`; existing root-level fields unchanged; backward-compatible
 - D-06/D-07: `NO_COLOR` checked once at startup via `std::env::var("NO_COLOR").is_ok()`; modifiers preserved
 - D-08: `StyleSheet::from_theme()` builds palette; `App` stores `styles: StyleSheet`
+- Theme parsing is case-insensitive and trims whitespace; `dark` is accepted as an alias for `default`
 
 ## Deviation
 
