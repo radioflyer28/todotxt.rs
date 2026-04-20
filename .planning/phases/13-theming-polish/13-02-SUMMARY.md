@@ -24,6 +24,14 @@ Updated `render_task_list()` in `crates/todotxt-tui/src/app.rs`:
 - D-06: Completed branch takes highest precedence — overdue overdue tasks that are completed show only DIM
 - D-09: Coloring applied in `render_task_list()` only — status bar and filter panel unchanged
 
+## Palette Adjustment
+
+- Light theme palette was adjusted for verification clarity on terminals that render `Red` and `LightRed` similarly:
+  - Priority A: `Blue`
+  - Priority B: `Magenta`
+  - Priority C: `Green`
+  - Overdue: `Red + BOLD`
+
 ## Acceptance Criteria
 
 - [x] `render_task_list()` contains `self.styles.priority_a/b/c` and `self.styles.overdue`

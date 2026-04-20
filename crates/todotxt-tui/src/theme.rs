@@ -67,10 +67,12 @@ impl StyleSheet {
                     overdue: Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD),
                 },
                 Theme::Light => StyleSheet {
-                    // Light terminal palette — standard variants (D-02).
-                    priority_a: Style::default().fg(Color::Red),
-                    priority_b: Style::default().fg(Color::Yellow),
-                    priority_c: Style::default().fg(Color::Cyan),
+                    // Light terminal palette — intentionally distinct from Default.
+                    // Some terminals render Red and LightRed similarly; these colors
+                    // make theme switching visibly obvious during verification.
+                    priority_a: Style::default().fg(Color::Blue),
+                    priority_b: Style::default().fg(Color::Magenta),
+                    priority_c: Style::default().fg(Color::Green),
                     overdue: Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                 },
             }
