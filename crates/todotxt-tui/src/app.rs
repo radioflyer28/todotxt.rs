@@ -15,6 +15,22 @@ use tui_textarea::TextArea;
 use crate::event::AppEvent;
 use crate::tui::Tui;
 
+/// State for the @context / +project autocomplete popup (D-08, D-09 in 11-CONTEXT.md).
+#[derive(Debug, Clone)]
+pub struct AutocompleteState {
+    pub trigger: char,    // '@' or '+'
+    pub prefix: String,   // text typed after the trigger (NOT including trigger)
+    pub items: Vec<String>, // filtered token list (without trigger char)
+    pub selected: usize,  // current highlight index in popup
+    pub focused: bool,    // true when Down arrow moved focus into popup
+}
+
+impl AutocompleteState {
+    pub fn new(trigger: char, prefix: String, items: Vec<String>) -> Self {
+        AutocompleteState { trigger, prefix, items, selected: 0, focused: false }
+    }
+}
+
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -42,6 +58,8 @@ pub struct App {
     /// When true, a `FileChanged` event arrived while not in Normal mode and
     /// will be applied on the next Normal-mode entry (D-10).
     pub pending_reload: bool,
+    /// Active autocomplete popup state, or `None` when not shown.
+    pub autocomplete: Option<AutocompleteState>,
 }
 
 impl App {
@@ -55,6 +73,7 @@ impl App {
             mode: AppMode::Normal,
             editor: TextArea::default(),
             pending_reload: false,
+            autocomplete: None,
         }
     }
 
@@ -211,19 +230,140 @@ impl App {
     ) -> color_eyre::Result<()> {
         match key.code {
             KeyCode::Esc => {
-                self.exit_edit_mode()?;
+                if self.autocomplete.is_some() {
+                    // Close popup only — keep editor open (D-08).
+                    self.autocomplete = None;
+                } else {
+                    self.exit_edit_mode()?;
+                }
             }
             KeyCode::Enter => {
-                self.save_and_exit()?;
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
+                    self.accept_completion();
+                } else {
+                    self.autocomplete = None;
+                    self.save_and_exit()?;
+                }
+            }
+            KeyCode::Down => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.focused = true;
+                    ac.selected = (ac.selected + 1).min(ac.items.len().saturating_sub(1));
+                } else {
+                    self.editor.input_without_shortcuts(Event::Key(key));
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    if ac.focused {
+                        ac.selected = ac.selected.saturating_sub(1);
+                    } else {
+                        self.editor.input_without_shortcuts(Event::Key(key));
+                    }
+                } else {
+                    self.editor.input_without_shortcuts(Event::Key(key));
+                }
+            }
+            KeyCode::Tab => {
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
+                    self.accept_completion();
+                } else {
+                    // Tab without focused popup — pass to editor.
+                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.update_autocomplete();
+                }
+            }
+            KeyCode::Char(' ') => {
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
+                    self.accept_completion();
+                    // Also insert the space after the token.
+                    self.editor.input_without_shortcuts(Event::Key(key));
+                } else {
+                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.update_autocomplete();
+                }
             }
             _ => {
                 // Route all other keys through tui-textarea without default shortcuts
                 // (PITFALLS: "Single-line editors inheriting multiline and shortcut behavior").
                 self.editor.input_without_shortcuts(Event::Key(key));
+                self.update_autocomplete();
             }
         }
         Ok(())
     }
+
+    // ── Autocomplete helpers ──────────────────────────────────────────────────
+
+    /// Collect all @context or +project tokens from the task list (without the trigger char).
+    fn collect_tokens(&self, trigger: char) -> Vec<String> {
+        let mut tokens: Vec<String> = self.task_list.tasks().iter().flat_map(|t| {
+            if trigger == '@' { t.contexts.clone() } else { t.projects.clone() }
+        }).collect();
+        tokens.sort();
+        tokens.dedup();
+        tokens
+    }
+
+    /// Recompute autocomplete state from the current editor line.
+    fn update_autocomplete(&mut self) {
+        match self.mode {
+            AppMode::Adding | AppMode::Editing { .. } => {}
+            _ => { self.autocomplete = None; return; }
+        }
+        let line = self.editor.lines().first().cloned().unwrap_or_default();
+        // Find last @ or + in the line.
+        let trigger_pos = line.rfind(|c: char| c == '@' || c == '+');
+        if let Some(pos) = trigger_pos {
+            let trigger = line.chars().nth(pos).unwrap();
+            let prefix = &line[pos + 1..];
+            // No popup if prefix contains a space (token is complete).
+            if prefix.contains(' ') {
+                self.autocomplete = None;
+                return;
+            }
+            let prefix_lower = prefix.to_lowercase();
+            let all_tokens = self.collect_tokens(trigger);
+            let filtered: Vec<String> = all_tokens.into_iter()
+                .filter(|t| t.to_lowercase().starts_with(&prefix_lower))
+                .collect();
+            if filtered.is_empty() {
+                self.autocomplete = None;
+                return;
+            }
+            // Update existing state if same trigger+prefix, else create new.
+            if let Some(ref mut ac) = self.autocomplete {
+                if ac.trigger == trigger && ac.prefix == prefix {
+                    ac.items = filtered;
+                    ac.selected = ac.selected.min(ac.items.len().saturating_sub(1));
+                    return;
+                }
+            }
+            self.autocomplete = Some(AutocompleteState::new(trigger, prefix.to_string(), filtered));
+        } else {
+            self.autocomplete = None;
+        }
+    }
+
+    /// Insert the currently selected autocomplete token into the editor.
+    fn accept_completion(&mut self) {
+        let (trigger, token) = match &self.autocomplete {
+            Some(ac) => match ac.items.get(ac.selected) {
+                Some(token) => (ac.trigger, token.clone()),
+                None => { self.autocomplete = None; return; }
+            },
+            None => return,
+        };
+        let line = self.editor.lines().first().cloned().unwrap_or_default();
+        if let Some(pos) = line.rfind(trigger) {
+            let new_line = format!("{}{}{}", &line[..=pos], token, "");
+            let mut new_editor = tui_textarea::TextArea::default();
+            new_editor.insert_str(&new_line);
+            self.editor = new_editor;
+        }
+        self.autocomplete = None;
+    }
+
 
     // ── Delete confirm key handler ────────────────────────────────────────────
 
@@ -356,6 +496,8 @@ impl App {
                 self.render_task_list(frame, chunks[0]);
                 // tui-textarea renders directly; ratatui 0.29 Widget impl for &TextArea.
                 frame.render_widget(&self.editor, chunks[1]);
+                // Autocomplete popup floats above the footer row (D-08, D-09).
+                self.render_autocomplete_popup(frame, chunks[1]);
             }
             AppMode::Normal => {
                 // Two-row split: task list | status bar (D-14).
@@ -460,6 +602,54 @@ impl App {
         ]);
 
         frame.render_widget(Paragraph::new(line), area);
+    }
+
+    /// Render the autocomplete popup above the editor footer row.
+    fn render_autocomplete_popup(&self, frame: &mut Frame, footer_area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+
+        let ac = match &self.autocomplete {
+            Some(ac) if !ac.items.is_empty() => ac,
+            _ => return,
+        };
+
+        let popup_height = (ac.items.len() as u16).min(5).min(footer_area.y);
+        if popup_height == 0 { return; }
+
+        let popup_width = ac.items.iter()
+            .map(|s| s.len() + 4) // 4 for trigger char + borders
+            .max()
+            .unwrap_or(20)
+            .min(40) as u16;
+        let popup_width = popup_width.min(frame.area().width);
+
+        let popup_area = Rect {
+            x: footer_area.x,
+            y: footer_area.y.saturating_sub(popup_height),
+            width: popup_width,
+            height: popup_height,
+        };
+
+        let items: Vec<ListItem> = ac.items.iter()
+            .map(|token| ListItem::new(format!("{}{}", ac.trigger, token)))
+            .collect();
+
+        let highlight_style = if ac.focused {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+
+        let popup_list = List::new(items)
+            .block(Block::default().borders(Borders::ALL))
+            .highlight_style(highlight_style);
+
+        let mut list_state = ListState::default().with_selected(Some(ac.selected));
+
+        frame.render_widget(ratatui::widgets::Clear, popup_area);
+        frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
     }
 }
 
