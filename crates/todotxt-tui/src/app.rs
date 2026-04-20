@@ -13,6 +13,7 @@ use todotxt_core::{Filter, SortOrder, Task, TaskList};
 use tui_textarea::TextArea;
 
 use crate::event::AppEvent;
+use crate::theme::{StyleSheet, Theme};
 use crate::tui::Tui;
 
 /// State for the @context / +project autocomplete popup (D-08, D-09 in 11-CONTEXT.md).
@@ -77,10 +78,12 @@ pub struct App {
     pub filter_state: Option<FilteringState>,
     /// Named filter presets from `[presets]` in config (Plan 02).
     pub presets: Vec<(String, String)>,
+    /// Pre-computed color styles for the active theme (D-08, D-09 in 13-CONTEXT.md).
+    pub styles: StyleSheet,
 }
 
 impl App {
-    pub fn new(task_list: TaskList, todo_path: PathBuf, presets: Vec<(String, String)>) -> Self {
+    pub fn new(task_list: TaskList, todo_path: PathBuf, presets: Vec<(String, String)>, theme: Theme, no_color: bool) -> Self {
         let mut app = App {
             should_quit: false,
             task_list,
@@ -96,6 +99,7 @@ impl App {
             filter_query: String::new(),
             filter_state: None,
             presets,
+            styles: StyleSheet::from_theme(theme, no_color),
         };
         app.rebuild_display_indices();
         app
@@ -674,6 +678,7 @@ impl App {
     fn render_task_list(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::style::{Modifier, Style};
         use ratatui::widgets::{List, ListItem, ListState};
+        use todotxt_core::DueStatus;
 
         let tasks = self.task_list.tasks();
 
@@ -685,8 +690,20 @@ impl App {
             self.display_indices.iter().map(|&ci| {
                 let t = &tasks[ci];
                 let content = format!("{}: {}", ci + 1, t.to_raw());
+                // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
+                // Style precedence: completed (DIM) > priority A/B/C > overdue > plain.
+                // Modifier::REVERSED for selection is applied by List::highlight_style — not here.
                 let style = if t.completed {
+                    // Completed tasks: DIM only, no color (D-01, D-06).
                     Style::default().add_modifier(Modifier::DIM)
+                } else if t.priority == Some('A') {
+                    self.styles.priority_a
+                } else if t.priority == Some('B') {
+                    self.styles.priority_b
+                } else if t.priority == Some('C') {
+                    self.styles.priority_c
+                } else if t.due_status() == DueStatus::Overdue {
+                    self.styles.overdue
                 } else {
                     Style::default()
                 };

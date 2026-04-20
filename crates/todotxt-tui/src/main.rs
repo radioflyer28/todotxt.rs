@@ -3,6 +3,7 @@
 mod app;
 mod config;
 mod event;
+mod theme;
 mod tui;
 
 use std::sync::mpsc;
@@ -88,6 +89,13 @@ fn main() -> color_eyre::Result<()> {
     // D-09: RAII terminal guard — Drop restores terminal on all exit paths.
     let mut guard = TerminalGuard::new()?;
 
+    // D-07 (13-CONTEXT.md): Check NO_COLOR once at startup — never per-frame.
+    // Per https://no-color.org/: presence of the variable (any value) disables color.
+    let no_color = std::env::var("NO_COLOR").is_ok();
+
+    // D-03, D-05 (13-CONTEXT.md): Parse theme name from config; unknown → Default.
+    let theme = crate::theme::Theme::from_str(&config.tui.theme);
+
     let mut presets: Vec<(String, String)> = config
         .presets
         .into_iter()
@@ -96,7 +104,7 @@ fn main() -> color_eyre::Result<()> {
     presets.sort_by(|(a, _), (b, _)| a.cmp(b));
 
     // Run the event loop.
-    let mut app = App::new(task_list, todo_path, presets);
+    let mut app = App::new(task_list, todo_path, presets, theme, no_color);
     app.run(&mut guard.terminal, rx)?;
 
     // Guard drops here → disable_raw_mode + LeaveAlternateScreen.

@@ -10,6 +10,17 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use todotxt_core::resolve_config_path;
 
+/// Settings from the `[tui]` TOML subsection (D-04, D-05 in 13-CONTEXT.md).
+///
+/// A `[tui]` block is optional — `#[serde(default)]` on the field in `TuiConfig`
+/// means existing configs without `[tui]` continue to work unchanged.
+#[derive(Debug, Deserialize, Default)]
+pub struct TuiSection {
+    /// Theme name: `"default"` (dark) or `"light"`. Empty string → default theme.
+    #[serde(default)]
+    pub theme: String,
+}
+
 /// A named filter preset from the [presets] TOML section.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct TuiPreset {
@@ -31,6 +42,9 @@ pub struct TuiConfig {
     /// Named filter presets. Keys are preset names (e.g. "work", "today").
     #[serde(default)]
     pub presets: HashMap<String, TuiPreset>,
+    /// TUI-specific settings from the `[tui]` TOML subsection.
+    #[serde(default)]
+    pub tui: TuiSection,
 }
 
 impl TuiConfig {
