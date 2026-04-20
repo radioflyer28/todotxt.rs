@@ -95,7 +95,12 @@ Plans:
 4. Pressing `d` shows a confirmation prompt with a task preview; `y` deletes, any other key cancels
 5. A file-change event received while the user is in add/edit mode is queued and applied automatically upon returning to normal mode
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Add tui-textarea dep + AppMode + add/edit/delete + reload guard
+- [ ] 11-02-PLAN.md — @/+ autocomplete popup (Down-focus, Tab/Enter/Space accept)
+
 **UI hint**: yes
 
 ---
