@@ -89,7 +89,7 @@ fn main() -> color_eyre::Result<()> {
     let mut guard = TerminalGuard::new()?;
 
     // Run the event loop.
-    let mut app = App::new(task_list, todo_path);
+    let mut app = App::new(task_list, todo_path, Vec::new());
     app.run(&mut guard.terminal, rx)?;
 
     // Guard drops here → disable_raw_mode + LeaveAlternateScreen.
