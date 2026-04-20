@@ -9,7 +9,7 @@ use std::sync::mpsc::Receiver;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
-use todotxt_core::{Task, TaskList};
+use todotxt_core::{Filter, SortOrder, Task, TaskList};
 use tui_textarea::TextArea;
 
 use crate::event::AppEvent;
@@ -31,6 +31,13 @@ impl AutocompleteState {
     }
 }
 
+/// State for the filter panel input and preset list (Phase 12, Plan 02).
+#[allow(dead_code)]
+pub struct FilteringState {
+    pub editor: TextArea<'static>,
+    pub selected_preset: usize,
+}
+
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -38,6 +45,8 @@ pub enum AppMode {
     Adding,
     Editing { original_idx: usize },
     DeleteConfirm,
+    #[allow(dead_code)] // Plan 02 enters this mode via `f` key
+    Filtering,
 }
 
 /// Top-level application state.
@@ -45,8 +54,8 @@ pub struct App {
     pub should_quit: bool,
     pub task_list: TaskList,
     pub todo_path: PathBuf,
-    /// 0-based index into `task_list.tasks()` for the currently selected row.
-    /// Always clamped to `[0, task_count - 1]`.
+    /// 0-based index into `display_indices` for the currently selected row.
+    /// Always clamped to `[0, display_indices.len() - 1]`.
     pub selected: usize,
     /// Height of the list area in terminal rows. Kept in sync with `Resize` events.
     /// Used to compute half-page step for Ctrl+d / Ctrl+u (D-09).
@@ -60,11 +69,23 @@ pub struct App {
     pub pending_reload: bool,
     /// Active autocomplete popup state, or `None` when not shown.
     pub autocomplete: Option<AutocompleteState>,
+    /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
+    pub display_indices: Vec<usize>,
+    /// Current display sort order (FileOrder = no sort applied).
+    pub sort_order: SortOrder,
+    /// Active filter query string (empty = no filter).
+    pub filter_query: String,
+    /// Filter panel state, or `None` when panel is closed (Plan 02).
+    #[allow(dead_code)]
+    pub filter_state: Option<FilteringState>,
+    /// Named filter presets from `[presets]` in config (Plan 02).
+    #[allow(dead_code)]
+    pub presets: Vec<(String, String)>,
 }
 
 impl App {
-    pub fn new(task_list: TaskList, todo_path: PathBuf) -> Self {
-        App {
+    pub fn new(task_list: TaskList, todo_path: PathBuf, presets: Vec<(String, String)>) -> Self {
+        let mut app = App {
             should_quit: false,
             task_list,
             todo_path,
@@ -74,7 +95,14 @@ impl App {
             editor: TextArea::default(),
             pending_reload: false,
             autocomplete: None,
-        }
+            display_indices: Vec::new(),
+            sort_order: SortOrder::FileOrder,
+            filter_query: String::new(),
+            filter_state: None,
+            presets,
+        };
+        app.rebuild_display_indices();
+        app
     }
 
     /// Main event loop. Blocks on `rx.recv()` — no polling (D-02).
@@ -121,6 +149,7 @@ impl App {
                         self.handle_editor_key(key)?;
                     }
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
+                    AppMode::Filtering => {} // Plan 02 implements filter key handling
                 }
             }
             AppEvent::FileChanged => {
@@ -133,7 +162,7 @@ impl App {
                             e
                         )
                     })?;
-                    self.clamp_selection();
+                    self.rebuild_and_reanchor();
                 } else {
                     self.pending_reload = true;
                 }
@@ -154,7 +183,7 @@ impl App {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
-        let task_count = self.task_list.len();
+        let display_count = self.display_indices.len();
         match key.code {
             // ── Quit ────────────────────────────────────────────────────────
             KeyCode::Char('q') => {
@@ -165,35 +194,35 @@ impl App {
             }
 
             // ── Navigation ──────────────────────────────────────────────────
-            KeyCode::Char('j') | KeyCode::Down if task_count > 0 => {
-                self.selected = (self.selected + 1).min(task_count - 1);
+            KeyCode::Char('j') | KeyCode::Down if display_count > 0 => {
+                self.selected = (self.selected + 1).min(display_count - 1);
             }
-            KeyCode::Char('k') | KeyCode::Up if task_count > 0 => {
+            KeyCode::Char('k') | KeyCode::Up if display_count > 0 => {
                 self.selected = self.selected.saturating_sub(1);
             }
-            KeyCode::Char('g') if task_count > 0 => {
+            KeyCode::Char('g') if display_count > 0 => {
                 self.selected = 0;
             }
-            KeyCode::Char('G') if task_count > 0 => {
-                self.selected = task_count - 1;
+            KeyCode::Char('G') if display_count > 0 => {
+                self.selected = display_count - 1;
             }
             // Ctrl+U half-page up — must come before plain 'u' (edit).
             KeyCode::Char('u')
-                if key.modifiers.contains(KeyModifiers::CONTROL) && task_count > 0 =>
+                if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
                 let half = (self.list_height / 2).max(1) as usize;
                 self.selected = self.selected.saturating_sub(half);
             }
             // Ctrl+D half-page down — must come before plain 'd' (delete).
             KeyCode::Char('d')
-                if key.modifiers.contains(KeyModifiers::CONTROL) && task_count > 0 =>
+                if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
                 let half = (self.list_height / 2).max(1) as usize;
-                self.selected = (self.selected + half).min(task_count - 1);
+                self.selected = (self.selected + half).min(display_count - 1);
             }
 
             // ── Done toggle ──────────────────────────────────────────────────
-            KeyCode::Char('x') if task_count > 0 => {
+            KeyCode::Char('x') if display_count > 0 => {
                 self.toggle_done();
             }
 
@@ -204,17 +233,30 @@ impl App {
             }
 
             // ── Edit task (u or e) — after Ctrl+U arm ───────────────────────
-            KeyCode::Char('u') | KeyCode::Char('e') if task_count > 0 => {
-                let raw = self.task_list.tasks()[self.selected].to_raw().to_string();
-                let mut ed = TextArea::default();
-                ed.insert_str(&raw);
-                self.editor = ed;
-                self.mode = AppMode::Editing { original_idx: self.selected };
+            KeyCode::Char('u') | KeyCode::Char('e') if display_count > 0 => {
+                if let Some(canonical) = self.canonical_selected() {
+                    let raw = self.task_list.tasks()[canonical].to_raw().to_string();
+                    let mut ed = TextArea::default();
+                    ed.insert_str(&raw);
+                    self.editor = ed;
+                    self.mode = AppMode::Editing { original_idx: canonical };
+                }
             }
 
             // ── Delete task — after Ctrl+D arm ──────────────────────────────
-            KeyCode::Char('d') if task_count > 0 => {
+            KeyCode::Char('d') if display_count > 0 => {
                 self.mode = AppMode::DeleteConfirm;
+            }
+
+            // ── Sort cycle ──────────────────────────────────────────────────
+            KeyCode::Char('o') => {
+                self.sort_order = cycle_sort(self.sort_order);
+                self.rebuild_and_reanchor();
+            }
+
+            // ── Filter panel placeholder (Plan 02) ──────────────────────────
+            KeyCode::Char('f') => {
+                // Plan 02 implements filter panel.
             }
 
             _ => {}
@@ -372,11 +414,12 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
         if key.code == KeyCode::Char('y') {
-            let idx = self.selected;
-            self.task_list
-                .delete(idx)
-                .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
-            self.clamp_selection();
+            if let Some(idx) = self.canonical_selected() {
+                self.task_list
+                    .delete(idx)
+                    .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
+                self.rebuild_and_reanchor();
+            }
         }
         // Any key (including Esc and non-y keys) returns to Normal (D-07).
         self.mode = AppMode::Normal;
@@ -404,13 +447,16 @@ impl App {
                     .add(task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to add task: {}", e))?;
                 // Move selection to the newly added task (D-13).
-                self.selected = self.task_list.len().saturating_sub(1);
+                let canonical = self.task_list.len().saturating_sub(1);
+                self.rebuild_display_indices();
+                self.selected = self.display_indices.iter().position(|&x| x == canonical).unwrap_or(0);
             }
             AppMode::Editing { original_idx } => {
                 self.task_list
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
-                self.selected = original_idx;
+                self.rebuild_display_indices();
+                self.selected = self.display_indices.iter().position(|&x| x == original_idx).unwrap_or(0);
             }
             _ => {}
         }
@@ -430,19 +476,59 @@ impl App {
                     e
                 )
             })?;
-            self.clamp_selection();
+            self.rebuild_and_reanchor();
         }
         Ok(())
     }
 
-    /// Clamp `selected` to `[0, task_count - 1]`, or 0 on empty list.
+    /// Clamp `selected` to `[0, display_count - 1]`, or 0 on empty display.
     fn clamp_selection(&mut self) {
-        let count = self.task_list.len();
+        let count = self.display_indices.len();
         if count == 0 {
             self.selected = 0;
         } else {
             self.selected = self.selected.min(count - 1);
         }
+    }
+
+    /// Rebuild `display_indices` by applying the active filter and sort order.
+    ///
+    /// Collects canonical task indices in display order. Does NOT touch `selected`.
+    fn rebuild_display_indices(&mut self) {
+        let query = self.filter_query.trim().to_string();
+        let sort_order = self.sort_order;
+        let new_indices: Vec<usize> = {
+            let mut pairs: Vec<(usize, &Task)> = if query.is_empty() {
+                self.task_list.tasks().iter().enumerate().collect()
+            } else {
+                let f = Filter::from_query(&query);
+                self.task_list.filter(&f)
+            };
+            if sort_order != SortOrder::FileOrder {
+                pairs.sort_by(|(_, a), (_, b)| sort_order.compare(a, b));
+            }
+            pairs.into_iter().map(|(idx, _)| idx).collect()
+        };
+        self.display_indices = new_indices;
+    }
+
+    /// Rebuild display indices while preserving the selected canonical task.
+    ///
+    /// Saves the current canonical index, rebuilds, then restores the selection
+    /// to the display row where that canonical index now appears (or row 0).
+    fn rebuild_and_reanchor(&mut self) {
+        let old_canonical = self.display_indices.get(self.selected).copied();
+        self.rebuild_display_indices();
+        self.selected = old_canonical
+            .and_then(|ci| self.display_indices.iter().position(|&x| x == ci))
+            .unwrap_or(0);
+        self.clamp_selection();
+    }
+
+    /// Return the canonical task index for the currently selected display row, or `None`
+    /// if the display list is empty.
+    fn canonical_selected(&self) -> Option<usize> {
+        self.display_indices.get(self.selected).copied()
     }
 
     /// Toggle the completion state of the currently selected task and persist to disk.
@@ -451,11 +537,10 @@ impl App {
     /// D-11: toggles both ways — incomplete→done AND done→incomplete.
     /// D-12: called by both `x` and bare `u`.
     fn toggle_done(&mut self) {
-        let count = self.task_list.len();
-        if count == 0 {
-            return;
-        }
-        let idx = self.selected;
+        let idx = match self.canonical_selected() {
+            Some(i) => i,
+            None => return,
+        };
         let task = self.task_list.tasks()[idx].clone();
         let was_completed = task.completed;
         let toggled = task.with_completed(!was_completed);
@@ -464,13 +549,7 @@ impl App {
             // Non-fatal: write to stderr (terminal restore guard is active).
             eprintln!("toggle_done error: {e}");
         }
-        // Clamp in case the task list shrank after the write.
-        let new_count = self.task_list.len();
-        if new_count > 0 {
-            self.selected = self.selected.min(new_count - 1);
-        } else {
-            self.selected = 0;
-        }
+        self.rebuild_and_reanchor();
     }
 
     /// Render the TUI frame with mode-aware layout.
@@ -506,6 +585,13 @@ impl App {
                 self.render_task_list(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
             }
+            AppMode::Filtering => {
+                // Plan 02 implements filter panel layout; for now render like Normal.
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+            }
         }
     }
 
@@ -516,29 +602,28 @@ impl App {
 
         let tasks = self.task_list.tasks();
 
-        let items: Vec<ListItem> = if tasks.is_empty() {
+        let items: Vec<ListItem> = if self.display_indices.is_empty() && tasks.is_empty() {
             vec![ListItem::new("(no tasks)")]
+        } else if self.display_indices.is_empty() {
+            vec![ListItem::new("(no matching tasks)")]
         } else {
-            tasks
-                .iter()
-                .enumerate()
-                .map(|(i, t)| {
-                    let content = format!("{}: {}", i + 1, t.to_raw());
-                    let style = if t.completed {
-                        Style::default().add_modifier(Modifier::DIM)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(content).style(style)
-                })
-                .collect()
+            self.display_indices.iter().map(|&ci| {
+                let t = &tasks[ci];
+                let content = format!("{}: {}", ci + 1, t.to_raw());
+                let style = if t.completed {
+                    Style::default().add_modifier(Modifier::DIM)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(content).style(style)
+            }).collect()
         };
 
         let list = List::new(items)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
         let mut list_state = ListState::default();
-        if !tasks.is_empty() {
+        if !self.display_indices.is_empty() {
             list_state = list_state.with_selected(Some(self.selected));
         }
 
@@ -553,7 +638,7 @@ impl App {
 
         let tasks = self.task_list.tasks();
         let total = tasks.len();
-        let visible = total;
+        let visible = self.display_indices.len();
         let due_today = tasks
             .iter()
             .filter(|t| !t.completed && t.due_status() == DueStatus::Today)
@@ -590,10 +675,9 @@ impl App {
         use ratatui::widgets::Paragraph;
 
         let tasks = self.task_list.tasks();
-        let preview = if tasks.is_empty() {
-            String::new()
-        } else {
-            tasks[self.selected].to_raw().to_string()
+        let preview = match self.canonical_selected() {
+            Some(idx) => tasks[idx].to_raw().to_string(),
+            None => String::new(),
         };
 
         let line = Line::from(vec![
@@ -650,6 +734,37 @@ impl App {
 
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+}
+
+/// Advance to the next sort order in the fixed cycle.
+fn cycle_sort(current: SortOrder) -> SortOrder {
+    match current {
+        SortOrder::FileOrder     => SortOrder::Alphabetical,
+        SortOrder::Alphabetical  => SortOrder::CompletedDate,
+        SortOrder::CompletedDate => SortOrder::Context,
+        SortOrder::Context       => SortOrder::DueDate,
+        SortOrder::DueDate       => SortOrder::CreationDate,
+        SortOrder::CreationDate  => SortOrder::Priority,
+        SortOrder::Priority      => SortOrder::Project,
+        SortOrder::Project       => SortOrder::FileOrder,
+        _                        => SortOrder::FileOrder,
+    }
+}
+
+/// Human-readable name for a sort order, shown in the status bar.
+#[allow(dead_code)] // Used by Plan 02's status bar rendering
+fn sort_name(order: SortOrder) -> &'static str {
+    match order {
+        SortOrder::FileOrder     => "file order",
+        SortOrder::Alphabetical  => "alpha",
+        SortOrder::CompletedDate => "completed",
+        SortOrder::Context       => "context",
+        SortOrder::DueDate       => "due",
+        SortOrder::CreationDate  => "created",
+        SortOrder::Priority      => "priority",
+        SortOrder::Project       => "project",
+        _                        => "?",
     }
 }
 
