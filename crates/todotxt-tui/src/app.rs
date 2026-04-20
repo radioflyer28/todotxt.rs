@@ -32,7 +32,6 @@ impl AutocompleteState {
 }
 
 /// State for the filter panel input and preset list (Phase 12, Plan 02).
-#[allow(dead_code)]
 pub struct FilteringState {
     pub editor: TextArea<'static>,
     pub selected_preset: usize,
@@ -45,7 +44,6 @@ pub enum AppMode {
     Adding,
     Editing { original_idx: usize },
     DeleteConfirm,
-    #[allow(dead_code)] // Plan 02 enters this mode via `f` key
     Filtering,
 }
 
@@ -76,10 +74,8 @@ pub struct App {
     /// Active filter query string (empty = no filter).
     pub filter_query: String,
     /// Filter panel state, or `None` when panel is closed (Plan 02).
-    #[allow(dead_code)]
     pub filter_state: Option<FilteringState>,
     /// Named filter presets from `[presets]` in config (Plan 02).
-    #[allow(dead_code)]
     pub presets: Vec<(String, String)>,
 }
 
@@ -149,7 +145,7 @@ impl App {
                         self.handle_editor_key(key)?;
                     }
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
-                    AppMode::Filtering => {} // Plan 02 implements filter key handling
+                    AppMode::Filtering => self.handle_filtering_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -256,10 +252,88 @@ impl App {
 
             // ── Filter panel placeholder (Plan 02) ──────────────────────────
             KeyCode::Char('f') => {
-                // Plan 02 implements filter panel.
+                let mut editor = TextArea::default();
+                editor.insert_str(&self.filter_query);
+                self.filter_state = Some(FilteringState {
+                    editor,
+                    selected_preset: 0,
+                });
+                self.mode = AppMode::Filtering;
             }
 
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_filtering_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.filter_query = String::new();
+                self.filter_state = None;
+                self.mode = AppMode::Normal;
+                self.rebuild_and_reanchor();
+                self.apply_pending_reload()?;
+            }
+            KeyCode::Enter => {
+                self.filter_state = None;
+                self.mode = AppMode::Normal;
+                self.apply_pending_reload()?;
+            }
+            KeyCode::Down => {
+                let preset_count = self.presets.len();
+                if let Some(ref mut state) = self.filter_state {
+                    if preset_count > 0 {
+                        state.selected_preset =
+                            (state.selected_preset + 1).min(preset_count - 1);
+                        let query = self.presets[state.selected_preset].1.clone();
+                        state.editor = TextArea::default();
+                        state.editor.insert_str(&query);
+                        self.filter_query = query;
+                    }
+                }
+                self.rebuild_and_reanchor();
+            }
+            KeyCode::Up => {
+                if let Some(ref mut state) = self.filter_state {
+                    if state.selected_preset > 0 {
+                        state.selected_preset = state.selected_preset.saturating_sub(1);
+                        let query = self.presets[state.selected_preset].1.clone();
+                        state.editor = TextArea::default();
+                        state.editor.insert_str(&query);
+                        self.filter_query = query;
+                    }
+                }
+                self.rebuild_and_reanchor();
+            }
+            KeyCode::Char(c @ '1'..='9') => {
+                let idx = (c as usize) - ('1' as usize);
+                if idx < self.presets.len() {
+                    let query = self.presets[idx].1.clone();
+                    if let Some(ref mut state) = self.filter_state {
+                        state.editor = TextArea::default();
+                        state.editor.insert_str(&query);
+                        state.selected_preset = idx;
+                    }
+                    self.filter_query = query;
+                    self.rebuild_and_reanchor();
+                }
+            }
+            _ => {
+                if let Some(ref mut state) = self.filter_state {
+                    state.editor.input_without_shortcuts(Event::Key(key));
+                    self.filter_query = state
+                        .editor
+                        .lines()
+                        .first()
+                        .cloned()
+                        .unwrap_or_default();
+                }
+                self.rebuild_and_reanchor();
+            }
         }
         Ok(())
     }
@@ -586,11 +660,12 @@ impl App {
                 self.render_status_bar(frame, chunks[1]);
             }
             AppMode::Filtering => {
-                // Plan 02 implements filter panel layout; for now render like Normal.
+                let panel_height = 1_u16 + (self.presets.len() as u16).min(5);
                 let chunks =
-                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                    Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
                 self.render_task_list(frame, chunks[0]);
-                self.render_status_bar(frame, chunks[1]);
+                self.render_filter_panel(frame, chunks[1]);
+                self.render_status_bar(frame, chunks[2]);
             }
         }
     }
@@ -634,19 +709,9 @@ impl App {
     fn render_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::text::{Line, Span};
         use ratatui::widgets::Paragraph;
-        use todotxt_core::DueStatus;
-
         let tasks = self.task_list.tasks();
         let total = tasks.len();
         let visible = self.display_indices.len();
-        let due_today = tasks
-            .iter()
-            .filter(|t| !t.completed && t.due_status() == DueStatus::Today)
-            .count();
-        let overdue = tasks
-            .iter()
-            .filter(|t| !t.completed && t.due_status() == DueStatus::Overdue)
-            .count();
 
         let file_name = self
             .todo_path
@@ -654,11 +719,17 @@ impl App {
             .and_then(|n| n.to_str())
             .unwrap_or("todo.txt");
 
-        let left = format!(
-            "{} | {} tasks | {} visible | {} due today | {} overdue",
-            file_name, total, visible, due_today, overdue
-        );
-        let right = "q quit | n add | u edit | d del | x done | j/k nav";
+        let mut left = format!("{} | {}/{} tasks", file_name, visible, total);
+        let trimmed_filter = self.filter_query.trim();
+        if !trimmed_filter.is_empty() {
+            left.push_str(" | ");
+            left.push_str(trimmed_filter);
+        }
+        if self.sort_order != SortOrder::FileOrder {
+            left.push_str(" | sort: ");
+            left.push_str(sort_name(self.sort_order));
+        }
+        let right = "q quit | n add | u edit | d del | x done | j/k nav | f filter | o sort";
 
         let status_line = Line::from(vec![
             Span::raw(left),
@@ -686,6 +757,38 @@ impl App {
         ]);
 
         frame.render_widget(Paragraph::new(line), area);
+    }
+
+    fn render_filter_panel(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{List, ListItem, ListState};
+
+        let input_area = Rect { height: 1, ..area };
+        if let Some(ref state) = self.filter_state {
+            frame.render_widget(&state.editor, input_area);
+        }
+
+        if area.height > 1 && !self.presets.is_empty() {
+            let list_area = Rect {
+                y: area.y + 1,
+                height: area.height - 1,
+                ..area
+            };
+            let selected_preset = self.filter_state.as_ref().map(|s| s.selected_preset);
+            let items: Vec<ListItem> = self
+                .presets
+                .iter()
+                .enumerate()
+                .map(|(i, (name, query))| {
+                    ListItem::new(format!("{}. {} — {}", i + 1, name, query))
+                })
+                .collect();
+            let list = List::new(items)
+                .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            let mut list_state = ListState::default().with_selected(selected_preset);
+            frame.render_stateful_widget(list, list_area, &mut list_state);
+        }
     }
 
     /// Render the autocomplete popup above the editor footer row.
@@ -753,7 +856,6 @@ fn cycle_sort(current: SortOrder) -> SortOrder {
 }
 
 /// Human-readable name for a sort order, shown in the status bar.
-#[allow(dead_code)] // Used by Plan 02's status bar rendering
 fn sort_name(order: SortOrder) -> &'static str {
     match order {
         SortOrder::FileOrder     => "file order",
