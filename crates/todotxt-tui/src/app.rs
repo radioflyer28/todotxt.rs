@@ -333,25 +333,45 @@ impl App {
         }
     }
 
-    /// Render the task list using ratatui `List` + `ListState` (D-04, D-05, D-06).
+    /// Render the TUI frame with mode-aware layout.
     ///
-    /// Layout (D-14): list area occupies all rows except the 1-row status bar footer.
-    /// Row format (D-01): "{1-based line number}: {raw task text}"
-    /// Completed tasks: `Modifier::DIM` (D-03).
-    /// Selected row: `Modifier::REVERSED` (D-06).
-    fn draw(&self, frame: &mut Frame) {
+    /// Signature is `&mut self` because tui-textarea's Widget impl requires
+    /// rendering via a mutable reference on some paths.
+    fn draw(&mut self, frame: &mut Frame) {
         use ratatui::layout::{Constraint::{Length, Min}, Layout};
+
+        match self.mode {
+            AppMode::DeleteConfirm => {
+                // Three-row split: task list | confirm panel | status bar (D-06).
+                let chunks =
+                    Layout::vertical([Min(0), Length(1), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                self.render_delete_confirm(frame, chunks[1]);
+                self.render_status_bar(frame, chunks[2]);
+            }
+            AppMode::Adding | AppMode::Editing { .. } => {
+                // Two-row split: task list | inline editor in footer row (D-02).
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                // tui-textarea renders directly; ratatui 0.29 Widget impl for &TextArea.
+                frame.render_widget(&self.editor, chunks[1]);
+            }
+            AppMode::Normal => {
+                // Two-row split: task list | status bar (D-14).
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+            }
+        }
+    }
+
+    /// Render the task list with selection highlight.
+    fn render_task_list(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::style::{Modifier, Style};
-        use ratatui::text::{Line, Span};
-        use ratatui::widgets::{List, ListItem, ListState, Paragraph};
-        use todotxt_core::DueStatus;
+        use ratatui::widgets::{List, ListItem, ListState};
 
-        // ── Layout split (D-14) ───────────────────────────────────────────────
-        let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
-        let list_area = chunks[0];
-        let status_area = chunks[1];
-
-        // ── Task list (D-01 through D-06) ─────────────────────────────────────
         let tasks = self.task_list.tasks();
 
         let items: Vec<ListItem> = if tasks.is_empty() {
@@ -361,9 +381,7 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(i, t)| {
-                    // D-01: line number = source file line (1-based), not display index.
                     let content = format!("{}: {}", i + 1, t.to_raw());
-                    // D-03: completed tasks rendered dimmed.
                     let style = if t.completed {
                         Style::default().add_modifier(Modifier::DIM)
                     } else {
@@ -374,22 +392,25 @@ impl App {
                 .collect()
         };
 
-        // D-06: default reversed-colors highlight for selected row.
         let list = List::new(items)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-        // D-05: ListState built fresh each draw; not stored on App.
         let mut list_state = ListState::default();
         if !tasks.is_empty() {
             list_state = list_state.with_selected(Some(self.selected));
         }
 
-        // frame.area() is correct for ratatui 0.30 (frame.size() is deprecated).
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        frame.render_stateful_widget(list, area, &mut list_state);
+    }
 
-        // ── Status bar (D-14 through D-17) ────────────────────────────────────
+    /// Render the one-row status bar with file info and key hints.
+    fn render_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::text::{Line, Span};
+        use ratatui::widgets::Paragraph;
+        use todotxt_core::DueStatus;
+
+        let tasks = self.task_list.tasks();
         let total = tasks.len();
-        // "visible" = total in Phase 10 (no filtering yet; Phase 11 adds filters).
         let visible = total;
         let due_today = tasks
             .iter()
@@ -406,22 +427,39 @@ impl App {
             .and_then(|n| n.to_str())
             .unwrap_or("todo.txt");
 
-        // D-15: left segment — file info and counts.
         let left = format!(
             "{} | {} tasks | {} visible | {} due today | {} overdue",
             file_name, total, visible, due_today, overdue
         );
-        // D-15: right segment — key hints.
-        let right = "q quit | x done | u edit | j/k nav";
+        let right = "q quit | n add | u edit | d del | x done | j/k nav";
 
-        // D-16: simple Span approach — agent discretion for layout.
-        // D-17: monochrome in Phase 10; Phase 13 adds theme colors.
         let status_line = Line::from(vec![
             Span::raw(left),
             Span::raw("  "),
             Span::raw(right),
         ]);
 
-        frame.render_widget(Paragraph::new(status_line), status_area);
+        frame.render_widget(Paragraph::new(status_line), area);
+    }
+
+    /// Render the one-row delete confirmation panel (D-06, D-07).
+    fn render_delete_confirm(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::text::{Line, Span};
+        use ratatui::widgets::Paragraph;
+
+        let tasks = self.task_list.tasks();
+        let preview = if tasks.is_empty() {
+            String::new()
+        } else {
+            tasks[self.selected].to_raw().to_string()
+        };
+
+        let line = Line::from(vec![
+            Span::raw(format!("Delete: \"{}\"", preview)),
+            Span::raw("  y=confirm  any=cancel"),
+        ]);
+
+        frame.render_widget(Paragraph::new(line), area);
     }
 }
+
