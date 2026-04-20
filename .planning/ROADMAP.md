@@ -121,9 +121,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 12-01-PLAN.md — display_indices + SortOrder extension (FileOrder/CompletedDate/CreationDate)
-- [ ] 12-02-PLAN.md — TuiPreset config + AppMode::Filtering + filter panel + key dispatch
-- [ ] 12-03-PLAN.md — Status bar polish + human verify checkpoint
+- [x] 12-01-PLAN.md — display_indices + SortOrder extension (FileOrder/CompletedDate/CreationDate)
+- [x] 12-02-PLAN.md — TuiPreset config + AppMode::Filtering + filter panel + key dispatch
+- [x] 12-03-PLAN.md — Status bar polish + human verify checkpoint
 
 **UI hint**: yes
 
@@ -163,5 +163,5 @@ Plans:
 | 9. TUI Foundation | v1.1 | 0/? | Not started | — |
 | 10. Core TUI | v1.1 | 0/? | Not started | — |
 | 11. Edit Mode | v1.1 | 0/? | Not started | — |
-| 12. Filter + Sort | v1.1 | 0/? | Not started | — |
+| 12. Filter + Sort | v1.1 | 3/3 | Complete | 2026-04-20 |
 | 13. Theming + Polish | v1.1 | 0/? | Not started | — |
