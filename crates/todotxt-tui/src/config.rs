@@ -51,7 +51,7 @@ impl TuiConfig {
     /// Returns the platform-appropriate config file path.
     ///
     /// - Linux:   ~/.config/todotxt/config.toml
-    /// - Windows: %APPDATA%\todotxt\config.toml
+    /// - Windows: %APPDATA%\todotxt\config\config.toml
     /// - macOS:   ~/Library/Application Support/todotxt/config.toml
     pub fn default_path() -> Option<PathBuf> {
         ProjectDirs::from("", "", "todotxt")
@@ -69,7 +69,25 @@ impl TuiConfig {
         let config_dir = platform_path
             .parent()
             .expect("platform config path must have a parent directory");
-        resolve_config_path(&binary_dir, config_dir).join("config.toml")
+        let resolved = resolve_config_path(&binary_dir, config_dir).join("config.toml");
+
+        // Backward compatibility: older docs and user setups on Windows used
+        // %APPDATA%\todotxt\config.toml. If that legacy file exists and the
+        // primary path does not, prefer the legacy file.
+        if !resolved.exists() {
+            if let Some(file_name) = config_dir.file_name() {
+                if file_name == "config" {
+                    if let Some(parent) = config_dir.parent() {
+                        let legacy = parent.join("config.toml");
+                        if legacy.exists() {
+                            return legacy;
+                        }
+                    }
+                }
+            }
+        }
+
+        resolved
     }
 
     /// Load config from `path`. Returns defaults silently if the file does
