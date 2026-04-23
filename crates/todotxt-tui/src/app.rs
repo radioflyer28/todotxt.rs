@@ -36,6 +36,9 @@ impl AutocompleteState {
 pub struct FilteringState {
     pub editor: TextArea<'static>,
     pub selected_preset: usize,
+    /// Snapshot of `filter_query` captured when the panel was opened (D-02).
+    /// Restored on Esc so no destructive clear occurs.
+    pub snapshot: String,
 }
 
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
@@ -264,6 +267,7 @@ impl App {
                 self.filter_state = Some(FilteringState {
                     editor,
                     selected_preset: 0,
+                    snapshot: self.filter_query.clone(), // per D-02
                 });
                 self.mode = AppMode::Filtering;
             }
@@ -279,7 +283,9 @@ impl App {
     ) -> color_eyre::Result<()> {
         match key.code {
             KeyCode::Esc => {
-                self.filter_query = String::new();
+                // Restore prior filter (D-02) — do NOT clear
+                let snapshot = self.filter_state.as_ref().map(|s| s.snapshot.clone()).unwrap_or_default();
+                self.filter_query = snapshot;
                 self.filter_state = None;
                 self.mode = AppMode::Normal;
                 self.rebuild_and_reanchor();
