@@ -49,8 +49,13 @@
 
 - [ ] **Phase 17: TUI Grouping/Sorting Alignment + Status Polish**
   - Group tasks by shared sort keys (project/context/other configured key)
-  - Conditionally show theme label in status bar (hide when default/no-value)
-  - Preserve keyboard and rendering performance expectations
+  - Remove theme label from status bar entirely
+  - Toggle deferred (`t:`) task visibility with `h` key
+  - **Requirements:** V12-TUI-GROUP-01, V12-TUI-STATUS-01, V12-TUI-DEFER-02
+  - **Plans:** 2 plans
+  - Plans:
+    - [ ] 17-01-PLAN.md — Status bar cleanup (remove theme label) + deferred toggle (h key, DIM styling, [+deferred] indicator)
+    - [ ] 17-02-PLAN.md — Task grouping: DisplayRow enum, g toggle, header rows (REVERSED), nav skip, | group: on status bar
 
 - [ ] **Phase 18: Validation + Ship Readiness**
   - Integration and UAT pass for compatibility and TUI UX changes
@@ -82,8 +87,11 @@ Plans:
 
 ### Phase 17: TUI Grouping/Sorting Alignment + Status Polish
 Goal: Group tasks by shared sort keys (project/context/other configured key) and conditionally show theme label in status bar (hide when default/no-value).
-Status: planned
+Status: **planned**
+Plans: 2 plans
 Plans:
+- [ ] 17-01-PLAN.md — Status bar cleanup + deferred toggle
+- [ ] 17-02-PLAN.md — Task grouping feature
 
 ### Phase 18: Validation + Ship Readiness
 Goal: Integration and UAT pass for compatibility and TUI UX changes; milestone audit, docs updates, and close-out prep.
