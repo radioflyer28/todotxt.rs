@@ -47,19 +47,27 @@
     - [x] 16-02-PLAN.md — TOML serialize + TuiConfig::save() atomic write (V12-TUI-FILTER-03)
     - [x] 16-03-PLAN.md — F-key definition panel: layout, key handlers, preset persistence wiring (V12-TUI-FILTER-01, V12-TUI-FILTER-02, V12-TUI-FILTER-03)
 
-- [ ] **Phase 17: TUI Grouping/Sorting Alignment + Status Polish**
+- [x] **Phase 17: TUI Grouping/Sorting Alignment + Status Polish**
+ (completed 2026-04-23)
   - Group tasks by shared sort keys (project/context/other configured key)
   - Remove theme label from status bar entirely
   - Toggle deferred (`t:`) task visibility with `h` key
   - **Requirements:** V12-TUI-GROUP-01, V12-TUI-STATUS-01, V12-TUI-DEFER-02
   - **Plans:** 2 plans
   - Plans:
-    - [ ] 17-01-PLAN.md — Status bar cleanup (remove theme label) + deferred toggle (h key, DIM styling, [+deferred] indicator)
-    - [ ] 17-02-PLAN.md — Task grouping: DisplayRow enum, g toggle, header rows (REVERSED), nav skip, | group: on status bar
+    - [x] 17-01-PLAN.md — Status bar cleanup (remove theme label) + deferred toggle (h key, DIM styling, [+deferred] indicator)
+    - [x] 17-02-PLAN.md — Task grouping: DisplayRow enum, g toggle, header rows (REVERSED), nav skip, | group: on status bar
 
 - [ ] **Phase 18: Validation + Ship Readiness**
   - Integration and UAT pass for compatibility and TUI UX changes
   - Milestone audit, docs updates, and close-out prep
+  - **Requirements:** V12-COMPAT-01, V12-COMPAT-02, V12-TUI-FILTER-01, V12-TUI-FILTER-02, V12-TUI-FILTER-03, V12-TUI-STATUS-01, V12-TUI-GROUP-01, V12-TUI-DEFER-01, V12-TUI-DEFER-02
+  - **Plans:** 4 plans
+  - Plans:
+    - [ ] 18-01-PLAN.md — Write UAT.md checklist (4 TUI areas) + confirm regression suite green
+    - [ ] 18-02-PLAN.md — Mark all 9 requirements complete + create CHANGELOG.md + update README.md
+    - [ ] 18-03-PLAN.md — Human UAT checkpoint (live TUI walkthrough approval)
+    - [ ] 18-04-PLAN.md — Milestone audit (18-AUDIT.md) + gsd-complete-milestone close-out
 
 ## Phase Detail Sections
 
@@ -97,6 +105,10 @@ Plans:
 Goal: Integration and UAT pass for compatibility and TUI UX changes; milestone audit, docs updates, and close-out prep.
 Status: planned
 Plans:
+- [ ] 18-01-PLAN.md — UAT checklist + regression suite
+- [ ] 18-02-PLAN.md — Requirements audit + CHANGELOG + README
+- [ ] 18-03-PLAN.md — Human UAT checkpoint
+- [ ] 18-04-PLAN.md — Milestone audit + close-out
 
 ## Backlog
 
