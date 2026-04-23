@@ -55,7 +55,7 @@ impl FileWatcher {
         let cb = Arc::clone(&callback);
 
         let mut debouncer = new_debouncer(
-            Duration::from_secs(1),
+            Duration::from_millis(500),
             move |res: DebounceEventResult| {
                 if let Ok(events) = res {
                     // Filter to events for our specific file only.
