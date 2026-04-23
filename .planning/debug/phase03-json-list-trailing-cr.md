@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Issue: `todotxt --json list` should return clean payloads without trailing CR and exclude completed tasks, but completed task `raw` includes trailing \\r"
 created: 2026-04-15T19:44:42.5964556-04:00
-updated: 2026-04-15T19:51:00-04:00
+updated: 2026-04-23T00:00:00Z
 ---
 
 ## Current Focus

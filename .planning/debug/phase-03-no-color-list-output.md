@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Diagnose this UAT issue and return root cause only (no code changes). Phase 03 --no-color list shows done task + mangled year + broken indentation"
 created: 2026-04-15T00:00:00Z
-updated: 2026-04-15T00:45:00Z
+updated: 2026-04-23T00:00:00Z
 ---
 
 ## Current Focus

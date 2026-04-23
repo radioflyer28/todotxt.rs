@@ -1,4 +1,5 @@
 ---
+status: shipped
 planted_during: v1.0
 trigger_when: Core library and CLI are stable; users want an interactive terminal experience
 ---

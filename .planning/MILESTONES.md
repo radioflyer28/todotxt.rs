@@ -1,5 +1,22 @@
 # Milestones
 
+## v1.1 TUI Interface (Shipped: 2026-04-23)
+
+**Phases:** 5 (Phases 9–13) | **Plans:** 14 | **Requirements:** 25/25 complete
+
+**Key accomplishments:**
+
+1. Delivered `todotxt-tui` crate and full terminal lifecycle/event loop integration with `todotxt-core`.
+2. Implemented full keyboard-driven task operations: navigation, toggle done, add/edit/delete with confirmation.
+3. Added query filtering, sort cycling, preset integration, and status-bar context visibility.
+4. Added `@`/`+` autocomplete and queued reload guard during edit-mode flows.
+5. Added theme system (default/light), TOML theme config, and `NO_COLOR` behavior.
+6. Closed milestone blocker by updating file-watch debounce to 500ms and archived audit as tech debt only.
+
+**Archive:** .planning/milestones/v1.1-ROADMAP.md | .planning/milestones/v1.1-REQUIREMENTS.md | .planning/milestones/v1.1-MILESTONE-AUDIT.md
+
+---
+
 ## v1.0 Core Library + CLI (Shipped: 2026-04-16)
 
 **Phases:** 8 (Phases 1–8) | **Plans:** 30 | **Tests:** 207 passing

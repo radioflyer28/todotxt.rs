@@ -1,4 +1,5 @@
 ---
+status: deferred
 planted_during: v1.0
 trigger_when: Core + CLI is complete and usable; ready to ship to other users
 ---

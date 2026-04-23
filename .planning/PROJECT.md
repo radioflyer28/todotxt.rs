@@ -1,18 +1,17 @@
 # todotxt.net — Rust Port
 
-## Current Milestone: v1.1 TUI Interface
+## Current State
 
-**Goal:** Add an interactive full-screen terminal UI (`todotxt-tui` binary, new crate) built on ratatui, giving terminal users a keyboard-driven task management experience backed by the existing `todotxt-core` library.
+v1.1 TUI Interface is shipped (2026-04-23).
 
-**Target features:**
-- Full-screen task list with keyboard navigation (j/k, arrows)
-- Mark done / undo, add task, inline edit (press `e`), delete with confirmation
-- Filter panel (by context, project, due date) + sort toggle (priority, due date, alphabetical)
-- Status bar (total, filtered, due today, overdue)
-- @context and +project autocomplete when adding/editing
-- Themeable colors
-- Auto-reload via file watching (reuses `todotxt-core` watcher)
-- New crate `crates/todotxt-tui` — separate `todotxt-tui` binary in Cargo workspace
+The project now includes:
+- todotxt-core (library)
+- todotxt-cli (command-line interface)
+- todotxt-tui (interactive terminal UI)
+
+Milestone archives:
+- .planning/milestones/v1.0-ROADMAP.md
+- .planning/milestones/v1.1-ROADMAP.md
 
 ---
 
@@ -26,10 +25,11 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 
 ## Current State
 
-**v1.0 shipped 2026-04-16.** The Rust core library and CLI are complete and fully tested.
+**v1.0 and v1.1 shipped.** Core, CLI, and TUI are complete and tested.
 
 - `todotxt-core`: parser, Task model, TaskList CRUD, filter engine, sort engine, file watching, portable mode
 - `todotxt-cli`: 25+ commands — read, write, enrichment, bulk operations, structured JSON output, TOML config, named presets, shell completions
+- `todotxt-tui`: keyboard-driven terminal UI with add/edit/delete, filtering/sorting, presets, themes, and auto-reload
 - 207 tests passing, 0 clippy warnings, `#![deny(warnings)]` enforced in both crates
 - Cross-platform: Windows, Linux, macOS
 
@@ -54,11 +54,13 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 - ✓ Shell completions (bash, zsh, fish, PowerShell) — v1.0
 - ✓ Cross-platform builds and CI (Windows, Linux, macOS) — v1.0 (CI workflow present)
 
-### Active (v1.1)
+### Validated (v1.1)
 
-- [ ] TUI interface (ratatui) — `todotxt-tui` crate, separate binary, full-screen keyboard-driven UI
-- [ ] Filter panel, sort toggle, status bar, inline edit, add, done/undo, delete with confirm
-- [ ] @context/+project autocomplete, themeable colors, file-watch auto-reload
+- ✓ TUI interface (ratatui) — `todotxt-tui` crate and binary shipped in workspace
+- ✓ Navigation and actions — list navigation, done toggle, add/edit/delete flows, status bar
+- ✓ Filter/sort and presets — query filter panel, sort cycle, active context in status bar
+- ✓ Autocomplete and UX guards — @/+ completion and deferred reload while editing
+- ✓ Theme and polish — default/light theme, config selection, NO_COLOR behavior, terminal restoration
 
 ### Active (v1.2+)
 
@@ -67,7 +69,6 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 
 ### Out of Scope
 
-- TUI interface — deferred to v1.1 (seed planted)
 - GUI interface — deferred to v1.2 (seed planted)
 - todo.sh compatibility layer — deferred (seed planted)
 - Windows-specific features (system tray) in CLI — GUI milestone handles platform-specific features
@@ -75,9 +76,9 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 
 ## Context
 
-**Shipped:** v1.0 on 2026-04-16. ~4,000 LOC Rust across two crates.
+**Shipped:** v1.0 on 2026-04-16 and v1.1 on 2026-04-23.
 **Tech stack:** Rust stable, Cargo workspace, winnow (parser), clap (CLI), tokio (async watching), serde_json, directories, tempfile, rstest, insta.
-**Crates:** `crates/todotxt-core` (library) + `crates/todotxt-cli` (binary).
+**Crates:** `crates/todotxt-core` (library) + `crates/todotxt-cli` (binary) + `crates/todotxt-tui` (binary).
 **Test baseline:** 207 tests passing, 0 warnings, 0 clippy issues.
 
 **Existing C# codebase:** C# .NET Framework 4.0 WPF app (Windows only). Version 3.3.1.0. Located at `Client/`, `ToDoLib/`, `TodoTests/`. Reference implementation for format and behavior.
@@ -109,4 +110,4 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 4. Audit Out of Scope — reasons still valid?
 
 ---
-*Last updated: 2026-04-18 — v1.1 milestone started*
+*Last updated: 2026-04-23 after v1.1 milestone completion*

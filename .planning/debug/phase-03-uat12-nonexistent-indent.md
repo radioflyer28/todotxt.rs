@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Phase 03 UAT test 12: list :nonexistent warns correctly, but done task still improperly indented in output"
 created: 2026-04-15T00:00:00Z
-updated: 2026-04-15T00:25:00Z
+updated: 2026-04-23T00:00:00Z
 ---
 
 ## Current Focus

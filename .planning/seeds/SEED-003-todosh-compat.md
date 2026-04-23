@@ -1,4 +1,5 @@
 ---
+status: deferred
 planted_during: v1.0
 trigger_when: CLI is stable; users want drop-in replacement for todo.sh shell scripts
 ---

@@ -1,4 +1,5 @@
 ---
+status: deferred
 planted_during: v1.0
 trigger_when: Core library and CLI are stable; need native desktop experience for non-terminal users
 ---

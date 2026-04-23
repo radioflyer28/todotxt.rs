@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Diagnose this UAT issue and return root cause only (no code changes). Phase 03 list command shows done task printed and mangled indentation."
 created: 2026-04-15T00:00:00Z
-updated: 2026-04-15T00:20:00Z
+updated: 2026-04-23T00:00:00Z
 ---
 
 ## Current Focus
