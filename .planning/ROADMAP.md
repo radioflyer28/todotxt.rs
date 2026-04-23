@@ -19,13 +19,13 @@
 
 ## Planned Phases
 
-- [ ] **Phase 14: Compat Discovery + Spec Lock**
-  - Confirm todo.sh compatibility surface (CLI semantics, edge cases, output conventions)
-  - Confirm deferred-task parity requirements (`t:` behavior) against todotxt.net and document decision
-  - Produce implementation contract for downstream phases
+- [x] **Phase 14: Compat Discovery + Spec Lock** — complete 2026-04-23
+  - Confirmed todo.sh compatibility surface (CLI semantics, edge cases, output conventions)
+  - Confirmed deferred-task parity requirements (`t:` behavior) and locked decision
+  - Produced 14-COMPAT-SPEC.md and 14-DEFER-SPEC.md implementation contracts
   - **Plans:** 1 plan
   - Plans:
-    - [ ] 14-01-PLAN.md — Produce COMPAT-SPEC.md and DEFER-SPEC.md implementation contracts
+    - [x] 14-01-PLAN.md — Produce COMPAT-SPEC.md and DEFER-SPEC.md implementation contracts
 
 - [ ] **Phase 15: todo.sh Compatibility Layer**
   - Implement compatibility commands/aliases and argument behavior

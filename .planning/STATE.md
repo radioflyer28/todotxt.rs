@@ -24,18 +24,17 @@ See: .planning/PROJECT.md (updated 2026-04-23)
 ## Current Position
 
 Phase: 14 (Compat Discovery + Spec Lock)
-Plan: Not started
-Status: Milestone initialized; requirements and roadmap active
-Last activity: 2026-04-23 — v1.2 milestone started
+Plan: 14-01 — complete
+Status: Phase 14 complete — spec lock delivered
+Last activity: 2026-04-23 — Phase 14 executed; 14-COMPAT-SPEC.md and 14-DEFER-SPEC.md written and committed
 
 ## Next Step
 
-Run `/gsd-plan-phase 14` to create executable plans for compatibility discovery and spec lock.
+Run `/gsd-execute-phase 15` to implement the todo.sh compatibility layer (aliases, new commands, `--all` flag, `--compat` flag).
 
 ## Pending Decisions
 
-- Deferred-task parity decision (`t:` semantics): confirm exact behavior target before implementation.
-- todo.sh compatibility surface: finalize exact command/alias/behavior matrix in Phase 14.
+None — all Phase 14 decisions locked in 14-DEFER-SPEC.md and 14-COMPAT-SPEC.md.
 
 ## Blockers
 
