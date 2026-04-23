@@ -1,9 +1,24 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
+milestone_name: Scope
+status: planning
+last_updated: "2026-04-23T19:19:48.039Z"
+last_activity: 2026-04-23
+progress:
+  total_phases: 5
+  completed_phases: 4
+  total_plans: 9
+  completed_plans: 9
+  percent: 100
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.2
 milestone_name: Compatibility + UX Alignment
 current_phase: 16
-status: active
+status: Ready to plan
 last_updated: "2026-04-23T00:00:00.000Z"
 progress:
   total_phases: 5
@@ -23,14 +38,14 @@ See: .planning/PROJECT.md (updated 2026-04-23)
 
 ## Current Position
 
-Phase: 16 (TUI Filter UX Alignment)
-Plan: 16-03 — complete
-Status: Phase 16 complete — Esc snapshot/restore, TuiConfig serialization + atomic save(), F-key preset definition panel with TOML persistence implemented
-Last activity: 2026-04-23 — Phase 16 executed; 3 plans shipped (FilteringState snapshot, TuiConfig::save, FilterDefining panel)
+Phase: 18
+Plan: 18-01 (in progress)
+Status: Executing Phase 18 — Validation + Ship Readiness (4 plans: UAT checklist, requirements close-out, human UAT, milestone audit)
+Last activity: 2026-04-23
 
 ## Next Step
 
-Run `/gsd-execute-phase 17` for the next v1.2 phase (conditional theme label in status bar), or check ROADMAP.md for the current phase sequence.
+Executing Phase 18 plans sequentially. Current: Plan 18-01 — Write UAT.md + confirm regression suite green.
 
 ## Pending Decisions
 
@@ -43,10 +58,12 @@ None.
 ## Accumulated Context
 
 **Shipped milestones:**
+
 - v1.0 (phases 01-08): core + CLI shipped and verified.
 - v1.1 (phases 09-13): TUI shipped and verified.
 
 **v1.2 kickoff scope:**
+
 - todo.sh compatibility layer
 - filter Esc cancel/restore behavior
 - conditional theme label in status bar
