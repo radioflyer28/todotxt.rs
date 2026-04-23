@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Compatibility + UX Alignment
-current_phase: 14
+current_phase: 15
 status: active
 last_updated: "2026-04-23T00:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 0
   completed_plans: 0
-  percent: 0
+  percent: 20
 
 # Project State
 
@@ -23,18 +23,18 @@ See: .planning/PROJECT.md (updated 2026-04-23)
 
 ## Current Position
 
-Phase: 14 (Compat Discovery + Spec Lock)
-Plan: 14-01 — complete
-Status: Phase 14 complete — spec lock delivered
-Last activity: 2026-04-23 — Phase 14 executed; 14-COMPAT-SPEC.md and 14-DEFER-SPEC.md written and committed
+Phase: 15 (todo.sh Compatibility Layer)
+Plan: 15-03 — complete
+Status: Phase 15 complete — all compat aliases, new commands, --all/--compat flags implemented and tested
+Last activity: 2026-04-23 — Phase 15 executed; 9 aliases + listpri + listall + deduplicate + --all + --compat shipped (31 tests)
 
 ## Next Step
 
-Run `/gsd-execute-phase 15` to implement the todo.sh compatibility layer (aliases, new commands, `--all` flag, `--compat` flag).
+Run `/gsd-execute-phase 16` to implement TUI filter Esc cancel/restore behavior.
 
 ## Pending Decisions
 
-None — all Phase 14 decisions locked in 14-DEFER-SPEC.md and 14-COMPAT-SPEC.md.
+None.
 
 ## Blockers
 
