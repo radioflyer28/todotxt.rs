@@ -56,6 +56,40 @@
   - Integration and UAT pass for compatibility and TUI UX changes
   - Milestone audit, docs updates, and close-out prep
 
+## Phase Detail Sections
+
+### Phase 14: Compat Discovery + Spec Lock
+Goal: Confirm todo.sh compatibility surface and deferred-task parity requirements; produce COMPAT-SPEC.md and DEFER-SPEC.md implementation contracts.
+Status: complete
+Plans:
+- [x] 14-01-PLAN.md
+
+### Phase 15: todo.sh Compatibility Layer
+Goal: Implement compatibility commands/aliases and argument behavior; add regression tests for compatibility contracts and exit-code behavior.
+Status: complete
+Plans:
+- [x] 15-01-PLAN.md
+- [x] 15-02-PLAN.md
+- [x] 15-03-PLAN.md
+
+### Phase 16: TUI Filter UX Alignment
+Goal: Implement Esc cancel/restore behavior in filter flows, rework filter-definition panel layout, and persist configured filters in TOML.
+Status: complete
+Plans:
+- [x] 16-01-PLAN.md
+- [x] 16-02-PLAN.md
+- [x] 16-03-PLAN.md
+
+### Phase 17: TUI Grouping/Sorting Alignment + Status Polish
+Goal: Group tasks by shared sort keys (project/context/other configured key) and conditionally show theme label in status bar (hide when default/no-value).
+Status: planned
+Plans:
+
+### Phase 18: Validation + Ship Readiness
+Goal: Integration and UAT pass for compatibility and TUI UX changes; milestone audit, docs updates, and close-out prep.
+Status: planned
+Plans:
+
 ## Backlog
 
 - GUI interface (native desktop)
