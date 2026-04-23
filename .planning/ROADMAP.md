@@ -40,6 +40,12 @@
   - Implement Esc cancel/restore behavior in filter flows
   - Rework filter-definition panel layout to match todotxt.net mental model
   - Persist configured filters in TOML and reload reliably
+  - **Requirements:** V12-TUI-FILTER-01, V12-TUI-FILTER-02, V12-TUI-FILTER-03
+  - **Plans:** 3 plans
+  - Plans:
+    - [ ] 16-01-PLAN.md — Esc snapshot/restore for quick filter panel (V12-TUI-FILTER-01)
+    - [ ] 16-02-PLAN.md — TOML serialize + TuiConfig::save() atomic write (V12-TUI-FILTER-03)
+    - [ ] 16-03-PLAN.md — F-key definition panel: layout, key handlers, preset persistence wiring (V12-TUI-FILTER-01, V12-TUI-FILTER-02, V12-TUI-FILTER-03)
 
 - [ ] **Phase 17: TUI Grouping/Sorting Alignment + Status Polish**
   - Group tasks by shared sort keys (project/context/other configured key)
