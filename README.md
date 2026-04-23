@@ -9,6 +9,17 @@ for machine-parseable integration.
 
 ---
 
+## Features
+
+- **CLI** — 25+ commands: add, do, list, filter, sort, archive, bulk ops, JSON output, TOML config, shell completions
+- **todo.sh compatible** — Drop-in alias support for `add`/`a`, `do`/`x`, `ls`, `lsa`, `lsp`, `rm` and more. Use `--compat` for numbered output.
+- **TUI** — Keyboard-driven terminal UI: live filter, sort, grouping (`g`), deferred task toggle (`h`), persistent filter presets
+- **Deferred tasks** — Tasks with a future `t:YYYY-MM-DD` threshold date are hidden by default; toggle with `h` in the TUI or `--all` in the CLI
+- **todo.txt format** — Strict round-trip: priorities, projects (`+tag`), contexts (`@tag`), due dates (`due:`), threshold dates (`t:`), completion dates
+- **Cross-platform** — Windows, Linux, macOS
+
+---
+
 ## Table of Contents
 
 1. [Installation](#1-installation)
