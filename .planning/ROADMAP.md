@@ -30,6 +30,11 @@
 - [ ] **Phase 15: todo.sh Compatibility Layer**
   - Implement compatibility commands/aliases and argument behavior
   - Add regression tests for compatibility contracts and exit-code behavior
+  - **Plans:** 3 plans
+  - Plans:
+    - [ ] 15-01-PLAN.md — Add 9 compat aliases + new CLI variants (Listpri, Listall, Deduplicate) + --all/--compat flags to cli.rs
+    - [ ] 15-02-PLAN.md — Implement listpri, listall, deduplicate + wire --all/--compat in list.rs + register in mod.rs + dispatch in main.rs
+    - [ ] 15-03-PLAN.md — Regression tests for full compat surface (aliases, --all, --compat, listpri, listall, deduplicate)
 
 - [ ] **Phase 16: TUI Filter UX Alignment**
   - Implement Esc cancel/restore behavior in filter flows
