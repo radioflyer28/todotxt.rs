@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Compatibility + UX Alignment
-current_phase: 15
+current_phase: 16
 status: active
 last_updated: "2026-04-23T00:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 0
   completed_plans: 0
   percent: 20
@@ -23,14 +23,14 @@ See: .planning/PROJECT.md (updated 2026-04-23)
 
 ## Current Position
 
-Phase: 15 (todo.sh Compatibility Layer)
-Plan: 15-03 — complete
-Status: Phase 15 complete — all compat aliases, new commands, --all/--compat flags implemented and tested
-Last activity: 2026-04-23 — Phase 15 executed; 9 aliases + listpri + listall + deduplicate + --all + --compat shipped (31 tests)
+Phase: 16 (TUI Filter UX Alignment)
+Plan: 16-03 — complete
+Status: Phase 16 complete — Esc snapshot/restore, TuiConfig serialization + atomic save(), F-key preset definition panel with TOML persistence implemented
+Last activity: 2026-04-23 — Phase 16 executed; 3 plans shipped (FilteringState snapshot, TuiConfig::save, FilterDefining panel)
 
 ## Next Step
 
-Run `/gsd-execute-phase 16` to implement TUI filter Esc cancel/restore behavior.
+Run `/gsd-execute-phase 17` for the next v1.2 phase (conditional theme label in status bar), or check ROADMAP.md for the current phase sequence.
 
 ## Pending Decisions
 
