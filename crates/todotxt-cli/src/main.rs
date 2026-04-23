@@ -71,6 +71,9 @@ fn run(cli: &Cli) -> Result<(), CliError> {
         Commands::Postpone { id, days } => commands::due::run_postpone(&todo_path, *id, *days, &renderer)?,
         Commands::Archive => commands::archive::run_archive(&todo_path, &cfg, &renderer)?,
         Commands::DelDone => commands::del_done::run_del_done(&todo_path, &renderer)?,
+        Commands::Listpri(args) => commands::listpri::run(&todo_path, args, &cfg, &renderer)?,
+        Commands::Listall(args) => commands::listall::run(&todo_path, args, &cfg, &renderer)?,
+        Commands::Deduplicate => commands::deduplicate::run(&todo_path, &renderer)?,
     }
 
     Ok(())

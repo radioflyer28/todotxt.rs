@@ -52,11 +52,25 @@ fn build_filter(args: &ListArgs, cfg: &Config) -> Filter {
 
 pub fn run(todo_path: &Path, args: &ListArgs, cfg: &Config, renderer: &Renderer) -> Result<(), CliError> {
     let list = TaskList::load(todo_path)?;
-    let filter = build_filter(args, cfg);
+    let mut filter = build_filter(args, cfg);
+
+    if args.all {
+        filter.suppress_future_threshold = false;
+        filter.suppress_hidden = false;
+    }
+
     let tasks = list.filter(&filter);
-    renderer.print_tasks(&tasks);
-    renderer.print_count(tasks.len());
-    // P-10: empty result = exit 0, not exit 1
+
+    if args.compat {
+        // Emit todo.sh-style numbered plain-text: "{N} {raw_task}" (1-based IDs)
+        for (id, task) in &tasks {
+            println!("{} {}", id + 1, task.to_raw());
+        }
+    } else {
+        renderer.print_tasks(&tasks);
+        renderer.print_count(tasks.len());
+    }
+
     Ok(())
 }
 

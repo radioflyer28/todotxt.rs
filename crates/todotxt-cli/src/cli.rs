@@ -41,9 +41,11 @@ pub enum Commands {
     Stats,
 
     /// List all unique project tags (+project)
+    #[command(alias = "lsprj")]
     Projects,
 
     /// List all unique context tags (@context)
+    #[command(alias = "lsc")]
     Contexts,
 
     /// Print the raw todo.txt line for a task by 1-based ID
@@ -60,10 +62,11 @@ pub enum Commands {
     },
 
     /// Add a new task to todo.txt
+    #[command(alias = "a")]
     Add(AddArgs),
 
     /// Mark one or more tasks as complete (prepends "x YYYY-MM-DD ")
-    #[command(name = "do")]
+    #[command(name = "do", alias = "done")]
     Do {
         /// One or more 1-based task IDs
         ids: Vec<usize>,
@@ -76,7 +79,7 @@ pub enum Commands {
     },
 
     /// Delete one or more tasks by 1-based ID
-    #[command(alias = "delete")]
+    #[command(aliases = ["delete", "rm"])]
     Del {
         /// One or more 1-based task IDs
         ids: Vec<usize>,
@@ -91,6 +94,7 @@ pub enum Commands {
     },
 
     /// Append text to the end of a task
+    #[command(alias = "app")]
     Append {
         /// 1-based task ID
         id: usize,
@@ -99,6 +103,7 @@ pub enum Commands {
     },
 
     /// Prepend text before a task's body (after priority/date prefixes)
+    #[command(alias = "prep")]
     Prepend {
         /// 1-based task ID
         id: usize,
@@ -107,7 +112,7 @@ pub enum Commands {
     },
 
     /// Set priority (A-Z) for one or more tasks
-    #[command(name = "pri")]
+    #[command(name = "pri", alias = "p")]
     Pri {
         /// Priority letter (A-Z)
         priority: char,
@@ -117,6 +122,7 @@ pub enum Commands {
     },
 
     /// Remove priority from one or more tasks
+    #[command(alias = "dp")]
     Depri {
         /// One or more 1-based task IDs
         ids: Vec<usize>,
@@ -144,6 +150,18 @@ pub enum Commands {
     /// Delete all completed tasks from todo.txt
     #[command(name = "del-done")]
     DelDone,
+
+    /// List tasks filtered by priority (A-Z or range like A-C). Default: A-Z.
+    #[command(name = "listpri", alias = "lsp")]
+    Listpri(ListpriArgs),
+
+    /// List tasks from both todo.txt and done.txt, merged.
+    #[command(name = "listall", alias = "lsa")]
+    Listall(ListArgs),
+
+    /// Remove exact duplicate lines from todo.txt.
+    #[command(name = "deduplicate")]
+    Deduplicate,
 }
 
 /// Arguments for the `list` / `ls` subcommand.
@@ -158,6 +176,14 @@ pub struct ListArgs {
     /// Additional filter query with spaces (combined AND with positional filters)
     #[arg(long = "filter", short = 'f')]
     pub filter_query: Option<String>,
+
+    /// Show all tasks including deferred (future t:) and hidden (h:1)
+    #[arg(long)]
+    pub all: bool,
+
+    /// Emit todo.sh-style numbered plain-text output ({N} {raw_task})
+    #[arg(long)]
+    pub compat: bool,
 }
 
 /// Arguments for the `add` subcommand.
@@ -171,5 +197,12 @@ pub struct AddArgs {
     /// Suppress creation date even when auto_creation_date = true in config
     #[arg(long)]
     pub no_date: bool,
+}
+
+/// Arguments for the `listpri` / `lsp` subcommand.
+#[derive(Args, Debug)]
+pub struct ListpriArgs {
+    /// Priority filter: single letter (A) or range (A-C). Defaults to A-Z if omitted.
+    pub priorities: Option<String>,
 }
 
