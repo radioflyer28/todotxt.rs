@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
+use chrono::Local;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList};
@@ -14,7 +15,8 @@ use tui_textarea::TextArea;
 
 use crate::config::TuiConfig;
 use crate::event::AppEvent;
-use crate::theme::{StyleSheet, Theme};
+use crate::theme as theme_module;
+use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
 
 /// State for the @context / +project autocomplete popup (D-08, D-09 in 11-CONTEXT.md).
@@ -66,13 +68,19 @@ pub enum AppMode {
     FilterDefining,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum DisplayRow {
+    Task(usize),
+    GroupHeader(String),
+}
+
 /// Top-level application state.
 pub struct App {
     pub should_quit: bool,
     pub task_list: TaskList,
     pub todo_path: PathBuf,
-    /// 0-based index into `display_indices` for the currently selected row.
-    /// Always clamped to `[0, display_indices.len() - 1]`.
+    /// 0-based index into `display_rows` for the currently selected row.
+    /// Always clamped to `[0, display_rows.len() - 1]`.
     pub selected: usize,
     /// Height of the list area in terminal rows. Kept in sync with `Resize` events.
     /// Used to compute half-page step for Ctrl+d / Ctrl+u (D-09).
@@ -88,8 +96,14 @@ pub struct App {
     pub autocomplete: Option<AutocompleteState>,
     /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
     pub display_indices: Vec<usize>,
+    /// Toggle grouped rendering with non-selectable header rows.
+    pub grouping: bool,
+    /// Rendered rows for list/navigation; includes group headers when grouping is enabled.
+    pub display_rows: Vec<DisplayRow>,
     /// Current display sort order (FileOrder = no sort applied).
     pub sort_order: SortOrder,
+    /// Toggle visibility of deferred tasks (`t:` in the future).
+    pub show_deferred: bool,
     /// Active filter query string (empty = no filter).
     pub filter_query: String,
     /// Filter panel state, or `None` when panel is closed (Plan 02).
@@ -104,12 +118,10 @@ pub struct App {
     pub filter_defining_state: Option<FilterDefiningState>,
     /// Pre-computed color styles for the active theme (D-08, D-09 in 13-CONTEXT.md).
     pub styles: StyleSheet,
-    /// Active theme selected at startup.
-    pub theme: Theme,
 }
 
 impl App {
-    pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, theme: Theme, no_color: bool) -> Self {
+    pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, palette: Theme, no_color: bool) -> Self {
         // Build sorted presets vec from config for quick filter selection (Plan 02).
         let mut presets: Vec<(String, String)> = config
             .presets
@@ -128,15 +140,17 @@ impl App {
             pending_reload: false,
             autocomplete: None,
             display_indices: Vec::new(),
+            grouping: false,
+            display_rows: Vec::new(),
             sort_order: SortOrder::FileOrder,
+            show_deferred: false,
             filter_query: String::new(),
             filter_state: None,
             presets,
             config,
             config_path,
             filter_defining_state: None,
-            styles: StyleSheet::from_theme(theme, no_color),
-            theme,
+            styles: StyleSheet::from_theme(palette, no_color),
         };
         app.rebuild_display_indices();
         app
@@ -222,6 +236,7 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
         let display_count = self.display_indices.len();
+        let row_count = self.display_rows.len();
         match key.code {
             // ── Quit ────────────────────────────────────────────────────────
             KeyCode::Char('q') => {
@@ -232,17 +247,37 @@ impl App {
             }
 
             // ── Navigation ──────────────────────────────────────────────────
-            KeyCode::Char('j') | KeyCode::Down if display_count > 0 => {
-                self.selected = (self.selected + 1).min(display_count - 1);
+            KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
+                let mut next = self.selected + 1;
+                while next < row_count
+                    && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
+                {
+                    next += 1;
+                }
+                if next < row_count {
+                    self.selected = next;
+                }
             }
-            KeyCode::Char('k') | KeyCode::Up if display_count > 0 => {
-                self.selected = self.selected.saturating_sub(1);
+            KeyCode::Char('k') | KeyCode::Up if row_count > 0 => {
+                if self.selected == 0 {
+                    return Ok(());
+                }
+                let mut prev = self.selected.saturating_sub(1);
+                while prev > 0 && matches!(self.display_rows[prev], DisplayRow::GroupHeader(_)) {
+                    prev -= 1;
+                }
+                if matches!(self.display_rows[prev], DisplayRow::Task(_)) {
+                    self.selected = prev;
+                }
             }
             KeyCode::Char('g') if display_count > 0 => {
-                self.selected = 0;
+                self.grouping = !self.grouping;
+                self.rebuild_and_reanchor();
             }
-            KeyCode::Char('G') if display_count > 0 => {
-                self.selected = display_count - 1;
+            KeyCode::Char('h') if display_count > 0 => {
+                self.show_deferred = !self.show_deferred;
+                self.rebuild_display_indices();
+                self.clamp_selection();
             }
             // Ctrl+U half-page up — must come before plain 'u' (edit).
             KeyCode::Char('u')
@@ -250,13 +285,25 @@ impl App {
             {
                 let half = (self.list_height / 2).max(1) as usize;
                 self.selected = self.selected.saturating_sub(half);
+                while self.selected < row_count
+                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
+                {
+                    self.selected += 1;
+                }
+                self.clamp_selection();
             }
             // Ctrl+D half-page down — must come before plain 'd' (delete).
             KeyCode::Char('d')
                 if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
                 let half = (self.list_height / 2).max(1) as usize;
-                self.selected = (self.selected + half).min(display_count - 1);
+                self.selected = (self.selected + half).min(row_count.saturating_sub(1));
+                while self.selected < row_count
+                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
+                {
+                    self.selected += 1;
+                }
+                self.clamp_selection();
             }
 
             // ── Done toggle ──────────────────────────────────────────────────
@@ -315,6 +362,14 @@ impl App {
                     .collect();
                 sorted_presets.sort_by_key(|(name, _)| name.clone());
                 sorted_presets.truncate(9);
+
+                // Always show at least 5 slots so users can create presets from scratch.
+                // Padding slots are named "f1"–"f5"; existing named presets take precedence.
+                const MIN_PRESET_SLOTS: usize = 5;
+                while sorted_presets.len() < MIN_PRESET_SLOTS {
+                    let slot_n = sorted_presets.len() + 1;
+                    sorted_presets.push((format!("f{}", slot_n), String::new()));
+                }
 
                 let preset_names: Vec<String> = sorted_presets.iter().map(|(n, _)| n.clone()).collect();
                 let preset_editors: Vec<TextArea<'static>> = sorted_presets.iter().map(|(_, f)| {
@@ -442,10 +497,14 @@ impl App {
                 // Update config.presets from editors.
                 for (i, name) in state.preset_names.iter().enumerate() {
                     let filter_str = state.preset_editors[i].lines().join("").trim().to_string();
-                    let preset_filter = if filter_str.is_empty() { None } else { Some(filter_str) };
-                    self.config.presets.entry(name.clone())
-                        .and_modify(|p| p.filter = preset_filter.clone())
-                        .or_insert_with(|| crate::config::TuiPreset { filter: preset_filter });
+                    if filter_str.is_empty() {
+                        // Remove empty/cleared presets — do not write blank slots to config.
+                        self.config.presets.remove(name);
+                    } else {
+                        self.config.presets.entry(name.clone())
+                            .and_modify(|p| p.filter = Some(filter_str.clone()))
+                            .or_insert_with(|| crate::config::TuiPreset { filter: Some(filter_str) });
+                    }
                 }
 
                 // Rebuild presets vec from updated config (D-05: only preset strings persisted).
@@ -690,14 +749,22 @@ impl App {
                 // Move selection to the newly added task (D-13).
                 let canonical = self.task_list.len().saturating_sub(1);
                 self.rebuild_display_indices();
-                self.selected = self.display_indices.iter().position(|&x| x == canonical).unwrap_or(0);
+                self.selected = self
+                    .display_rows
+                    .iter()
+                    .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == canonical))
+                    .unwrap_or(0);
             }
             AppMode::Editing { original_idx } => {
                 self.task_list
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
                 self.rebuild_display_indices();
-                self.selected = self.display_indices.iter().position(|&x| x == original_idx).unwrap_or(0);
+                self.selected = self
+                    .display_rows
+                    .iter()
+                    .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == original_idx))
+                    .unwrap_or(0);
             }
             _ => {}
         }
@@ -724,7 +791,7 @@ impl App {
 
     /// Clamp `selected` to `[0, display_count - 1]`, or 0 on empty display.
     fn clamp_selection(&mut self) {
-        let count = self.display_indices.len();
+        let count = self.display_rows.len();
         if count == 0 {
             self.selected = 0;
         } else {
@@ -742,7 +809,10 @@ impl App {
             let mut pairs: Vec<(usize, &Task)> = if query.is_empty() {
                 self.task_list.tasks().iter().enumerate().collect()
             } else {
-                let f = Filter::from_query(&query);
+                let mut f = Filter::from_query(&query);
+                if self.show_deferred {
+                    f.suppress_future_threshold = false;
+                }
                 self.task_list.filter(&f)
             };
             if sort_order != SortOrder::FileOrder {
@@ -751,6 +821,38 @@ impl App {
             pairs.into_iter().map(|(idx, _)| idx).collect()
         };
         self.display_indices = new_indices;
+
+        if self.grouping && !self.display_indices.is_empty() {
+            let tasks = self.task_list.tasks();
+            let sort_order = self.sort_order;
+            // Stable-sort by group key so same-key tasks are always adjacent.
+            // This fixes cases where the primary sort interleaves groups (e.g., Alphabetical
+            // sorts by raw string including priority prefix, but group_key_for uses body).
+            // stable_sort preserves primary sort order within each group.
+            self.display_indices.sort_by(|&a, &b| {
+                let ka = group_key_for(&tasks[a], &sort_order);
+                let kb = group_key_for(&tasks[b], &sort_order);
+                ka.cmp(&kb)
+            });
+            let mut rows: Vec<DisplayRow> = Vec::new();
+            let mut last_key: Option<String> = None;
+            for &idx in &self.display_indices {
+                let task = &tasks[idx];
+                let key = group_key_for(task, &self.sort_order);
+                if last_key.as_deref() != Some(&key) {
+                    rows.push(DisplayRow::GroupHeader(key.clone()));
+                    last_key = Some(key);
+                }
+                rows.push(DisplayRow::Task(idx));
+            }
+            self.display_rows = rows;
+        } else {
+            self.display_rows = self
+                .display_indices
+                .iter()
+                .map(|&i| DisplayRow::Task(i))
+                .collect();
+        }
     }
 
     /// Rebuild display indices while preserving the selected canonical task.
@@ -758,10 +860,14 @@ impl App {
     /// Saves the current canonical index, rebuilds, then restores the selection
     /// to the display row where that canonical index now appears (or row 0).
     fn rebuild_and_reanchor(&mut self) {
-        let old_canonical = self.display_indices.get(self.selected).copied();
+        let old_canonical = self.canonical_selected();
         self.rebuild_display_indices();
         self.selected = old_canonical
-            .and_then(|ci| self.display_indices.iter().position(|&x| x == ci))
+            .and_then(|ci| {
+                self.display_rows
+                    .iter()
+                    .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == ci))
+            })
             .unwrap_or(0);
         self.clamp_selection();
     }
@@ -769,7 +875,10 @@ impl App {
     /// Return the canonical task index for the currently selected display row, or `None`
     /// if the display list is empty.
     fn canonical_selected(&self) -> Option<usize> {
-        self.display_indices.get(self.selected).copied()
+        match self.display_rows.get(self.selected) {
+            Some(DisplayRow::Task(idx)) => Some(*idx),
+            _ => self.display_indices.first().copied(),
+        }
     }
 
     /// Toggle the completion state of the currently selected task and persist to disk.
@@ -863,28 +972,40 @@ impl App {
         } else if self.display_indices.is_empty() {
             vec![ListItem::new("(no matching tasks)")]
         } else {
-            self.display_indices.iter().map(|&ci| {
-                let t = &tasks[ci];
-                let content = format!("{}: {}", ci + 1, t.to_raw());
-                // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
-                // Style precedence: completed (DIM) > priority A/B/C > overdue > plain.
-                // Modifier::REVERSED for selection is applied by List::highlight_style — not here.
-                let style = if t.completed {
-                    // Completed tasks: DIM only, no color (D-01, D-06).
-                    Style::default().add_modifier(Modifier::DIM)
-                } else if t.priority == Some('A') {
-                    self.styles.priority_a
-                } else if t.priority == Some('B') {
-                    self.styles.priority_b
-                } else if t.priority == Some('C') {
-                    self.styles.priority_c
-                } else if t.due_status() == DueStatus::Overdue {
-                    self.styles.overdue
-                } else {
-                    Style::default()
-                };
-                ListItem::new(content).style(style)
-            }).collect()
+            self.display_rows
+                .iter()
+                .map(|row| match row {
+                    DisplayRow::GroupHeader(label) => ListItem::new(format!(" {}", label))
+                        .style(self.styles.group_header),
+                    DisplayRow::Task(ci) => {
+                        let t = &tasks[*ci];
+                        let indent = if self.grouping { "  " } else { "" };
+                        let content = format!("{}{}: {}", indent, ci + 1, t.to_raw());
+                        // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
+                        // Style precedence: completed (DIM) > deferred shown (DIM) > priority A/B/C > overdue > plain.
+                        // Modifier::REVERSED for selection is applied by List::highlight_style — not here.
+                        let style = if t.completed {
+                            // Completed tasks: DIM only, no color (D-01, D-06).
+                            Style::default().add_modifier(Modifier::DIM)
+                        } else if self.show_deferred
+                            && t.threshold_date.map_or(false, |d| d > Local::now().date_naive())
+                        {
+                            Style::default().add_modifier(Modifier::DIM)
+                        } else if t.priority == Some('A') {
+                            self.styles.priority_a
+                        } else if t.priority == Some('B') {
+                            self.styles.priority_b
+                        } else if t.priority == Some('C') {
+                            self.styles.priority_c
+                        } else if t.due_status() == DueStatus::Overdue {
+                            self.styles.overdue
+                        } else {
+                            Style::default()
+                        };
+                        ListItem::new(content).style(style)
+                    }
+                })
+                .collect()
         };
 
         let list = List::new(items)
@@ -935,12 +1056,6 @@ impl App {
         }
 
         let mut middle = String::new();
-        let theme_label = match self.theme {
-            Theme::Default => "default",
-            Theme::Light => "light",
-        };
-        middle.push_str(" | theme:");
-        middle.push_str(theme_label);
 
         let trimmed_filter = self.filter_query.trim();
         if !trimmed_filter.is_empty() {
@@ -951,8 +1066,14 @@ impl App {
             middle.push_str(" | sort: ");
             middle.push_str(sort_name(self.sort_order));
         }
+        if self.grouping {
+            middle.push_str(" | group: on");
+        }
+        if self.show_deferred {
+            middle.push_str(" [+deferred]");
+        }
 
-        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | o sort";
+        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | o sort | g group | h deferred";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -1176,6 +1297,45 @@ fn sort_name(order: SortOrder) -> &'static str {
         SortOrder::Priority      => "priority",
         SortOrder::Project       => "project",
         _                        => "?",
+    }
+}
+
+fn group_key_for(task: &Task, sort: &SortOrder) -> String {
+    match sort {
+        SortOrder::Priority => task
+            .priority
+            .map(|p| format!("({})", p))
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::Project => task
+            .projects
+            .first()
+            .map(|p| format!("+{}", p))
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::Context => task
+            .contexts
+            .first()
+            .map(|c| format!("@{}", c))
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::DueDate => task
+            .due_date
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "no due date".to_string()),
+        SortOrder::Alphabetical => task
+            .body
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::FileOrder => "all tasks".to_string(),
+        SortOrder::CompletedDate => task
+            .completion_date
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "no completion date".to_string()),
+        SortOrder::CreationDate => task
+            .creation_date
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "no creation date".to_string()),
+        _ => "unknown".to_string(),
     }
 }
 
