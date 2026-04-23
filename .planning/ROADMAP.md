@@ -23,6 +23,9 @@
   - Confirm todo.sh compatibility surface (CLI semantics, edge cases, output conventions)
   - Confirm deferred-task parity requirements (`t:` behavior) against todotxt.net and document decision
   - Produce implementation contract for downstream phases
+  - **Plans:** 1 plan
+  - Plans:
+    - [ ] 14-01-PLAN.md — Produce COMPAT-SPEC.md and DEFER-SPEC.md implementation contracts
 
 - [ ] **Phase 15: todo.sh Compatibility Layer**
   - Implement compatibility commands/aliases and argument behavior
