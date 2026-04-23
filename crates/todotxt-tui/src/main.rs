@@ -30,7 +30,7 @@ fn main() -> color_eyre::Result<()> {
     let config_path = TuiConfig::resolve_path(&platform_path);
     let config = TuiConfig::load(&config_path)?;
 
-    let todo_path = config.todo_file.ok_or_else(|| {
+    let todo_path = config.todo_file.clone().ok_or_else(|| {
         eyre!(
             "todo_file is not set in config.toml ({}).\nHint: add:  todo_file = \"/path/to/todo.txt\"",
             config_path.display()
@@ -96,15 +96,8 @@ fn main() -> color_eyre::Result<()> {
     // D-03, D-05 (13-CONTEXT.md): Parse theme name from config; unknown → Default.
     let theme = crate::theme::Theme::from_str(&config.tui.theme);
 
-    let mut presets: Vec<(String, String)> = config
-        .presets
-        .into_iter()
-        .filter_map(|(name, p)| p.filter.map(|f| (name, f)))
-        .collect();
-    presets.sort_by(|(a, _), (b, _)| a.cmp(b));
-
     // Run the event loop.
-    let mut app = App::new(task_list, todo_path, presets, theme, no_color);
+    let mut app = App::new(task_list, todo_path, config, Some(config_path), theme, no_color);
     app.run(&mut guard.terminal, rx)?;
 
     // Guard drops here → disable_raw_mode + LeaveAlternateScreen.

@@ -12,6 +12,7 @@ use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList};
 use tui_textarea::TextArea;
 
+use crate::config::TuiConfig;
 use crate::event::AppEvent;
 use crate::theme::{StyleSheet, Theme};
 use crate::tui::Tui;
@@ -41,6 +42,18 @@ pub struct FilteringState {
     pub snapshot: String,
 }
 
+/// State for the F-key preset definition panel (D-01, D-06, D-07).
+pub struct FilterDefiningState {
+    /// Row 0: editable active filter with live preview (D-07).
+    pub active_editor: TextArea<'static>,
+    /// Preset names in sorted order (index 0 = preset #1).
+    pub preset_names: Vec<String>,
+    /// One editor per preset slot; index 0 corresponds to preset_names[0].
+    pub preset_editors: Vec<TextArea<'static>>,
+    /// Currently focused row: 0 = active filter row, 1–9 = preset row N.
+    pub selected_row: usize,
+}
+
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -49,6 +62,8 @@ pub enum AppMode {
     Editing { original_idx: usize },
     DeleteConfirm,
     Filtering,
+    /// F-key preset definition panel (D-01 in 16-CONTEXT.md).
+    FilterDefining,
 }
 
 /// Top-level application state.
@@ -81,6 +96,12 @@ pub struct App {
     pub filter_state: Option<FilteringState>,
     /// Named filter presets from `[presets]` in config (Plan 02).
     pub presets: Vec<(String, String)>,
+    /// Full TUI config (needed for preset definition panel save, D-04).
+    pub config: TuiConfig,
+    /// Config file path, used by TuiConfig::save() in the definition panel.
+    pub config_path: Option<PathBuf>,
+    /// State for the F-key preset definition panel, or None when closed.
+    pub filter_defining_state: Option<FilterDefiningState>,
     /// Pre-computed color styles for the active theme (D-08, D-09 in 13-CONTEXT.md).
     pub styles: StyleSheet,
     /// Active theme selected at startup.
@@ -88,7 +109,14 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(task_list: TaskList, todo_path: PathBuf, presets: Vec<(String, String)>, theme: Theme, no_color: bool) -> Self {
+    pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, theme: Theme, no_color: bool) -> Self {
+        // Build sorted presets vec from config for quick filter selection (Plan 02).
+        let mut presets: Vec<(String, String)> = config
+            .presets
+            .iter()
+            .filter_map(|(name, p)| p.filter.as_ref().map(|f| (name.clone(), f.clone())))
+            .collect();
+        presets.sort_by(|(a, _), (b, _)| a.cmp(b));
         let mut app = App {
             should_quit: false,
             task_list,
@@ -104,6 +132,9 @@ impl App {
             filter_query: String::new(),
             filter_state: None,
             presets,
+            config,
+            config_path,
+            filter_defining_state: None,
             styles: StyleSheet::from_theme(theme, no_color),
             theme,
         };
@@ -156,6 +187,7 @@ impl App {
                     }
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
                     AppMode::Filtering => self.handle_filtering_key(key)?,
+                    AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -272,6 +304,34 @@ impl App {
                 self.mode = AppMode::Filtering;
             }
 
+            // ── Preset definition panel (Plan 16-03, D-01) ──────────────────
+            KeyCode::Char('F') => {
+                let mut active_editor = TextArea::default();
+                active_editor.insert_str(&self.filter_query);
+
+                // Build sorted preset list (up to 9 entries) from config snapshot.
+                let mut sorted_presets: Vec<(String, String)> = self.config.presets.iter()
+                    .map(|(k, v)| (k.clone(), v.filter.clone().unwrap_or_default()))
+                    .collect();
+                sorted_presets.sort_by_key(|(name, _)| name.clone());
+                sorted_presets.truncate(9);
+
+                let preset_names: Vec<String> = sorted_presets.iter().map(|(n, _)| n.clone()).collect();
+                let preset_editors: Vec<TextArea<'static>> = sorted_presets.iter().map(|(_, f)| {
+                    let mut ta = TextArea::default();
+                    ta.insert_str(f);
+                    ta
+                }).collect();
+
+                self.filter_defining_state = Some(FilterDefiningState {
+                    active_editor,
+                    preset_names,
+                    preset_editors,
+                    selected_row: 0,
+                });
+                self.mode = AppMode::FilterDefining;
+            }
+
             _ => {}
         }
         Ok(())
@@ -346,6 +406,100 @@ impl App {
                         .unwrap_or_default();
                 }
                 self.rebuild_and_reanchor();
+            }
+        }
+        Ok(())
+    }
+
+    // ── Preset definition panel key handler (Plan 16-03, D-01) ────────────────
+
+    fn handle_filter_defining_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        use crossterm::event::KeyCode as KC;
+
+        let state = match self.filter_defining_state.as_mut() {
+            Some(s) => s,
+            None => {
+                self.mode = AppMode::Normal;
+                return Ok(());
+            }
+        };
+
+        match key.code {
+            // D-03: Esc = discard — nothing written to TOML.
+            KC::Esc => {
+                self.filter_defining_state = None;
+                self.mode = AppMode::Normal;
+            }
+
+            // D-04: Enter = save preset definitions to TOML, return to Normal.
+            KC::Enter => {
+                // Flush active editor content back to filter_query (live preview finalised).
+                self.filter_query = state.active_editor.lines().join("").trim().to_string();
+
+                // Update config.presets from editors.
+                for (i, name) in state.preset_names.iter().enumerate() {
+                    let filter_str = state.preset_editors[i].lines().join("").trim().to_string();
+                    let preset_filter = if filter_str.is_empty() { None } else { Some(filter_str) };
+                    self.config.presets.entry(name.clone())
+                        .and_modify(|p| p.filter = preset_filter.clone())
+                        .or_insert_with(|| crate::config::TuiPreset { filter: preset_filter });
+                }
+
+                // Rebuild presets vec from updated config (D-05: only preset strings persisted).
+                let mut updated: Vec<(String, String)> = self.config.presets.iter()
+                    .filter_map(|(k, v)| v.filter.as_ref().map(|f| (k.clone(), f.clone())))
+                    .collect();
+                updated.sort_by(|(a, _), (b, _)| a.cmp(b));
+                self.presets = updated;
+
+                // Persist to TOML atomically.
+                if let Some(ref path) = self.config_path.clone() {
+                    if let Err(e) = self.config.save(path) {
+                        eprintln!("Warning: failed to save config: {e}");
+                    }
+                }
+
+                self.filter_defining_state = None;
+                self.mode = AppMode::Normal;
+                self.rebuild_and_reanchor();
+            }
+
+            // Navigate rows (Up/Down).
+            KC::Up => {
+                if state.selected_row > 0 {
+                    state.selected_row -= 1;
+                }
+            }
+            KC::Down => {
+                let max_row = state.preset_editors.len();
+                if state.selected_row < max_row {
+                    state.selected_row += 1;
+                }
+            }
+
+            // All other keys: forward to the focused editor.
+            _ => {
+                let selected = state.selected_row;
+                if selected == 0 {
+                    state.active_editor.input(key);
+                    // D-07: live preview — update filter_query from active editor.
+                    self.filter_query = self
+                        .filter_defining_state
+                        .as_ref()
+                        .map(|s| s.active_editor.lines().join("").trim().to_string())
+                        .unwrap_or_default();
+                    self.rebuild_and_reanchor();
+                } else {
+                    let idx = selected - 1;
+                    if let Some(ref mut state) = self.filter_defining_state {
+                        if idx < state.preset_editors.len() {
+                            state.preset_editors[idx].input(key);
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -680,6 +834,19 @@ impl App {
                 self.render_filter_panel(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
+            AppMode::FilterDefining => {
+                let preset_rows = self.filter_defining_state.as_ref()
+                    .map(|s| s.preset_editors.len() as u16)
+                    .unwrap_or(0)
+                    .min(9);
+                // 2 (border + active-filter row) + separator + preset rows, min 4
+                let panel_height = (2_u16 + 1 + preset_rows).max(4);
+                let chunks =
+                    Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                self.render_filter_defining_panel(frame, chunks[1]);
+                self.render_status_bar(frame, chunks[2]);
+            }
         }
     }
 
@@ -920,6 +1087,65 @@ impl App {
 
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+
+    /// Render the F-key preset definition panel (D-06, D-07, Plan 16-03).
+    ///
+    /// Layout: bordered outer panel → active filter row (top) → preset list (below).
+    fn render_filter_defining_panel(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::layout::{Constraint, Direction, Layout};
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, List, ListItem};
+
+        let state = match self.filter_defining_state.as_mut() {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Outer bordered block.
+        let outer = Block::default()
+            .title(" Filter Definitions (F) — \u{2191}\u{2193}: navigate  Enter: save  Esc: discard ")
+            .borders(Borders::ALL);
+        let inner = outer.inner(area);
+        frame.render_widget(outer, area);
+
+        // Split inner: active filter row (height 1) + separator + preset list.
+        let row_constraints = [
+            Constraint::Length(1), // active filter row
+            Constraint::Min(0),    // preset list
+        ];
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(row_constraints)
+            .split(inner);
+
+        // --- Row 0: Active filter editor (D-07 live preview) ---
+        let active_focused = state.selected_row == 0;
+        let active_style = if active_focused {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        // Render TextArea widget directly into the single-line row area.
+        // tui-textarea doesn't support inline border here, so we skip it;
+        // the outer block title explains the panel purpose.
+        state.active_editor.set_style(active_style);
+        frame.render_widget(&state.active_editor, rows[0]);
+
+        // --- Rows 1–9: Preset list ---
+        let items: Vec<ListItem> = state.preset_names.iter().enumerate().map(|(i, name)| {
+            let filter_val = state.preset_editors[i].lines().join("");
+            let label = format!(" #{} {}  {}", i + 1, name, filter_val);
+            let style = if state.selected_row == i + 1 {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            ListItem::new(label).style(style)
+        }).collect();
+
+        let preset_list = List::new(items);
+        frame.render_widget(preset_list, rows[1]);
     }
 }
 
