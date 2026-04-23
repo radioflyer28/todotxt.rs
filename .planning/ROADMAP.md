@@ -6,19 +6,43 @@
   Archive: .planning/milestones/v1.0-ROADMAP.md
 - ✅ v1.1 TUI Interface — shipped 2026-04-23
   Archive: .planning/milestones/v1.1-ROADMAP.md
+- 🚧 v1.2 Compatibility + UX Alignment — active
 
-## Current Status
+## v1.2 Scope
 
-No active milestone in progress.
+- todo.sh compatibility layer
+- TUI UX polish: filter Esc cancel/restore behavior
+- TUI UX polish: conditionally show theme label in status bar
+- TUI UX polish: align grouping/sorting behavior with todotxt.net UI (group tasks with identical project/context/sort keys)
+- TUI UX polish: align filter definition layout with todotxt.net UI and persist configured filters to TOML
+- TUI UX polish: investigate deferred-task (`t:`) support parity and implement when confirmed
 
-## Next Step
+## Planned Phases
 
-Run /gsd-new-milestone to define v1.2 requirements and roadmap.
+- [ ] **Phase 14: Compat Discovery + Spec Lock**
+  - Confirm todo.sh compatibility surface (CLI semantics, edge cases, output conventions)
+  - Confirm deferred-task parity requirements (`t:` behavior) against todotxt.net and document decision
+  - Produce implementation contract for downstream phases
+
+- [ ] **Phase 15: todo.sh Compatibility Layer**
+  - Implement compatibility commands/aliases and argument behavior
+  - Add regression tests for compatibility contracts and exit-code behavior
+
+- [ ] **Phase 16: TUI Filter UX Alignment**
+  - Implement Esc cancel/restore behavior in filter flows
+  - Rework filter-definition panel layout to match todotxt.net mental model
+  - Persist configured filters in TOML and reload reliably
+
+- [ ] **Phase 17: TUI Grouping/Sorting Alignment + Status Polish**
+  - Group tasks by shared sort keys (project/context/other configured key)
+  - Conditionally show theme label in status bar (hide when default/no-value)
+  - Preserve keyboard and rendering performance expectations
+
+- [ ] **Phase 18: Validation + Ship Readiness**
+  - Integration and UAT pass for compatibility and TUI UX changes
+  - Milestone audit, docs updates, and close-out prep
 
 ## Backlog
 
 - GUI interface (native desktop)
-- todo.sh compatibility layer
 - CI/CD release pipeline and package distribution
-- TUI UX polish: filter Esc cancel/restore behavior
-- TUI UX polish: conditionally show theme label in status bar

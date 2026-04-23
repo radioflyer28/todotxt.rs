@@ -2,7 +2,7 @@
 
 ## Current State
 
-v1.1 TUI Interface is shipped (2026-04-23).
+v1.2 Compatibility + UX Alignment is active (started 2026-04-23).
 
 The project now includes:
 - todotxt-core (library)
@@ -26,6 +26,7 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 ## Current State
 
 **v1.0 and v1.1 shipped.** Core, CLI, and TUI are complete and tested.
+**v1.2 is now in planning/execution.** Focus is todo.sh compatibility and UX alignment with todotxt.net behavior.
 
 - `todotxt-core`: parser, Task model, TaskList CRUD, filter engine, sort engine, file watching, portable mode
 - `todotxt-cli`: 25+ commands — read, write, enrichment, bulk operations, structured JSON output, TOML config, named presets, shell completions
@@ -62,10 +63,19 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 - ✓ Autocomplete and UX guards — @/+ completion and deferred reload while editing
 - ✓ Theme and polish — default/light theme, config selection, NO_COLOR behavior, terminal restoration
 
-### Active (v1.2+)
+### Active (v1.2)
 
-- [ ] GUI interface (native desktop) — v1.2
-- [ ] todo.sh compatibility layer — future
+- [ ] todo.sh compatibility layer
+- [ ] TUI filter Esc cancel/restore behavior
+- [ ] TUI status bar theme label shown conditionally
+- [ ] TUI sort/group alignment with todotxt.net grouping semantics
+- [ ] TUI filter definition layout alignment and TOML persistence
+- [ ] Deferred-task parity decision and support (`t:`) when confirmed
+
+### Planned (future milestone)
+
+- [ ] GUI interface (native desktop)
+- [ ] CI/CD release pipeline and package distribution
 
 ### Out of Scope
 
@@ -77,6 +87,7 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 ## Context
 
 **Shipped:** v1.0 on 2026-04-16 and v1.1 on 2026-04-23.
+**Active milestone:** v1.2 Compatibility + UX Alignment.
 **Tech stack:** Rust stable, Cargo workspace, winnow (parser), clap (CLI), tokio (async watching), serde_json, directories, tempfile, rstest, insta.
 **Crates:** `crates/todotxt-core` (library) + `crates/todotxt-cli` (binary) + `crates/todotxt-tui` (binary).
 **Test baseline:** 207 tests passing, 0 warnings, 0 clippy issues.
@@ -100,6 +111,7 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 | JSON output flag for CLI | Enables AI agent skills to consume structured task data | ✓ Validated via integration tests |
 | winnow for parser | Zero-copy, single-pass, composable; better ergonomics than nom | ✓ Worked well |
 | `#![deny(warnings)]` in both crates | Enforce code quality from day 1 | ✓ 0 warnings at ship |
+| Preserve todotxt.net behavioral parity in TUI UX | Reduce migration friction for existing users | 🚧 v1.2 |
 
 ## Evolution
 
@@ -110,4 +122,4 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 4. Audit Out of Scope — reasons still valid?
 
 ---
-*Last updated: 2026-04-23 after v1.1 milestone completion*
+*Last updated: 2026-04-23 for v1.2 milestone start*
