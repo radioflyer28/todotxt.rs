@@ -1083,13 +1083,18 @@ impl App {
         } else {
             self.display_rows
                 .iter()
-                .map(|row| match row {
+                .enumerate()
+                .map(|(row_idx, row)| match row {
                     DisplayRow::GroupHeader(label) => ListItem::new(format!(" {}", label))
                         .style(self.styles.group_header),
                     DisplayRow::Task(ci) => {
                         let t = &tasks[*ci];
                         let indent = if self.grouping { "  " } else { "" };
-                        let content = format!("{}{}: {}", indent, ci + 1, t.to_raw());
+                        // Visual precedence: selected non-cursor rows get `>` prefix (D-14).
+                        let is_selected = self.selected_tasks.contains(ci);
+                        let is_cursor = row_idx == self.selected;
+                        let prefix = if is_selected && !is_cursor { "> " } else { "" };
+                        let content = format!("{}{}{}: {}", prefix, indent, ci + 1, t.to_raw());
                         // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
                         // Style precedence: completed (DIM) > deferred shown (DIM) > priority A/B/C > overdue > plain.
                         // Modifier::REVERSED for selection is applied by List::highlight_style — not here.
@@ -1111,14 +1116,32 @@ impl App {
                         } else {
                             Style::default()
                         };
+                        // Add BOLD for selected non-cursor rows (D-14).
+                        let style = if is_selected && !is_cursor {
+                            style.add_modifier(Modifier::BOLD)
+                        } else {
+                            style
+                        };
                         ListItem::new(content).style(style)
                     }
                 })
                 .collect()
         };
 
+        // Cursor+selected: REVERSED | BOLD (D-15); cursor-only: REVERSED (D-13).
+        let cursor_is_selected = self
+            .display_rows
+            .get(self.selected)
+            .map(|r| matches!(r, DisplayRow::Task(ci) if self.selected_tasks.contains(ci)))
+            .unwrap_or(false);
+        let highlight_modifier = if cursor_is_selected {
+            Modifier::REVERSED | Modifier::BOLD
+        } else {
+            Modifier::REVERSED
+        };
+
         let list = List::new(items)
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            .highlight_style(Style::default().add_modifier(highlight_modifier));
 
         let mut list_state = ListState::default();
         if !self.display_indices.is_empty() {
