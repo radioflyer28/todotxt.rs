@@ -1,123 +1,42 @@
-# Research Summary — v1.1 TUI Interface
+# Research Summary — v1.3 Feature/Hotkey Parity with todotxt.net
 
-**Synthesized:** 2026-04-18  
-**Sources:** STACK.md · FEATURES.md · ARCHITECTURE.md · PITFALLS.md  
-**Confidence:** HIGH — all crate versions verified on crates.io; feature patterns drawn from comparable TUI projects (taskwarrior-tui, gitui, lazygit)
-
----
+**Synthesized:** 2026-04-24  
+**Sources:** local `Client/` WPF app, `Client/Resource.resx`, current Rust TUI, todo.txt format primer  
+**Confidence:** HIGH
 
 ## Executive Summary
 
-Building a ratatui-based TUI for todotxt.net is a well-trodden path with a clear, stable stack. The community has converged on `ratatui 0.30` + `crossterm 0.29` + `tui-textarea 0.7` + `color-eyre 0.6` — all verified current, cross-platform, and tokio-compatible. The existing `todotxt-core` crate already provides the `TaskList`, `FileWatcher`, and filter APIs the TUI needs; the new crate is a thin async shell around those primitives.
+The v1.3 milestone should focus on one core migration problem: todotxt.net users expect multi-selection and bulk task operations to feel natural, while the current Rust TUI is still fundamentally single-selection. The C# app already exposes extended selection and routes many task commands over all selected items; the Rust TUI has the rendering and mutation foundation to add that, but it needs a proper canonical selection model first.
 
-The biggest architectural risks are not rendering complexity but state-correctness: reloading the file while an editor buffer is open, mutating tasks by visible row position rather than by `source_index`, and letting the watcher's own-save events trigger spurious reloads. These are understood, preventable, and must be addressed in Foundation and Core TUI phases — not retrofitted later. Terminal lifecycle (raw mode, alternate screen, panic restore) must also be solved completely in Foundation before any feature work begins.
+The second opportunity is deliberate improvement over parity: todotxt.net appends raw text to selected tasks, but the Rust stack can use `todotxt-core::Task` parsing and rebuild logic to normalize recognized metadata so `(A)` stays at the front, dates stay in valid positions, and known tokens are deduplicated or replaced predictably.
 
-Feature scope is clear and well-bounded for v1.1: 10 table-stakes features (navigation, mark done, add, edit, delete, filter panel, sort toggle, status bar, theming, file-watch reload) plus a set of differentiators that are genuinely optional. The interaction model follows vim-like conventions, crossterm handles Windows/Unix parity natively, and no exotic dependencies are needed. An opinionated flat module structure (`tui.rs` / `app.rs` / `state.rs` / `ui.rs` / `components/`) is enough architecture without over-engineering.
+## Stack additions
 
----
+- No new UI framework or parser is needed.
+- Reuse `ratatui`, `crossterm`, `tui-textarea`, and `todotxt-core::Task`.
+- Prefer adding normalization helpers in `todotxt-core` over implementing token surgery in the TUI.
 
-## Stack Additions
+## Feature table stakes
 
-### Add to `todotxt-tui/Cargo.toml`
+- Range selection in the TUI
+- Disjoint multi-selection mode
+- Bulk delete and bulk append over selected tasks
+- Selection persistence across regroup/reload/filter changes
+- Updated help and status text for new parity hotkeys
 
-| Crate | Version | Role |
-|-------|---------|------|
-| `ratatui` | `0.30` | Layout, widgets, rendering |
-| `crossterm` | `0.29` + `event-stream` feature | Terminal backend + async event stream |
-| `tui-textarea` | `0.7` | Inline task input/edit widget |
-| `color-eyre` | `0.6` | Panic-safe terminal restore + rich errors |
-| `futures` | `0.3` | `StreamExt` for `EventStream` |
-| `tokio` | `{ workspace = true }` | Re-use existing workspace dep |
-| `todotxt-core` | `{ path = "../todotxt-core" }` | Task model, file I/O, watcher |
+## Watch out for
 
-**Action:** Promote `ratatui`, `crossterm`, `tui-textarea`, `color-eyre`, `futures` to `[workspace.dependencies]` so versions are pinned once. Run `cargo tree -d` after Foundation to verify no duplicate `crossterm` lines.
+- Selection drift if state is stored by visible row rather than canonical task identity
+- Broken bulk deletes if indices are applied in ascending order
+- Over-aggressive text rewriting that mutates unknown content
+- Silent parity deviations that undermine user trust
 
-### Do NOT add
+## Recommended build order
 
-`termion` (Unix-only), `tui-rs` (deprecated), `cursive` / `iocraft` (different frameworks), `dialoguer` / `indicatif` (CLI-only), `async-std` (second runtime), `egui` / `iced` (GUI). No external autocomplete crate is needed — a ~50-line custom popup `List` covers todo.txt tag completion.
-
----
-
-## Feature Table Stakes
-
-All 10 must ship for v1.1 to feel usable. Missing any = product feels broken.
-
-| # | Feature | Key Bindings | Notes |
-|---|---------|-------------|-------|
-| 1 | **Task list navigation** | `j`/`k`, `g`/`G`, `Ctrl+d`/`Ctrl+u`, arrows | `scroll_padding(2)`, truncate long text with `…` |
-| 2 | **Mark done / undo** | `x` (toggle) | In-memory update first, then write; cursor stays on task |
-| 3 | **Add new task** | `a` → type → `Enter` / `Esc` | `tui-textarea` single-line; `@`/`+` autocomplete popup |
-| 4 | **Inline edit** | `e` → edit → `Enter` / `Esc` | Pre-populated with raw text; defer file reload during edit |
-| 5 | **Delete with confirmation** | `d` → `y`/`n` | Modal overlay with task preview; `Esc` = cancel |
-| 6 | **Filter panel** | `f` toggle; `Tab` focus cycle; `Space` toggle; `Ctrl+R` reset | Sidebar (>=60 cols) or full-screen overlay (<60 cols); live ANDed filters |
-| 7 | **Sort toggle** | `s` (forward) / `S` (backward) | 6 modes: Priority -> Due -> File -> Alpha -> Project -> Context |
-| 8 | **Status bar** | — | Counts, mode indicator, transient flash (1.5s) |
-| 9 | **Themeable colors** | — | 2 built-ins (`default`/`light`); `[tui] theme` in config; `NO_COLOR` honored |
-| 10 | **File-watch auto-reload** | `r` (force) | Silent in Normal mode; deferred in Add/Edit; cursor re-anchored by task ID |
-
-**Task IDs always show original todo.txt line number** (not filtered index) to stay consistent with CLI semantics.
-
----
-
-## Feature Differentiators
-
-Nice-to-have. Do not block v1.1 ship on any of these.
-
-| # | Feature | Key | Effort |
-|---|---------|-----|--------|
-| D1 | Task detail pane | `i` / `Enter` | Medium — right-side split with word-wrap, parsed fields |
-| D2 | Scrollbar in task list | — | Low — 5 lines: `ScrollbarState` bound to `ListState.offset` |
-| D3 | Sort persistence in config | — | Low — write `[tui] sort` on change |
-| D4 | Session undo stack | `u` | Medium — `Vec<Task>` snapshot per mutation |
-| D5 | Quick search via `/` | `/` | Low — bottom-bar live substring filter |
-| D6 | Help overlay | `?` | Low — `Paragraph` in centered `Block::bordered()` popup |
-| D7 | Bulk multi-select | `v` | High — visual mode, bulk mark/delete — defer to v1.2 |
-
-**D2, D5, D6** are the easiest wins if time allows within a Polish phase.
-
----
-
-## Architecture Highlights
-
-### Module structure (flat and sufficient)
-
-```
-crates/todotxt-tui/src/
-  main.rs          bootstrap: color-eyre, config, terminal init, tokio runtime
-  tui.rs           terminal lifecycle guard (Drop restore), async event loop, watcher wiring
-  app.rs           AppState owner, Action dispatch, core API calls
-  action.rs        Internal intent enum (MoveDown, BeginEdit, SaveEdit, ReloadFromDisk …)
-  mode.rs          Modal state enum (Normal, Add, Edit, Filter, DeleteConfirm)
-  state.rs         AppState + VisibleTask + FilterState + StatusMessage + AutocompleteState
-  event.rs         Unified AppEvent enum (Input, FileChanged, Tick, Resize, Quit)
-  ui.rs            Frame composition — splits screen into list, filter panel, overlays, status bar
-  config.rs        Loads same TOML schema as CLI; TUI-only keys under [tui] table
-  autocomplete.rs  Tag suggestion extraction + popup state for +/@ completion
-  components/
-    task_list.rs   Render-only list widget
-    editor.rs      tui-textarea wrapper (single-line, popup placement)
-    filter_panel.rs Filter sidebar + focus rendering
-    confirm.rs     Delete confirmation modal
-    status_bar.rs  Footer widget
-```
-
-### Event loop
-
-```
-tokio::select! {
-    terminal_event  -> map to AppEvent::Input
-    watch_rx.recv() -> AppEvent::FileChanged
-    tick_interval   -> AppEvent::Tick        (flash-message expiry)
-    resize          -> redraw signal
-}
-```
-Key events filtered to `KeyEventKind::Press` only. Watcher callback sends only `AppEvent::FileChanged` — no state mutation on the watcher thread.
-
-### State management
-
-- `AppState` owns `TaskList` (source of truth), `visible_tasks: Vec<VisibleTask>` (derived), selection as index into `visible_tasks`.
-- `VisibleTask` carries `source_index` (into `TaskList`) and `display_id` (`source_index + 1`).
-- All mutations resolve through `source_index`, never through visible row position or display ID.
+1. Selection model and row-highlighting semantics
+2. Bulk delete / append plumbing
+3. Smart normalization helpers and edit-path integration
+4. Hotkey/help parity pass and verification
 - `rebuild_visible_tasks()` runs after every mutation, reload, filter change, or sort change; re-anchors selection by prior `source_index`.
 - `pending_reload: bool` defers file-watch reloads while in Add / Edit / DeleteConfirm mode.
 

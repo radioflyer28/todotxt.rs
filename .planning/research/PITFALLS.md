@@ -1,3 +1,38 @@
+# Pitfalls Research — v1.3 Parity Work
+
+**Researched:** 2026-04-24
+
+## Main Risks
+
+### 1. Row-based selection bugs
+
+Current TUI navigation includes group headers and filtered display rows. If v1.3 stores selection by visible row offset, selections will drift after regrouping, re-sorting, filtering, or reload.
+
+**Prevention:** store canonical task identity, derive visible highlights second.
+
+### 2. Unsafe bulk deletes
+
+Deleting selected tasks in ascending source-index order can invalidate later indices.
+
+**Prevention:** collect canonical indices, sort descending for destructive operations.
+
+### 3. Over-aggressive text rewriting
+
+Smart normalization is valuable only if users trust it. If append/edit rewrites unrelated text or unknown metadata, the feature will feel destructive.
+
+**Prevention:** normalize only recognized tokens (`(A)`, `+proj`, `@ctx`, `due:`, `t:` and any explicitly supported metadata). Preserve unknown text verbatim.
+
+### 4. Diverging from todotxt.net without documenting it
+
+The goal is familiarity. Intentional deviations are fine, but silent ones will look like regressions to switching users.
+
+**Prevention:** explicitly document parity choices in requirements and help text.
+
+### 5. Multi-select UX without clear affordances
+
+If the user cannot tell which rows are selected versus merely focused, bulk actions become error-prone.
+
+**Prevention:** distinct row styling, selection counts in status/help, and confirmation dialogs for destructive actions.
 # Pitfalls Research - v1.1 TUI Interface
 
 ## Critical (data loss / corrupted terminal)

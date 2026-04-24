@@ -1,83 +1,45 @@
-# Stack Research — v1.1 TUI Interface
+# Stack Research — v1.3 Parity Work
 
-**Researched:** 2026-04-18  
-**Confidence:** HIGH (all versions verified via crates.io)
+**Researched:** 2026-04-24  
+**Confidence:** HIGH (grounded in the current workspace plus the todo.txt spec)
 
-## Core TUI Stack
+## Reuse Existing Stack
 
-| Crate | Version | Role | Rationale |
-|-------|---------|------|-----------|
-| `ratatui` | 0.30.0 | TUI framework — layout, widgets, rendering | Current community-maintained fork of tui-rs; active, well-documented, crossterm is its default backend. Provides `List`, `Paragraph`, `Block`, `Table`, `Popup`, `Scrollbar` widgets out of the box. |
-| `crossterm` | 0.29.0 | Terminal backend for ratatui | Cross-platform (Windows + Unix), the default backend ratatui ships with. Handles raw mode, alternate screen, cursor, color. Enable the `event-stream` feature for tokio integration. |
-| `tui-textarea` | 0.7.0 | Inline text editing widget | Drop-in ratatui widget for task input/editing. Supports undo/redo, Emacs shortcuts, single-line mode, validation hooks, and cursor-line highlighting. No need to hand-roll a text input field. |
-| `color-eyre` | 0.6.5 | Error handling and panic hooks | Required to properly restore the terminal on panic. Call `color_eyre::install()` before `ratatui::init()` — prevents garbled terminal state on crash. Ratatui's own quickstart templates use it. |
+No framework change is needed for v1.3. The parity work fits the current Rust TUI stack:
 
-## Optional / Situational
+| Component | Status | Use in v1.3 |
+| --------- | ------ | ----------- |
+| `ratatui` | already shipped | Selection rendering, status hints, bulk-action overlays |
+| `crossterm` | already shipped | Shift/Ctrl key combinations and selection-mode key handling |
+| `tui-textarea` | already shipped | Token-aware normalization in append/edit flows |
+| `todotxt-core::Task` | already shipped | Canonical parse/rebuild path for priority, due, threshold, projects, contexts |
 
-| Crate | Version | Role | When to Add |
-|-------|---------|------|-------------|
-| `tokio` | existing (re-use) | Async runtime | Already in `todotxt-core`. **Do not add a second runtime.** |
-| `futures` | ~0.3 | `StreamExt` trait for `EventStream` | Only needed if using `crossterm::event::EventStream` (the tokio-compatible event stream). May already be transitively present. |
+## Likely Code Additions
 
-## Integration Notes
+| Area | Expected change | Why |
+| ---- | --------------- | --- |
+| `crates/todotxt-tui/src/app.rs` | Add multi-selection state, anchor tracking, bulk mutation handlers | Current app is single-row oriented |
+| `crates/todotxt-tui/src/theme.rs` | Add styles for selected ranges / secondary selections | Need visible parity cues |
+| `crates/todotxt-core/src/task.rs` | Add safe mutation helpers for recognized todo.txt metadata if existing builders are insufficient | Smart normalization should not hand-roll raw-string surgery in the TUI |
+| `crates/todotxt-tui/src/help` or status text | Update user-facing key hints / help overlay text | Parity work changes discoverability contract |
 
-### Tokio + crossterm event loop
+## Do Not Add By Default
 
-`crossterm` ships an `event-stream` feature that exposes `EventStream` — an async `futures::Stream<Item = Result<Event>>`. This integrates directly with `tokio::select!` so a single async task can multiplex:
+- No new parsing library — `todotxt-core::Task::parse()` already understands priority, dates, `@context`, `+project`, `due:`, and `t:`.
+- No external selection-state crate unless complexity proves it necessary. A `BTreeSet<usize>` or canonical-task-id set is enough initially.
+- No GUI-specific parity work in this milestone.
 
-- Terminal key/mouse events (from `EventStream`)  
-- File-change notifications (from `todotxt-core`'s `notify`/tokio watcher channel)
+## Integration Guidance
 
-```toml
-# todotxt-tui/Cargo.toml
-[dependencies]
-ratatui        = "0.30"
-crossterm      = { version = "0.29", features = ["event-stream"] }
-tui-textarea   = "0.7"
-color-eyre     = "0.6"
-tokio          = { workspace = true }           # re-use workspace dep
-todotxt-core   = { path = "../todotxt-core" }
+- Keep selection state keyed to canonical task identity, not transient display rows. Group headers and filtering already decouple display rows from task rows.
+- Route smart normalization through `todotxt-core` builders or new helpers so append/edit paths share one serialization policy.
+- Treat todo.txt spec as authority for token placement and `todotxt.net` as authority for interaction model and hotkeys.
 
-futures        = "0.3"                          # for StreamExt on EventStream
-```
+## Watch For
 
-```rust
-// Skeleton of the TUI event loop
-use crossterm::event::{EventStream, Event, KeyCode};
-use futures::StreamExt;
-use tokio::sync::mpsc::Receiver;
-
-async fn run(mut file_rx: Receiver<todotxt_core::WatchEvent>) -> color_eyre::Result<()> {
-    let mut terminal = ratatui::init();
-    let mut events = EventStream::new();
-
-    loop {
-        terminal.draw(|f| ui(f, &state))?;
-
-        tokio::select! {
-            Some(Ok(event)) = events.next() => {
-                handle_key(event, &mut state);
-            }
-            Some(change) = file_rx.recv() => {
-                state.reload_from_disk(change);
-            }
-        }
-
-        if state.should_quit { break; }
-    }
-
-    ratatui::restore();
-    Ok(())
-}
-```
-
-**Key constraint:** `ratatui::init()` / `ratatui::restore()` must bracket the TUI session. `color-eyre`'s panic hook ensures `restore()` is called even on crash, preventing a broken terminal.
-
-### Theming / color
-
-Ratatui has built-in `Style`, `Color` (16-color, 256-color ANSI, and RGB), and `Modifier` (bold, italic, dim, etc.) — no separate theming crate is needed. Define a `Theme` struct in-crate holding named `Style` constants.
-
-### Autocomplete
+- Bulk mutations must survive sort/filter reloads without losing selection unexpectedly.
+- Range selection must coexist with grouped rows and non-selectable headers.
+- Smart append/edit should be optically simple but semantically conservative: normalize recognized tokens, preserve unknown text.
 
 No mature standalone autocomplete widget crate exists for ratatui that is worth adding. For todo.txt context (project `+tag`, context `@tag` completion), implement a simple popup `List` widget driven by a filtered `Vec<&str>` from `todotxt-core`'s tag index. This is ~50 lines and avoids a dependency for a single feature.
 

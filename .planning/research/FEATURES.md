@@ -1,3 +1,60 @@
+# Feature Research — v1.3 Parity Work
+
+**Researched:** 2026-04-24  
+**Primary sources:** local `Client/` WPF app, help text in `Client/Resource.resx`, attached screenshot, todo.txt spec
+
+## Table Stakes
+
+### Selection and bulk actions
+
+- Extended task selection exists in the C# app (`SelectionMode="Extended"` on the task list).
+- Bulk commands in the C# app operate on all selected tasks: delete, append text, toggle completion, due-date changes, threshold-date changes, and priority changes.
+- Selection is preserved across reload/sort/filter passes in the C# app (`GetSelectedTasks()` / `SetSelectedTasks()`).
+
+### Hotkeys and help parity
+
+- Help text documents the muscle-memory surface: `J/K`, `X`, `D`, `U`, `T`, `P`, `F`, `I`, `0`, `1-9`, `.` / `F5`, `?`, and date/priority increment shortcuts.
+- The current Rust TUI already covers part of that surface (`j/k`, `x`, `d`, `u`, `f`, `F`, `o`, `g`, `h`, `t`) but lacks multi-select semantics and several task-mutation shortcuts.
+
+### Text semantics
+
+- `todo.txt` priority must appear first when present.
+- Creation date follows priority when present.
+- `+project` and `@context` may appear anywhere after the prefix.
+- Extra metadata should use `key:value`; `due:` and `t:` already follow that convention.
+
+## Differentiators For This Milestone
+
+- Smart normalization on append/edit is an enhancement on top of todotxt.net parity: the C# app appends raw text, but the Rust TUI can improve usability by relocating recognized tokens to canonical positions.
+- Disjoint “visual-line style” selection mode is broader than the original WPF listbox interaction and should be framed as a parity-plus feature.
+
+## Suggested Feature Categories
+
+### Selection
+- Range selection
+- Disjoint selection mode
+- Selection persistence through resort/reload/filter changes
+
+### Bulk Editing
+- Bulk delete
+- Bulk append
+- Bulk metadata operations across selected tasks
+
+### Text Normalization
+- Priority relocation to prefix
+- `due:` / `t:` parsing and replacement
+- `+project` / `@context` dedupe and canonical placement policy
+
+### Hotkey and Help Parity
+- Match high-value existing shortcuts
+- Reflect implemented shortcuts in help/status UI
+- Document deliberate deviations when parity is not worth the complexity
+
+## Anti-Features / Not This Milestone
+
+- GUI work
+- todo.sh/CLI parity expansion unrelated to TUI interaction
+- Aggressive auto-rewriting of unknown `key:value` tokens
 # Features Research — v1.1 TUI Interface
 
 **Project:** todotxt.net Rust TUI (ratatui-based)

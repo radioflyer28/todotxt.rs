@@ -1,3 +1,41 @@
+# Architecture Research — v1.3 Parity Work
+
+**Researched:** 2026-04-24
+
+## Existing Integration Points
+
+| Layer | Existing behavior | v1.3 impact |
+| ----- | ----------------- | ----------- |
+| `App` selection | Single selected row over `display_rows` | Needs anchor + multi-select state |
+| `display_rows` | Task rows plus non-selectable group headers | Selection logic must skip headers cleanly |
+| Task mutation handlers | Single canonical-selected task for delete/edit/toggle | Needs bulk mutation paths keyed to canonical task indices |
+| `todotxt-core::Task` | Parses and rebuilds priority, dates, projects, contexts, body | Best place for token-aware helpers or normalization logic |
+
+## Recommended Build Order
+
+1. Introduce a canonical selection model in the TUI.
+2. Add bulk delete / append plumbing using that model.
+3. Add smart normalization helpers in core and route append/edit through them.
+4. Close with hotkey/help parity and regression coverage.
+
+## Data-Flow Guidance
+
+- Maintain selection as canonical task indices or stable task identity, not visible row positions.
+- When grouping/filtering changes visible rows, recompute row highlights from canonical selection.
+- Bulk operations should collect target canonical indices, sort them safely, then mutate in a deterministic order.
+
+## UI Model Guidance
+
+- Support two related modes:
+    - anchored range extension via Shift+movement
+    - explicit selection mode for disjoint picks, similar in spirit to visual-line selection
+- Selected rows need distinct styling from the currently focused row.
+- Status/help surface should show when selection mode is active and how many tasks are selected.
+
+## Dependency Notes
+
+- The current TUI already handles grouped non-task rows, filter panels, and modal dialogs. Reuse those patterns rather than introducing a second navigation abstraction.
+- Bulk delete confirmation should preview count and maybe the first few tasks, not just a single row.
 # Architecture Research — v1.1 TUI Interface
 
 ## Module Structure
