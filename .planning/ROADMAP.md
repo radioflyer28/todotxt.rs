@@ -20,7 +20,7 @@
 
 ## Planned Phases
 
-- [ ] **Phase 19: Selection Model + Multi-Select Foundation**
+- [x] **Phase 19: Selection Model + Multi-Select Foundation**
   - Add canonical task selection state that survives grouping, sorting, filtering, and reloads
   - Support contiguous range selection and keyboard-driven disjoint selection
   - Ensure non-task rows such as group headers are never selected
@@ -29,7 +29,7 @@
   - Plans:
     - [x] 19-01-PLAN.md — Canonical selection model + anchor tracking + grouped-row safety
     - [x] 19-02-PLAN.md — Shift-range selection + disjoint selection mode key handling and rendering
-    - [ ] 19-03-PLAN.md — Selection persistence across regroup, refilter, resort, and reload
+    - [x] 19-03-PLAN.md — Selection persistence across regroup, refilter, resort, and reload
 
 - [ ] **Phase 20: Bulk Actions + Selection UX**
   - Turn multi-selection into safe bulk delete and bulk append flows

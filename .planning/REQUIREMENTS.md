@@ -7,10 +7,10 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 ### Selection
 
-- [ ] SEL-01: User can extend the current selection to a contiguous task range with Shift plus navigation keys.
-- [ ] SEL-02: User can enter a selection mode that allows adding or removing non-contiguous task rows without using the mouse.
-- [ ] SEL-03: User's selected tasks remain selected when the list is regrouped, resorted, filtered, or reloaded from disk, as long as those tasks still exist.
-- [ ] SEL-04: Non-task rows such as group headers are never directly selected or mutated by multi-selection actions.
+- [x] SEL-01: User can extend the current selection to a contiguous task range with Shift plus navigation keys.
+- [x] SEL-02: User can enter a selection mode that allows adding or removing non-contiguous task rows without using the mouse.
+- [x] SEL-03: User's selected tasks remain selected when the list is regrouped, resorted, filtered, or reloaded from disk, as long as those tasks still exist.
+- [x] SEL-04: Non-task rows such as group headers are never directly selected or mutated by multi-selection actions.
 
 ### Bulk Editing
 
@@ -64,10 +64,10 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 | Requirement | Phase | Status |
 | ----------- | ----- | ------ |
-| SEL-01 | Phase 19 | Pending |
-| SEL-02 | Phase 19 | Pending |
-| SEL-03 | Phase 19 | Pending |
-| SEL-04 | Phase 19 | Pending |
+| SEL-01 | Phase 19 | Complete |
+| SEL-02 | Phase 19 | Complete |
+| SEL-03 | Phase 19 | Complete |
+| SEL-04 | Phase 19 | Complete |
 | BULK-01 | Phase 20 | Pending |
 | BULK-02 | Phase 20 | Pending |
 | BULK-03 | Phase 20 | Pending |
