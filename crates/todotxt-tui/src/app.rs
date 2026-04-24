@@ -265,6 +265,23 @@ impl App {
                 self.should_quit = true;
             }
 
+            // ── Disjoint selection mode ──────────────────────────────────────
+            // v: toggle disjoint_select on/off (D-05).
+            KeyCode::Char('v') => {
+                self.disjoint_select = !self.disjoint_select;
+            }
+            // Space: mark/unmark cursor task when disjoint mode is active (D-06).
+            // No-op on GroupHeader rows (D-08).
+            KeyCode::Char(' ') if self.disjoint_select => {
+                self.toggle_task_selection();
+            }
+            // Esc: clear entire selection and exit disjoint mode (D-07).
+            KeyCode::Esc if self.disjoint_select => {
+                self.selected_tasks.clear();
+                self.selection_anchor = None;
+                self.disjoint_select = false;
+            }
+
             // ── Navigation ──────────────────────────────────────────────────
             KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
                 let mut next = self.selected + 1;
