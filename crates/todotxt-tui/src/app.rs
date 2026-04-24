@@ -353,6 +353,24 @@ impl App {
                 self.rebuild_display_indices();
                 self.clamp_selection();
             }
+            // Shift+Ctrl+U: half-page range extension upward (D-10).
+            // MUST precede plain Ctrl+U arm so SHIFT check wins (T-19-04).
+            KeyCode::Char('u')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && key.modifiers.contains(KeyModifiers::SHIFT)
+                    && display_count > 0 =>
+            {
+                self.ensure_anchor();
+                let half = (self.list_height / 2).max(1) as usize;
+                self.selected = self.selected.saturating_sub(half);
+                while self.selected < row_count
+                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
+                {
+                    self.selected += 1;
+                }
+                self.clamp_selection();
+                self.apply_range_selection();
+            }
             // Ctrl+U half-page up — must come before plain 'u' (edit).
             KeyCode::Char('u')
                 if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
@@ -366,6 +384,24 @@ impl App {
                     self.selected += 1;
                 }
                 self.clamp_selection();
+            }
+            // Shift+Ctrl+D: half-page range extension downward (D-10).
+            // MUST precede plain Ctrl+D arm so SHIFT check wins (T-19-04).
+            KeyCode::Char('d')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && key.modifiers.contains(KeyModifiers::SHIFT)
+                    && display_count > 0 =>
+            {
+                self.ensure_anchor();
+                let half = (self.list_height / 2).max(1) as usize;
+                self.selected = (self.selected + half).min(row_count.saturating_sub(1));
+                while self.selected < row_count
+                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
+                {
+                    self.selected += 1;
+                }
+                self.clamp_selection();
+                self.apply_range_selection();
             }
             // Ctrl+D half-page down — must come before plain 'd' (delete).
             KeyCode::Char('d')
