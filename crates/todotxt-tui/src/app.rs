@@ -1614,4 +1614,170 @@ mod tests {
         assert!(app.selected_tasks.is_empty(), "Esc should clear all selected_tasks");
         assert!(!app.disjoint_select, "Esc should exit disjoint mode");
     }
+
+    // ── Task 1 (19-02): Anchor lifecycle helpers ──────────────────────────────
+
+    #[test]
+    fn ensure_anchor_sets_anchor_from_cursor_when_unset() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        assert!(app.selection_anchor.is_none());
+        app.ensure_anchor();
+        assert_eq!(app.selection_anchor, Some(0), "ensure_anchor should set anchor to cursor canonical index when unset (D-11)");
+    }
+
+    #[test]
+    fn ensure_anchor_does_not_overwrite_existing_anchor() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selection_anchor = Some(2);
+        app.ensure_anchor();
+        assert_eq!(app.selection_anchor, Some(2), "ensure_anchor should not overwrite an existing anchor");
+    }
+
+    #[test]
+    fn apply_range_selection_selects_tasks_from_anchor_to_cursor() {
+        let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
+        app.selection_anchor = Some(0); // anchor at Task(0), display row 0
+        app.selected = 2;              // cursor at Task(2), display row 2
+        app.apply_range_selection();
+        assert!(app.selected_tasks.contains(&0), "Task 0 should be in range");
+        assert!(app.selected_tasks.contains(&1), "Task 1 should be in range");
+        assert!(app.selected_tasks.contains(&2), "Task 2 should be in range");
+        assert!(!app.selected_tasks.contains(&3), "Task 3 is outside range");
+    }
+
+    #[test]
+    fn apply_range_selection_works_upward_from_anchor() {
+        let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
+        app.selection_anchor = Some(2); // anchor at Task(2), display row 2
+        app.selected = 0;              // cursor at Task(0), display row 0
+        app.apply_range_selection();
+        assert!(app.selected_tasks.contains(&0));
+        assert!(app.selected_tasks.contains(&1));
+        assert!(app.selected_tasks.contains(&2));
+        assert!(!app.selected_tasks.contains(&3));
+    }
+
+    #[test]
+    fn apply_range_selection_replaces_prior_selection() {
+        let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
+        app.selected_tasks.insert(3); // pre-existing selection outside range
+        app.selection_anchor = Some(0);
+        app.selected = 1;
+        app.apply_range_selection();
+        assert!(app.selected_tasks.contains(&0));
+        assert!(app.selected_tasks.contains(&1));
+        assert!(!app.selected_tasks.contains(&3), "apply_range_selection should replace prior selected_tasks");
+    }
+
+    #[test]
+    fn plain_j_clears_anchor_but_not_selected_tasks() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.selection_anchor = Some(0);
+        press_key(&mut app, KeyCode::Char('j'));
+        assert!(app.selection_anchor.is_none(), "plain j should clear selection_anchor (D-12)");
+        assert!(app.selected_tasks.contains(&0), "plain j should NOT clear selected_tasks (D-12)");
+        assert!(app.selected_tasks.contains(&1), "plain j should NOT clear selected_tasks (D-12)");
+    }
+
+    #[test]
+    fn plain_k_clears_anchor_but_not_selected_tasks() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selected = 2;
+        app.selected_tasks.insert(0);
+        app.selection_anchor = Some(0);
+        press_key(&mut app, KeyCode::Char('k'));
+        assert!(app.selection_anchor.is_none(), "plain k should clear selection_anchor (D-12)");
+        assert!(app.selected_tasks.contains(&0), "plain k should NOT clear selected_tasks (D-12)");
+    }
+
+    // ── Task 2 (19-02): Shift-range key matrix ────────────────────────────────
+
+    fn press_shift_key(app: &mut App, code: KeyCode) {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        app.handle_normal_key(KeyEvent {
+            code,
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+    }
+
+    #[test]
+    fn shift_j_sets_anchor_on_first_use_then_extends_down() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        assert!(app.selection_anchor.is_none());
+        press_shift_key(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.selection_anchor, Some(0), "shift-j should lazily set anchor to original cursor (D-11)");
+        assert_eq!(app.selected, 1, "shift-j should move cursor down");
+        assert!(app.selected_tasks.contains(&0), "anchor task should be selected");
+        assert!(app.selected_tasks.contains(&1), "new cursor task should be selected");
+    }
+
+    #[test]
+    fn shift_j_extends_selection_further_down() {
+        let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
+        app.selection_anchor = Some(0);
+        app.selected = 1;
+        app.selected_tasks = [0usize, 1].iter().cloned().collect();
+        press_shift_key(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.selected, 2);
+        assert!(app.selected_tasks.contains(&0));
+        assert!(app.selected_tasks.contains(&1));
+        assert!(app.selected_tasks.contains(&2));
+    }
+
+    #[test]
+    fn shift_k_shrinks_selection_back_toward_anchor() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selection_anchor = Some(0);
+        app.selected = 2;
+        app.selected_tasks = [0usize, 1, 2].iter().cloned().collect();
+        press_shift_key(&mut app, KeyCode::Char('k'));
+        assert_eq!(app.selected, 1);
+        assert!(app.selected_tasks.contains(&0));
+        assert!(app.selected_tasks.contains(&1));
+        assert!(!app.selected_tasks.contains(&2), "shrunk range should not include task 2");
+    }
+
+    #[test]
+    fn shift_down_extends_selection_downward() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selected = 0;
+        press_shift_key(&mut app, KeyCode::Down);
+        assert_eq!(app.selected, 1);
+        assert!(app.selected_tasks.contains(&0));
+        assert!(app.selected_tasks.contains(&1));
+    }
+
+    #[test]
+    fn shift_up_extends_selection_upward() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selected = 2;
+        press_shift_key(&mut app, KeyCode::Up);
+        assert_eq!(app.selected, 1);
+        assert!(app.selected_tasks.contains(&1));
+        assert!(app.selected_tasks.contains(&2));
+    }
+
+    #[test]
+    fn shift_range_skips_group_headers_in_navigation() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        // Manually set up display_rows with a GroupHeader between tasks
+        app.display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::GroupHeader("Group".to_string()),
+            DisplayRow::Task(1),
+            DisplayRow::Task(2),
+        ];
+        app.display_indices = vec![0, 1, 2];
+        app.selected = 0;
+        press_shift_key(&mut app, KeyCode::Char('j'));
+        // shift-j should skip GroupHeader at row 1 and land on Task(1) at row 2
+        assert_eq!(app.selected, 2, "shift-j should skip GroupHeader rows (D-08)");
+        assert!(app.selected_tasks.contains(&0), "Task 0 (anchor) should be selected");
+        assert!(app.selected_tasks.contains(&1), "Task 1 (at row 2) should be selected");
+        assert!(!app.selected_tasks.is_empty());
+    }
 }
