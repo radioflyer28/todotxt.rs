@@ -283,6 +283,42 @@ impl App {
             }
 
             // ── Navigation ──────────────────────────────────────────────────
+            // Shift+j or Shift+Down: extend contiguous range selection downward (D-09, D-11).
+            // MUST precede plain j/Down arm so SHIFT modifier is checked first (T-19-04).
+            KeyCode::Char('j') | KeyCode::Down
+                if key.modifiers.contains(KeyModifiers::SHIFT) && row_count > 0 =>
+            {
+                self.ensure_anchor();
+                let mut next = self.selected + 1;
+                while next < row_count
+                    && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
+                {
+                    next += 1;
+                }
+                if next < row_count {
+                    self.selected = next;
+                }
+                self.apply_range_selection();
+            }
+            // Shift+k or Shift+Up: extend contiguous range selection upward (D-09, D-11).
+            // MUST precede plain k/Up arm so SHIFT modifier is checked first (T-19-04).
+            KeyCode::Char('k') | KeyCode::Up
+                if key.modifiers.contains(KeyModifiers::SHIFT) && row_count > 0 =>
+            {
+                self.ensure_anchor();
+                if self.selected > 0 {
+                    let mut prev = self.selected.saturating_sub(1);
+                    while prev > 0
+                        && matches!(self.display_rows[prev], DisplayRow::GroupHeader(_))
+                    {
+                        prev -= 1;
+                    }
+                    if matches!(self.display_rows[prev], DisplayRow::Task(_)) {
+                        self.selected = prev;
+                    }
+                }
+                self.apply_range_selection();
+            }
             KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 let mut next = self.selected + 1;
