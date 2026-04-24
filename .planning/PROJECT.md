@@ -2,16 +2,13 @@
 
 ## Current State
 
-v1.2 Compatibility + UX Alignment shipped 2026-04-24.
-
-The project now includes:
-- todotxt-core (library)
-- todotxt-cli (command-line interface)
-- todotxt-tui (interactive terminal UI)
+v1.0, v1.1, and v1.2 shipped. Core library, CLI, and TUI are complete with full todo.sh
+compatibility and UX alignment.
 
 Milestone archives:
 - .planning/milestones/v1.0-ROADMAP.md
 - .planning/milestones/v1.1-ROADMAP.md
+- .planning/milestones/v1.2-ROADMAP.md
 
 ---
 
@@ -25,13 +22,13 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 
 ## Current State
 
-**v1.0, v1.1, and v1.2 shipped.** Core, CLI, and TUI are complete and tested.
-**v1.2 is now in planning/execution.** Focus is todo.sh compatibility and UX alignment with todotxt.net behavior.
+**v1.0, v1.1, and v1.2 shipped.** Core library, CLI, and TUI are complete.
+**Active milestone:** none — beginning v1.3 planning.
 
 - `todotxt-core`: parser, Task model, TaskList CRUD, filter engine, sort engine, file watching, portable mode
-- `todotxt-cli`: 25+ commands — read, write, enrichment, bulk operations, structured JSON output, TOML config, named presets, shell completions
-- `todotxt-tui`: keyboard-driven terminal UI with add/edit/delete, filtering/sorting, presets, themes, and auto-reload
-- 207 tests passing, 0 clippy warnings, `#![deny(warnings)]` enforced in both crates
+- `todotxt-cli`: 25+ commands — read, write, enrichment, bulk operations, todo.sh compat aliases, structured JSON output, TOML config, named presets, shell completions
+- `todotxt-tui`: keyboard-driven terminal UI with add/edit/delete, filtering/sorting, grouping, deferred toggle, presets, themes, and auto-reload
+- 250+ tests passing, 0 clippy warnings, `#![deny(warnings)]` enforced in all crates
 - Cross-platform: Windows, Linux, macOS
 
 ## Requirements
@@ -63,14 +60,14 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 - ✓ Autocomplete and UX guards — @/+ completion and deferred reload while editing
 - ✓ Theme and polish — default/light theme, config selection, NO_COLOR behavior, terminal restoration
 
-### Active (v1.2) — Shipped 2026-04-24
+### Validated (v1.2)
 
-- ✓ todo.sh compatibility layer
-- ✓ TUI filter Esc cancel/restore behavior
-- ✓ TUI status bar theme label shown conditionally
-- ✓ TUI sort/group alignment with todotxt.net grouping semantics
-- ✓ TUI filter definition layout alignment and TOML persistence
-- ✓ Deferred-task parity decision and support (`t:`)
+- ✓ todo.sh compatibility layer (9 aliases + listpri/listall/deduplicate + `--compat`/`--all`) — v1.2
+- ✓ TUI filter Esc cancel/restore behavior — v1.2
+- ✓ TUI status bar theme label removed (always omitted) — v1.2
+- ✓ TUI grouping by sort key (`g` toggle, contiguous alpha groups, group headers) — v1.2
+- ✓ TUI filter definition panel with TOML persistence (`F` key, numbered preset slots) — v1.2
+- ✓ Deferred-task `t:` toggle (`h` key, DIM styling, suppress-by-default) — v1.2
 
 ### Planned (future milestone)
 
@@ -79,18 +76,16 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 
 ### Out of Scope
 
-- GUI interface — deferred to v1.2 (seed planted)
-- todo.sh compatibility layer — deferred (seed planted)
 - Windows-specific features (system tray) in CLI — GUI milestone handles platform-specific features
 - Interactive prompts / REPL — anti-feature for agent use; CLI must be scriptable
 
 ## Context
 
-**Shipped:** v1.0 on 2026-04-16 and v1.1 on 2026-04-23.
+**Shipped:** v1.0 on 2026-04-16, v1.1 on 2026-04-23, v1.2 on 2026-04-24.
 **Active milestone:** none — beginning v1.3 planning.
-**Tech stack:** Rust stable, Cargo workspace, winnow (parser), clap (CLI), tokio (async watching), serde_json, directories, tempfile, rstest, insta.
+**Tech stack:** Rust stable, Cargo workspace, winnow (parser), clap (CLI), ratatui + tui-textarea + crossterm (TUI), tokio (async watching), serde_json, directories, tempfile, rstest, insta.
 **Crates:** `crates/todotxt-core` (library) + `crates/todotxt-cli` (binary) + `crates/todotxt-tui` (binary).
-**Test baseline:** 207 tests passing, 0 warnings, 0 clippy issues.
+**Test baseline:** 250+ tests passing, 0 warnings, 0 clippy issues.
 
 **Existing C# codebase:** C# .NET Framework 4.0 WPF app (Windows only). Version 3.3.1.0. Located at `Client/`, `ToDoLib/`, `TodoTests/`. Reference implementation for format and behavior.
 
@@ -111,7 +106,9 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 | JSON output flag for CLI | Enables AI agent skills to consume structured task data | ✓ Validated via integration tests |
 | winnow for parser | Zero-copy, single-pass, composable; better ergonomics than nom | ✓ Worked well |
 | `#![deny(warnings)]` in both crates | Enforce code quality from day 1 | ✓ 0 warnings at ship |
-| Preserve todotxt.net behavioral parity in TUI UX | Reduce migration friction for existing users | 🚧 v1.2 |
+| Preserve todotxt.net behavioral parity in TUI UX | Reduce migration friction for existing users | ✓ Shipped v1.2 |
+| Remove theme label from status bar entirely | Conditional show adds complexity with no user benefit | ✓ v1.2 |
+| `G` jump-to-bottom removed from TUI | Hotkey conflict with grouping `g` toggle; not worth the confusion | ✓ v1.2 |
 
 ## Evolution
 
@@ -122,4 +119,4 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 4. Audit Out of Scope — reasons still valid?
 
 ---
-*Last updated: 2026-04-23 for v1.2 milestone start*
+*Last updated: 2026-04-24 after v1.2 milestone*

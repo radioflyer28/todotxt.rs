@@ -1,7 +1,7 @@
 ---
 phase: 17-tui-grouping-sorting-alignment-status-polish
-verified: 2026-04-23T19:23:32.817Z
-status: human_needed
+verified: 2026-04-24T00:00:00.000Z
+status: passed
 score: 11/11 must-haves verified
 overrides_applied: 0
 human_verification:
@@ -84,19 +84,19 @@ No orphaned Phase 17 requirements were found in REQUIREMENTS.md beyond the IDs a
 
 No blocker or warning anti-patterns found in crates/todotxt-tui/src/app.rs for TODO/FIXME placeholders, empty stub returns, or console-log-only handlers in Phase 17 scope.
 
-### Human Verification Required
+### Human Verification — RESOLVED
 
 1. Toggle grouping with g and verify header navigation behavior.
 Expected: headers appear/disappear correctly, highlighted selection never rests on a header, task actions apply to task rows.
-Why human: requires interactive terminal keypress flow and visual highlight confirmation.
+**Result: PASS** — Confirmed by Phase 18 human UAT (area 3 — Grouping/sort), APPROVED 2026-04-24.
 
 2. Toggle deferred visibility with h and inspect row styling.
 Expected: `[+deferred]` shows in status bar and deferred rows are visibly dimmed relative to normal rows.
-Why human: visual style judgment cannot be conclusively proven by static inspection.
+**Result: PASS** — Confirmed by Phase 18 human UAT (area 2 — Filter/deferred), APPROVED 2026-04-24.
 
 ## Findings Summary
 
-Automated verification passed for all Phase 17 must-haves and the todotxt-tui build check. Status is human_needed because final acceptance still depends on interactive, visual TUI behavior checks.
+All Phase 17 must-haves verified. Human verification items resolved by Phase 18 UAT walkthrough (APPROVED 2026-04-24 by user). Final status: passed.
 
-_Verified: 2026-04-23T19:23:32.817Z_
-_Verifier: the agent (gsd-verifier)_
+_Verified: 2026-04-23T19:23:32.817Z (automated) / 2026-04-24 (human UAT resolution)_
+_Verifier: the agent (gsd-verifier) + human UAT (Phase 18)_
