@@ -26,7 +26,7 @@ Mark each item PASS or FAIL. Add notes for any FAIL.
 | G2 | With grouping on, use `j`/`k` to navigate | Cursor skips header rows and lands only on task rows | |
 | G3 | With grouping on, press `x` on a task | Task is marked complete; header navigation is unaffected | |
 | G4 | Press `g` again | Status bar `\| group: on` disappears; no header rows visible; task list returns to ungrouped | |
-| G5 | Change sort order with `o`, then press `g` | Groups reflect the new sort key (e.g., sort by project → `+project` headers; sort by context → `@context` headers) | |
+| G5 | Press `o` (cycles sort order) until sort changes (e.g., to Project or Context), then press `g` | Groups reflect the new sort key (e.g., sort by project → `+project` headers; sort by context → `@context` headers). Note: sort key is `o`, not `s`. | |
 
 PASS criteria: All 5 items PASS.
 
@@ -50,9 +50,9 @@ PASS criteria: All 5 items PASS.
 
 | # | Step | Expected | Result |
 |---|------|----------|--------|
-| F1 | Press `/` to open quick filter, type some text | Filter bar shows typed text, task list filters live | |
-| F2 | Press `Esc` while filter text is changed from prior value | Filter text reverts to what it was before `/` was pressed; task list restores | |
-| F3 | Press `/`, type text, press `Enter` to confirm | Filter applies and stays; pressing `Esc` again after confirm does NOT clear the filter | |
+| F1 | Press `f` to open quick filter, type some text | Filter bar shows typed text, task list filters live | |
+| F2 | Press `Esc` while filter text is changed from prior value | Filter text reverts to what it was before `f` was pressed; task list restores | |
+| F3 | Press `f`, type text, press `Enter` to confirm | Filter applies and stays; pressing `Esc` again after confirm does NOT clear the filter | |
 | F4 | Open filter with active filter already set, change it, press `Esc` | Reverts to the previously confirmed filter value (not empty) | |
 
 PASS criteria: All 4 items PASS.
@@ -63,9 +63,9 @@ PASS criteria: All 4 items PASS.
 
 | # | Step | Expected | Result |
 |---|------|----------|--------|
-| P1 | Open an F-key preset panel (e.g., press `F1` or use the preset UI) and configure a filter string | Preset is saved to TOML config (check `~/.config/todotxt-tui/config.toml` or portable equivalent) | |
-| P2 | Quit the TUI completely (`q`) and relaunch | Previously configured preset is still present and functional | |
-| P3 | Apply the preset and verify it filters tasks correctly | Task list filters as expected with no "empty filter" or crash on startup | |
+| P1 | Press `F` (Shift+F) to open the preset definition panel | Panel opens showing the active filter row at top, plus 5 numbered preset slots (f1–f5) below. Navigate with `↑`/`↓`, type a filter string in any preset row, press `Enter` to save | |
+| P2 | Quit the TUI completely (`q`) and relaunch | Previously entered preset is still present in the `F` panel and available in the `f` quick filter | |
+| P3 | Apply the preset (press `f`, navigate to it with `↑`/`↓` or press `1`–`5`) and verify it filters tasks correctly | Task list filters as expected with no crash or empty filter on startup | |
 
 PASS criteria: All 3 items PASS.
 

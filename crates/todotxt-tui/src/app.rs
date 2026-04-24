@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
 use chrono::Local;
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList};
 use tui_textarea::TextArea;
@@ -106,6 +106,8 @@ pub struct App {
     pub show_deferred: bool,
     /// Active filter query string (empty = no filter).
     pub filter_query: String,
+    /// Last non-empty filter captured when Ctrl+F toggles filtering off.
+    pub toggled_filter_query: Option<String>,
     /// Filter panel state, or `None` when panel is closed (Plan 02).
     pub filter_state: Option<FilteringState>,
     /// Named filter presets from `[presets]` in config (Plan 02).
@@ -118,6 +120,10 @@ pub struct App {
     pub filter_defining_state: Option<FilterDefiningState>,
     /// Pre-computed color styles for the active theme (D-08, D-09 in 13-CONTEXT.md).
     pub styles: StyleSheet,
+    /// Currently active palette, used by `t` key theme cycling.
+    pub palette: Theme,
+    /// Whether NO_COLOR mode is active; preserves monochrome behavior while cycling themes.
+    pub no_color: bool,
 }
 
 impl App {
@@ -145,12 +151,15 @@ impl App {
             sort_order: SortOrder::FileOrder,
             show_deferred: false,
             filter_query: String::new(),
+            toggled_filter_query: None,
             filter_state: None,
             presets,
             config,
             config_path,
             filter_defining_state: None,
             styles: StyleSheet::from_theme(palette, no_color),
+            palette,
+            no_color,
         };
         app.rebuild_display_indices();
         app
@@ -339,7 +348,35 @@ impl App {
                 self.rebuild_and_reanchor();
             }
 
-            // ── Filter panel placeholder (Plan 02) ──────────────────────────
+            // ── Theme cycle ────────────────────────────────────────────────
+            KeyCode::Char('t') => {
+                self.palette = cycle_theme(self.palette);
+                self.styles = StyleSheet::from_theme(self.palette, self.no_color);
+                self.config.tui.theme = match self.palette {
+                    Theme::Default => "default".to_string(),
+                    Theme::Light => "light".to_string(),
+                };
+                if let Some(ref path) = self.config_path {
+                    if let Err(e) = self.config.save(path) {
+                        eprintln!("Warning: failed to save config: {e}");
+                    }
+                }
+            }
+
+            // ── Ctrl+F: toggle active filter on/off ─────────────────────────
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.filter_query.trim().is_empty() {
+                    if let Some(prev) = self.toggled_filter_query.take() {
+                        self.filter_query = prev;
+                    }
+                } else {
+                    self.toggled_filter_query = Some(self.filter_query.clone());
+                    self.filter_query.clear();
+                }
+                self.rebuild_and_reanchor();
+            }
+
+            // ── Filter panel (Plan 02) ──────────────────────────────────────
             KeyCode::Char('f') => {
                 let mut editor = TextArea::default();
                 editor.insert_str(&self.filter_query);
@@ -356,19 +393,34 @@ impl App {
                 let mut active_editor = TextArea::default();
                 active_editor.insert_str(&self.filter_query);
 
-                // Build sorted preset list (up to 9 entries) from config snapshot.
-                let mut sorted_presets: Vec<(String, String)> = self.config.presets.iter()
-                    .map(|(k, v)| (k.clone(), v.filter.clone().unwrap_or_default()))
-                    .collect();
-                sorted_presets.sort_by_key(|(name, _)| name.clone());
-                sorted_presets.truncate(9);
-
-                // Always show at least 5 slots so users can create presets from scratch.
-                // Padding slots are named "f1"–"f5"; existing named presets take precedence.
+                // Build deterministic numbered slots (f1..fN) so slot positions never shift.
                 const MIN_PRESET_SLOTS: usize = 5;
-                while sorted_presets.len() < MIN_PRESET_SLOTS {
-                    let slot_n = sorted_presets.len() + 1;
-                    sorted_presets.push((format!("f{}", slot_n), String::new()));
+                const MAX_PRESET_SLOTS: usize = 9;
+                let highest_existing_slot = self
+                    .config
+                    .presets
+                    .keys()
+                    .filter_map(|name| parse_preset_slot(name))
+                    .max()
+                    .unwrap_or(0);
+                let slot_count = highest_existing_slot
+                    .clamp(MIN_PRESET_SLOTS, MAX_PRESET_SLOTS);
+
+                let sorted_presets: Vec<(String, String)> = (1..=slot_count)
+                    .map(|slot| {
+                        let name = format!("f{}", slot);
+                        let filter = self
+                            .config
+                            .presets
+                            .get(&name)
+                            .and_then(|p| p.filter.clone())
+                            .unwrap_or_default();
+                        (name, filter)
+                    })
+                    .collect();
+
+                if active_editor.cursor() == (0, 0) {
+                    active_editor.move_cursor(tui_textarea::CursorMove::End);
                 }
 
                 let preset_names: Vec<String> = sorted_presets.iter().map(|(n, _)| n.clone()).collect();
@@ -409,6 +461,7 @@ impl App {
             KeyCode::Enter => {
                 self.filter_state = None;
                 self.mode = AppMode::Normal;
+                self.toggled_filter_query = None;
                 self.apply_pending_reload()?;
             }
             KeyCode::Down => {
@@ -452,7 +505,7 @@ impl App {
             }
             _ => {
                 if let Some(ref mut state) = self.filter_state {
-                    state.editor.input_without_shortcuts(Event::Key(key));
+                    state.editor.input(key);
                     self.filter_query = state
                         .editor
                         .lines()
@@ -491,8 +544,18 @@ impl App {
 
             // D-04: Enter = save preset definitions to TOML, return to Normal.
             KC::Enter => {
-                // Flush active editor content back to filter_query (live preview finalised).
-                self.filter_query = state.active_editor.lines().join("").trim().to_string();
+                // Apply currently selected row on save: row 0 = active query, rows 1..N = selected preset.
+                self.filter_query = if state.selected_row == 0 {
+                    state.active_editor.lines().join("").trim().to_string()
+                } else {
+                    let idx = state.selected_row - 1;
+                    state
+                        .preset_editors
+                        .get(idx)
+                        .map(|e| e.lines().join("").trim().to_string())
+                        .unwrap_or_default()
+                };
+                    self.toggled_filter_query = None;
 
                 // Update config.presets from editors.
                 for (i, name) in state.preset_names.iter().enumerate() {
@@ -592,7 +655,7 @@ impl App {
                     ac.focused = true;
                     ac.selected = (ac.selected + 1).min(ac.items.len().saturating_sub(1));
                 } else {
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                 }
             }
             KeyCode::Up => {
@@ -600,10 +663,10 @@ impl App {
                     if ac.focused {
                         ac.selected = ac.selected.saturating_sub(1);
                     } else {
-                        self.editor.input_without_shortcuts(Event::Key(key));
+                        self.editor.input(key);
                     }
                 } else {
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                 }
             }
             KeyCode::Tab => {
@@ -611,7 +674,7 @@ impl App {
                     self.accept_completion();
                 } else {
                     // Tab without focused popup — pass to editor.
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                     self.update_autocomplete();
                 }
             }
@@ -619,16 +682,14 @@ impl App {
                 if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
                     self.accept_completion();
                     // Also insert the space after the token.
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                 } else {
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                     self.update_autocomplete();
                 }
             }
             _ => {
-                // Route all other keys through tui-textarea without default shortcuts
-                // (PITFALLS: "Single-line editors inheriting multiline and shortcut behavior").
-                self.editor.input_without_shortcuts(Event::Key(key));
+                self.editor.input(key);
                 self.update_autocomplete();
             }
         }
@@ -1073,7 +1134,7 @@ impl App {
             middle.push_str(" [+deferred]");
         }
 
-        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | o sort | g group | h deferred";
+        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -1225,7 +1286,7 @@ impl App {
 
         // Outer bordered block.
         let outer = Block::default()
-            .title(" Filter Definitions (F) — \u{2191}\u{2193}: navigate  Enter: save  Esc: discard ")
+            .title(" Filter Definitions (F) — \u{2191}\u{2193}: navigate  Enter: save+apply row  Esc: discard ")
             .borders(Borders::ALL);
         let inner = outer.inner(area);
         frame.render_widget(outer, area);
@@ -1282,6 +1343,25 @@ fn cycle_sort(current: SortOrder) -> SortOrder {
         SortOrder::Priority      => SortOrder::Project,
         SortOrder::Project       => SortOrder::FileOrder,
         _                        => SortOrder::FileOrder,
+    }
+}
+
+/// Advance to the next theme in the fixed cycle.
+fn cycle_theme(current: Theme) -> Theme {
+    match current {
+        Theme::Default => Theme::Light,
+        Theme::Light => Theme::Default,
+    }
+}
+
+/// Parse numbered preset keys like `f1`..`f9`.
+fn parse_preset_slot(name: &str) -> Option<usize> {
+    let suffix = name.strip_prefix('f')?;
+    let slot = suffix.parse::<usize>().ok()?;
+    if (1..=9).contains(&slot) {
+        Some(slot)
+    } else {
+        None
     }
 }
 
