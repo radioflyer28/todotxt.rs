@@ -1906,4 +1906,123 @@ mod tests {
         assert!(app.selected_tasks.contains(&1), "Task 1 (at row 2) should be selected");
         assert!(!app.selected_tasks.is_empty());
     }
+
+    // ── Task 1 (19-03): Selection persistence through rebuild ─────────────────
+
+    #[test]
+    fn rebuild_and_reanchor_does_not_clear_selected_tasks() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.rebuild_and_reanchor();
+        assert!(app.selected_tasks.contains(&0), "rebuild_and_reanchor must not clear selected_tasks (D-18)");
+        assert!(app.selected_tasks.contains(&1), "rebuild_and_reanchor must not clear selected_tasks (D-18)");
+    }
+
+    #[test]
+    fn rebuild_display_indices_does_not_clear_selected_tasks() {
+        let mut app = make_app_with_tasks(&["A", "B", "C"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(2);
+        app.rebuild_display_indices();
+        assert!(app.selected_tasks.contains(&0), "rebuild_display_indices must not clear selected_tasks (D-18)");
+        assert!(app.selected_tasks.contains(&2), "rebuild_display_indices must not clear selected_tasks (D-18)");
+    }
+
+    #[test]
+    fn filter_hidden_tasks_remain_selected_d20() {
+        let mut app = make_app_with_tasks(&["(A) priority task", "plain task"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        // Apply a filter that hides task 1 (index 1, "plain task" has no priority)
+        app.filter_query = "pri:A".to_string();
+        app.rebuild_and_reanchor();
+        // Task index 1 is hidden by filter but must remain in selected_tasks per D-20
+        assert!(app.selected_tasks.contains(&0), "visible task stays selected after filter");
+        assert!(app.selected_tasks.contains(&1), "filter-hidden task must remain in selected_tasks (D-20)");
+    }
+
+    #[test]
+    fn sort_change_does_not_clear_selected_tasks() {
+        let mut app = make_app_with_tasks(&["(B) task b", "(A) task a"]);
+        app.selected_tasks.insert(0); // canonical index 0 = "(B) task b"
+        app.sort_order = todotxt_core::SortOrder::Priority;
+        app.rebuild_and_reanchor();
+        // Sort changes display order but canonical index 0 must still be selected
+        assert!(app.selected_tasks.contains(&0), "sort change must not clear selected_tasks (D-18)");
+    }
+
+    // ── Task 2 (19-03): Pruning stale selections on reload ────────────────────
+
+    fn make_app_with_file(task_lines: &[&str]) -> (App, NamedTempFile) {
+        use std::io::Write;
+        let mut file = NamedTempFile::new().expect("failed to create temp file");
+        for line in task_lines {
+            writeln!(file, "{}", line).unwrap();
+        }
+        file.flush().unwrap();
+        let path = file.path().to_path_buf();
+        let task_list = TaskList::load(&path).expect("load failed");
+        let app = App::new(task_list, path, TuiConfig::default(), None, Theme::Default, true);
+        (app, file)
+    }
+
+    #[test]
+    fn reload_prunes_out_of_range_selections() {
+        use std::io::{Seek, SeekFrom, Write};
+        let (mut app, mut file) = make_app_with_file(&["A", "B", "C"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.selected_tasks.insert(2);
+
+        // Shrink file to 2 tasks (remove "C")
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.as_file().set_len(0).unwrap();
+        writeln!(file, "A").unwrap();
+        writeln!(file, "B").unwrap();
+        file.flush().unwrap();
+
+        app.pending_reload = true;
+        app.apply_pending_reload().unwrap();
+
+        assert!(!app.selected_tasks.contains(&2), "out-of-range index 2 must be pruned after reload (D-19)");
+        assert!(app.selected_tasks.contains(&0), "valid index 0 must be retained after reload");
+        assert!(app.selected_tasks.contains(&1), "valid index 1 must be retained after reload");
+    }
+
+    #[test]
+    fn reload_clears_out_of_range_anchor() {
+        use std::io::{Seek, SeekFrom, Write};
+        let (mut app, mut file) = make_app_with_file(&["A", "B", "C"]);
+        app.selection_anchor = Some(2);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.as_file().set_len(0).unwrap();
+        writeln!(file, "A").unwrap();
+        writeln!(file, "B").unwrap();
+        file.flush().unwrap();
+
+        app.pending_reload = true;
+        app.apply_pending_reload().unwrap();
+
+        assert!(app.selection_anchor.is_none(), "anchor pointing to removed task must be cleared after reload (D-19)");
+    }
+
+    #[test]
+    fn reload_retains_valid_anchor() {
+        use std::io::{Seek, SeekFrom, Write};
+        let (mut app, mut file) = make_app_with_file(&["A", "B", "C"]);
+        app.selection_anchor = Some(1);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.as_file().set_len(0).unwrap();
+        writeln!(file, "A").unwrap();
+        writeln!(file, "B").unwrap();
+        file.flush().unwrap();
+
+        app.pending_reload = true;
+        app.apply_pending_reload().unwrap();
+
+        assert_eq!(app.selection_anchor, Some(1), "valid anchor (index 1, still exists) must be retained after reload");
+    }
 }
