@@ -277,7 +277,8 @@ impl App {
                 self.toggle_task_selection();
             }
             // Esc: clear entire selection and exit disjoint mode (D-07).
-            KeyCode::Esc if self.disjoint_select => {
+            // Also clears shift-range selections made outside disjoint mode.
+            KeyCode::Esc if self.disjoint_select || !self.selected_tasks.is_empty() => {
                 self.selected_tasks.clear();
                 self.selection_anchor = None;
                 self.disjoint_select = false;
