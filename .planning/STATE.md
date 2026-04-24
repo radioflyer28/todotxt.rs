@@ -10,8 +10,8 @@ progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,13 +26,13 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 ## Current Position
 
 Phase: 19
-Plan: 19-02 (next)
+Plan: 19-03 (next)
 Status: Executing Phase 19 — Selection Model + Multi-Select Foundation
 Last activity: 2026-04-24
 
 ## Next Step
 
-Execute Plan 19-02 — Shift-range selection + disjoint selection mode key handling and rendering.
+Execute Plan 19-03 — Selection persistence across rebuild/reload operations.
 
 ## Pending Decisions
 
@@ -63,12 +63,15 @@ None.
 - D-01: HashSet<usize> of canonical file indices for selected_tasks (Phase 19-01)
 - D-04: disjoint_select is bool flag on App, NOT new AppMode variant (Phase 19-01)
 - D-14/D-15: Selected non-cursor=BOLD+'>' prefix; cursor+selected=REVERSED|BOLD (Phase 19-01)
+- D-09/D-11/D-12: Shift+j/k/Down/Up extend range from lazy anchor; non-shift nav clears anchor only (Phase 19-02)
+- D-10: Shift+Ctrl+D/U extend range by half-page; dispatch order: Shift+Ctrl before plain Ctrl (Phase 19-02)
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 19    | 01   | 35min    | 3     | 2     |
+| 19    | 02   | 20min    | 3     | 1     |
 
 **v1.3 kickoff scope:**
 

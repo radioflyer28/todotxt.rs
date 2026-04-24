@@ -28,7 +28,7 @@
   - **Plans:** 3 plans
   - Plans:
     - [x] 19-01-PLAN.md — Canonical selection model + anchor tracking + grouped-row safety
-    - [ ] 19-02-PLAN.md — Shift-range selection + disjoint selection mode key handling and rendering
+    - [x] 19-02-PLAN.md — Shift-range selection + disjoint selection mode key handling and rendering
     - [ ] 19-03-PLAN.md — Selection persistence across regroup, refilter, resort, and reload
 
 - [ ] **Phase 20: Bulk Actions + Selection UX**
