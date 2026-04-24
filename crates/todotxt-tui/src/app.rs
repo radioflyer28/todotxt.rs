@@ -1419,3 +1419,60 @@ fn group_key_for(task: &Task, sort: &SortOrder) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn make_app_with_tasks(task_lines: &[&str]) -> App {
+        let mut file = NamedTempFile::new().expect("failed to create temp file");
+        for line in task_lines {
+            writeln!(file, "{}", line).unwrap();
+        }
+        let path = file.path().to_path_buf();
+        let task_list = TaskList::load(&path).expect("load failed");
+        // Keep temp file alive until after load by persisting it.
+        let _ = file.keep();
+        App::new(task_list, path, TuiConfig::default(), None, Theme::Default, true)
+    }
+
+    // ── Task 1: Canonical selection state ────────────────────────────────────
+
+    #[test]
+    fn selection_state_initialized_empty() {
+        let app = make_app_with_tasks(&["Task one", "Task two"]);
+        assert!(app.selected_tasks.is_empty(), "selected_tasks should be empty on init");
+        assert!(app.selection_anchor.is_none(), "selection_anchor should be None on init");
+        assert!(!app.disjoint_select, "disjoint_select should be false on init");
+    }
+
+    #[test]
+    fn toggle_task_selection_adds_canonical_index() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        // selected == 0, display_rows[0] == Task(0)
+        app.toggle_task_selection();
+        assert!(app.selected_tasks.contains(&0), "canonical index 0 should be in selected_tasks after toggle");
+    }
+
+    #[test]
+    fn toggle_task_selection_removes_if_already_selected() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.selected_tasks.insert(0);
+        app.toggle_task_selection();
+        assert!(!app.selected_tasks.contains(&0), "canonical index 0 should be removed after second toggle");
+    }
+
+    #[test]
+    fn toggle_task_selection_no_op_on_group_header() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        // Manually override display_rows to put a GroupHeader at position 0.
+        app.display_rows = vec![
+            DisplayRow::GroupHeader("Header".to_string()),
+            DisplayRow::Task(0),
+        ];
+        app.selected = 0;
+        app.toggle_task_selection();
+        assert!(app.selected_tasks.is_empty(), "GroupHeader row must never enter selected_tasks (D-08)");
+    }
+}
