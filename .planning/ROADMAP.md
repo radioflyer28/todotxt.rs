@@ -79,12 +79,12 @@
 ### Phase 19: Selection Model + Multi-Select Foundation
 
 Goal: add canonical multi-selection to the TUI without breaking grouped rendering or filtered/reloaded views.
-Status: planned
+Status: Complete
 Plans:
 
-- [ ] 19-01-PLAN.md — Canonical selection model + anchor tracking + grouped-row safety
-- [ ] 19-02-PLAN.md — Shift-range selection + disjoint selection mode key handling and rendering
-- [ ] 19-03-PLAN.md — Selection persistence across regroup, refilter, resort, and reload
+- [x] 19-01-PLAN.md — Canonical selection model + anchor tracking + grouped-row safety
+- [x] 19-02-PLAN.md — Shift-range selection + disjoint selection mode key handling and rendering
+- [x] 19-03-PLAN.md — Selection persistence across regroup, refilter, resort, and reload
 
 ### Phase 20: Bulk Actions + Selection UX
 
