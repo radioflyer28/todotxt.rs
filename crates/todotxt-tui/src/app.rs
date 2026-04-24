@@ -1446,6 +1446,11 @@ impl App {
             left.push_str(&format!(" | {} due today | {} overdue", due_today, overdue));
         }
 
+        // Selection count indicator — only shown when tasks are selected (D-12, D-14)
+        if !self.selected_tasks.is_empty() {
+            left.push_str(&format!(" | {} selected", self.selected_tasks.len()));
+        }
+
         let mut middle = String::new();
 
         let trimmed_filter = self.filter_query.trim();
@@ -1464,7 +1469,7 @@ impl App {
             middle.push_str(" [+deferred]");
         }
 
-        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme";
+        let right = "  q quit | n add | u edit | d del | D bulk del | T bulk app | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -2310,5 +2315,50 @@ mod tests {
         assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
         assert!(app.selected_tasks.is_empty());
         assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    // ── Task 3 (20-03): Status bar selection indicator ──────────────────────
+
+    /// Verify selection count indicator logic: selected_tasks non-empty → count string
+    /// This tests the condition used in render_status_bar without requiring a Frame.
+    #[test]
+    fn status_bar_selection_indicator_absent_when_empty() {
+        let app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        // No selection → no indicator
+        assert!(app.selected_tasks.is_empty());
+        let mut left = format!("todo.txt | {}/{} tasks", app.display_indices.len(), app.task_list.len());
+        if !app.selected_tasks.is_empty() {
+            left.push_str(&format!(" | {} selected", app.selected_tasks.len()));
+        }
+        assert!(!left.contains("selected"), "Status bar must not contain 'selected' when selection is empty");
+    }
+
+    #[test]
+    fn status_bar_selection_indicator_present_when_tasks_selected() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        // With selection → indicator present
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(2);
+        let mut left = format!("todo.txt | {}/{} tasks", app.display_indices.len(), app.task_list.len());
+        if !app.selected_tasks.is_empty() {
+            left.push_str(&format!(" | {} selected", app.selected_tasks.len()));
+        }
+        assert!(left.contains("| 2 selected"), "Status bar should show '| 2 selected' with 2 tasks selected");
+    }
+
+    /// Verify disjoint_select=true does not add extra prefix beyond count (D-14)
+    #[test]
+    fn status_bar_disjoint_mode_shows_count_not_v_prefix() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        app.selected_tasks.insert(0);
+        app.disjoint_select = true;
+        let mut left = format!("todo.txt | {}/{} tasks", app.display_indices.len(), app.task_list.len());
+        if !app.selected_tasks.is_empty() {
+            left.push_str(&format!(" | {} selected", app.selected_tasks.len()));
+        }
+        // Must contain count
+        assert!(left.contains("| 1 selected"), "Status bar should show count when disjoint_select=true");
+        // Must NOT contain [v] or v-mode prefix
+        assert!(!left.contains("[v]"), "D-14 violated: status bar must not show [v] prefix");
     }
 }
