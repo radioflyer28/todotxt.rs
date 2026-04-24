@@ -41,6 +41,16 @@
     - [ ] 20-01-PLAN.md — Bulk delete confirmation and descending-index mutation safety
     - [ ] 20-02-PLAN.md — Bulk append workflow over selected tasks
     - [ ] 20-03-PLAN.md — Selection count/status/help UX polish for bulk actions
+- [x] **Phase 20: Bulk Actions + Selection UX**
+  - Turn multi-selection into safe bulk delete and bulk append flows
+  - Surface selection count and selection mode clearly in the TUI
+  - Preserve deterministic behavior when visible-row order differs from task order
+  - **Requirements:** BULK-01, BULK-02, BULK-03
+  - **Plans:** 3 plans
+  - Plans:
+    - [x] 20-01-PLAN.md — Bulk delete confirmation and descending-index mutation safety
+    - [x] 20-02-PLAN.md — Bulk append workflow over selected tasks
+    - [x] 20-03-PLAN.md — Selection count/status/help UX polish for bulk actions
 
 - [ ] **Phase 21: Smart Text Normalization**
   - Normalize recognized todo.txt metadata during append and edit flows
@@ -89,12 +99,12 @@ Plans:
 ### Phase 20: Bulk Actions + Selection UX
 
 Goal: expose selected-task workflows that feel safe and obvious to todotxt.net users.
-Status: planned
+Status: Complete
 Plans:
 
-- [ ] 20-01-PLAN.md — Bulk delete confirmation and descending-index mutation safety
-- [ ] 20-02-PLAN.md — Bulk append workflow over selected tasks
-- [ ] 20-03-PLAN.md — Selection count/status/help UX polish for bulk actions
+- [x] 20-01-PLAN.md — Bulk delete confirmation and descending-index mutation safety
+- [x] 20-02-PLAN.md — Bulk append workflow over selected tasks
+- [x] 20-03-PLAN.md — Selection count/status/help UX polish for bulk actions
 
 ### Phase 21: Smart Text Normalization
 

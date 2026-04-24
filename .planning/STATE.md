@@ -3,7 +3,7 @@ milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
 current_phase: 20
 current_plan: 03
-status: Plan 20-03 Complete — Selection Visibility in Status Bar (Phase 20 COMPLETE)
+status: ✅ PHASE 20 COMPLETE — Bulk Delete, Bulk Append, Selection Visibility all delivered
 last_updated: "2026-04-24T20:45:00.000Z"
 last_activity: 2026-04-24
 progress:
@@ -33,6 +33,7 @@ Last activity: 2026-04-24
 ## Next Step
 
 Phase 20 complete. Next: Plan 21 (Smart Text Normalization) or Phase 22 (Keymap Parity).
+Next: Phase 21 — Smart Text Normalization (todo.txt-aware metadata normalization)
 
 ## Pending Decisions
 
