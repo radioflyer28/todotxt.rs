@@ -25,18 +25,18 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: -
-Status: Defining requirements for v1.3 parity milestone
+Phase: 19
+Plan: 19-01 (next)
+Status: Milestone initialized — ready to plan Phase 19
 Last activity: 2026-04-24
 
 ## Next Step
 
-Research todotxt.net interaction patterns and define v1.3 requirements.
+Plan Phase 19 — Selection Model + Multi-Select Foundation.
 
 ## Pending Decisions
 
-- Final v1.3 requirement set after parity research.
+None.
 
 ## Blockers
 
