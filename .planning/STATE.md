@@ -34,18 +34,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-23)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone v1.2 — Compatibility + UX Alignment.
+**Current focus:** Milestone v1.2 shipped — ready to plan v1.3.
 
 ## Current Position
 
 Phase: 18
-Plan: 18-01 (in progress)
-Status: Executing Phase 18 — Validation + Ship Readiness (4 plans: UAT checklist, requirements close-out, human UAT, milestone audit)
-Last activity: 2026-04-23
+Plan: 18-04 (complete)
+Status: v1.2 milestone closed — all phases and plans complete
+Last activity: 2026-04-24
 
 ## Next Step
 
-Executing Phase 18 plans sequentially. Current: Plan 18-01 — Write UAT.md + confirm regression suite green.
+v1.2 is shipped. Begin v1.3 milestone planning when ready.
 
 ## Pending Decisions
 

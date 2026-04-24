@@ -2,7 +2,7 @@
 
 ## Current State
 
-v1.2 Compatibility + UX Alignment is active (started 2026-04-23).
+v1.2 Compatibility + UX Alignment shipped 2026-04-24.
 
 The project now includes:
 - todotxt-core (library)
@@ -25,7 +25,7 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 
 ## Current State
 
-**v1.0 and v1.1 shipped.** Core, CLI, and TUI are complete and tested.
+**v1.0, v1.1, and v1.2 shipped.** Core, CLI, and TUI are complete and tested.
 **v1.2 is now in planning/execution.** Focus is todo.sh compatibility and UX alignment with todotxt.net behavior.
 
 - `todotxt-core`: parser, Task model, TaskList CRUD, filter engine, sort engine, file watching, portable mode
@@ -63,14 +63,14 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 - ✓ Autocomplete and UX guards — @/+ completion and deferred reload while editing
 - ✓ Theme and polish — default/light theme, config selection, NO_COLOR behavior, terminal restoration
 
-### Active (v1.2)
+### Active (v1.2) — Shipped 2026-04-24
 
-- [ ] todo.sh compatibility layer
-- [ ] TUI filter Esc cancel/restore behavior
-- [ ] TUI status bar theme label shown conditionally
-- [ ] TUI sort/group alignment with todotxt.net grouping semantics
-- [ ] TUI filter definition layout alignment and TOML persistence
-- [ ] Deferred-task parity decision and support (`t:`) when confirmed
+- ✓ todo.sh compatibility layer
+- ✓ TUI filter Esc cancel/restore behavior
+- ✓ TUI status bar theme label shown conditionally
+- ✓ TUI sort/group alignment with todotxt.net grouping semantics
+- ✓ TUI filter definition layout alignment and TOML persistence
+- ✓ Deferred-task parity decision and support (`t:`)
 
 ### Planned (future milestone)
 
@@ -87,7 +87,7 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 ## Context
 
 **Shipped:** v1.0 on 2026-04-16 and v1.1 on 2026-04-23.
-**Active milestone:** v1.2 Compatibility + UX Alignment.
+**Active milestone:** none — beginning v1.3 planning.
 **Tech stack:** Rust stable, Cargo workspace, winnow (parser), clap (CLI), tokio (async watching), serde_json, directories, tempfile, rstest, insta.
 **Crates:** `crates/todotxt-core` (library) + `crates/todotxt-cli` (binary) + `crates/todotxt-tui` (binary).
 **Test baseline:** 207 tests passing, 0 warnings, 0 clippy issues.

@@ -6,7 +6,8 @@
   Archive: .planning/milestones/v1.0-ROADMAP.md
 - ✅ v1.1 TUI Interface — shipped 2026-04-23
   Archive: .planning/milestones/v1.1-ROADMAP.md
-- 🚧 v1.2 Compatibility + UX Alignment — active
+- ✅ v1.2 Compatibility + UX Alignment — shipped 2026-04-24
+  Archive: .planning/milestones/v1.2-ROADMAP.md
 
 ## v1.2 Scope
 
@@ -58,16 +59,16 @@
     - [x] 17-01-PLAN.md — Status bar cleanup (remove theme label) + deferred toggle (h key, DIM styling, [+deferred] indicator)
     - [x] 17-02-PLAN.md — Task grouping: DisplayRow enum, g toggle, header rows (REVERSED), nav skip, | group: on status bar
 
-- [ ] **Phase 18: Validation + Ship Readiness**
+- [x] **Phase 18: Validation + Ship Readiness** *(completed 2026-04-24)*
   - Integration and UAT pass for compatibility and TUI UX changes
   - Milestone audit, docs updates, and close-out prep
   - **Requirements:** V12-COMPAT-01, V12-COMPAT-02, V12-TUI-FILTER-01, V12-TUI-FILTER-02, V12-TUI-FILTER-03, V12-TUI-STATUS-01, V12-TUI-GROUP-01, V12-TUI-DEFER-01, V12-TUI-DEFER-02
   - **Plans:** 4 plans
   - Plans:
-    - [ ] 18-01-PLAN.md — Write UAT.md checklist (4 TUI areas) + confirm regression suite green
-    - [ ] 18-02-PLAN.md — Mark all 9 requirements complete + create CHANGELOG.md + update README.md
-    - [ ] 18-03-PLAN.md — Human UAT checkpoint (live TUI walkthrough approval)
-    - [ ] 18-04-PLAN.md — Milestone audit (18-AUDIT.md) + gsd-complete-milestone close-out
+    - [x] 18-01-PLAN.md — Write UAT.md checklist (4 TUI areas) + confirm regression suite green
+    - [x] 18-02-PLAN.md — Mark all 9 requirements complete + create CHANGELOG.md + update README.md
+    - [x] 18-03-PLAN.md — Human UAT checkpoint (live TUI walkthrough approval)
+    - [x] 18-04-PLAN.md — Milestone audit (18-AUDIT.md) + gsd-complete-milestone close-out
 
 ## Phase Detail Sections
 
