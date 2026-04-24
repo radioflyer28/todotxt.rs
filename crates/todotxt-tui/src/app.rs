@@ -67,6 +67,8 @@ pub enum AppMode {
     Filtering,
     /// F-key preset definition panel (D-01 in 16-CONTEXT.md).
     FilterDefining,
+    /// Bulk append mode: user types text to append to all selected tasks (D-06, Phase 20).
+    AppendText,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -218,6 +220,7 @@ impl App {
                     AppMode::Adding | AppMode::Editing { .. } => {
                         self.handle_editor_key(key)?;
                     }
+                    AppMode::AppendText => self.handle_append_text_key(key)?,
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
                     AppMode::Filtering => self.handle_filtering_key(key)?,
                     AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
@@ -456,6 +459,12 @@ impl App {
             KeyCode::Char('o') => {
                 self.sort_order = cycle_sort(self.sort_order);
                 self.rebuild_and_reanchor();
+            }
+
+            // ── Bulk append — T (Shift+t) when tasks are selected (D-06) ────
+            KeyCode::Char('T') if !self.selected_tasks.is_empty() && display_count > 0 => {
+                self.editor = TextArea::default();
+                self.mode = AppMode::AppendText;
             }
 
             // ── Theme cycle ────────────────────────────────────────────────
@@ -822,6 +831,7 @@ impl App {
     fn update_autocomplete(&mut self) {
         match self.mode {
             AppMode::Adding | AppMode::Editing { .. } => {}
+            AppMode::AppendText => { self.autocomplete = None; return; }
             _ => { self.autocomplete = None; return; }
         }
         let line = self.editor.lines().first().cloned().unwrap_or_default();
@@ -918,6 +928,71 @@ impl App {
         // Any key returns to Normal (D-07).
         self.mode = AppMode::Normal;
         self.apply_pending_reload()?;
+        Ok(())
+    }
+
+    // ── Append text key handler ────────────────────────────────────────────────
+
+    fn handle_append_text_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                // Cancel — no tasks mutated (D-08)
+                self.selected_tasks.clear();
+                self.selection_anchor = None;
+                self.disjoint_select = false;
+                self.editor = TextArea::default();
+                self.mode = AppMode::Normal;
+                self.apply_pending_reload()?;
+            }
+            KeyCode::Enter => {
+                let text = self.editor.lines().first().cloned().unwrap_or_default();
+                let text = text.trim().to_string();
+
+                if text.is_empty() {
+                    // Empty input — cancel without mutating (D-08)
+                } else {
+                    // Build replacements: for each selected index, append text to raw (D-08, D-09)
+                    // Descending order for symmetry with bulk delete, even though append
+                    // does not shift indices (D-09 in 20-CONTEXT.md).
+                    let mut sorted_indices: Vec<usize> = self.selected_tasks.iter().copied().collect();
+                    sorted_indices.sort_unstable_by(|a, b| b.cmp(a));
+
+                    // Build (index, updated_task) pairs for batch_update.
+                    let tasks = self.task_list.tasks();
+                    let replacements: Vec<(usize, Task)> = sorted_indices
+                        .iter()
+                        .filter_map(|&idx| {
+                            tasks.get(idx).map(|t| {
+                                let new_raw = format!("{} {}", t.to_raw().trim_end(), text);
+                                let new_task = Task::parse(&new_raw);
+                                (idx, new_task)
+                            })
+                        })
+                        .collect();
+
+                    self.task_list
+                        .batch_update(replacements)
+                        .map_err(|e| color_eyre::eyre::eyre!("Failed to bulk append: {}", e))?;
+
+                    self.rebuild_and_reanchor();
+                }
+
+                // D-10: clear selection and return to Normal after append (success or empty-cancel)
+                self.selected_tasks.clear();
+                self.selection_anchor = None;
+                self.disjoint_select = false;
+                self.editor = TextArea::default();
+                self.mode = AppMode::Normal;
+                self.apply_pending_reload()?;
+            }
+            _ => {
+                // Forward all other keys to the editor widget
+                self.editor.input(key);
+            }
+        }
         Ok(())
     }
 
@@ -1207,6 +1282,19 @@ impl App {
                 frame.render_widget(&self.editor, chunks[1]);
                 // Autocomplete popup floats above the footer row (D-08, D-09).
                 self.render_autocomplete_popup(frame, chunks[1]);
+            }
+            AppMode::AppendText => {
+                // Two-row split: task list | inline editor with "Append: " label in footer row (D-11).
+                use ratatui::layout::Constraint::{Length, Min};
+                use ratatui::widgets::Paragraph;
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                // Split footer row: label (9 chars) | editor
+                let footer_cols =
+                    Layout::horizontal([Length(9), Min(0)]).split(chunks[1]);
+                frame.render_widget(Paragraph::new("Append: "), footer_cols[0]);
+                frame.render_widget(&self.editor, footer_cols[1]);
             }
             AppMode::Normal => {
                 // Two-row split: task list | status bar (D-14).
@@ -2161,5 +2249,66 @@ mod tests {
         
         // Verify conditions for rendering bulk count
         assert!(app.selected_tasks.len() > 1, "should have >1 task selected");
+    }
+
+    // ── Task 2 (20-02): Bulk append mode ─────────────────────────────────────
+
+    #[test]
+    fn bulk_append_applies_text_to_all_selected() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(2);
+        app.mode = AppMode::AppendText;
+        app.editor = TextArea::default();
+        app.editor.insert_str("+project1");
+
+        let key = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        app.handle_append_text_key(key).unwrap();
+
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A +project1");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task B"); // untouched
+        assert_eq!(app.task_list.tasks()[2].to_raw(), "task C +project1");
+        assert!(app.selected_tasks.is_empty());
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn bulk_append_empty_input_cancels_without_mutation() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected_tasks.insert(0);
+        app.mode = AppMode::AppendText;
+        // editor is empty (default)
+        let key = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        app.handle_append_text_key(key).unwrap();
+        // tasks unchanged
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert!(app.selected_tasks.is_empty());
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn bulk_append_esc_cancels_without_mutation() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected_tasks.insert(0);
+        app.mode = AppMode::AppendText;
+        app.editor = TextArea::default();
+        app.editor.insert_str("+project1");
+
+        let key = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        app.handle_append_text_key(key).unwrap();
+
+        // tasks unchanged
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert!(app.selected_tasks.is_empty());
+        assert_eq!(app.mode, AppMode::Normal);
     }
 }
