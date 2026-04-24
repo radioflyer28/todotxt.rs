@@ -1506,4 +1506,72 @@ mod tests {
         app.toggle_task_selection();
         assert!(app.selected_tasks.is_empty(), "GroupHeader row must never enter selected_tasks (D-08)");
     }
+
+    // ── Task 2: Disjoint selection mode keys ─────────────────────────────────
+
+    fn press_key(app: &mut App, code: crossterm::event::KeyCode) {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        app.handle_normal_key(KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+    }
+
+    #[test]
+    fn v_key_toggles_disjoint_select_on() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        assert!(!app.disjoint_select);
+        press_key(&mut app, KeyCode::Char('v'));
+        assert!(app.disjoint_select, "v should enable disjoint_select");
+    }
+
+    #[test]
+    fn v_key_toggles_disjoint_select_off() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.disjoint_select = true;
+        press_key(&mut app, KeyCode::Char('v'));
+        assert!(!app.disjoint_select, "v should disable disjoint_select when already on");
+    }
+
+    #[test]
+    fn space_toggles_task_in_disjoint_mode() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.disjoint_select = true;
+        press_key(&mut app, KeyCode::Char(' '));
+        assert!(app.selected_tasks.contains(&0), "Space should add cursor task to selected_tasks in disjoint mode");
+    }
+
+    #[test]
+    fn space_no_op_when_not_in_disjoint_mode() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        // disjoint_select is false by default
+        press_key(&mut app, KeyCode::Char(' '));
+        assert!(app.selected_tasks.is_empty(), "Space should be a no-op when disjoint_select is false");
+    }
+
+    #[test]
+    fn space_no_op_on_group_header_in_disjoint_mode() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.disjoint_select = true;
+        app.display_rows = vec![
+            DisplayRow::GroupHeader("Header".to_string()),
+            DisplayRow::Task(0),
+        ];
+        app.selected = 0;
+        press_key(&mut app, KeyCode::Char(' '));
+        assert!(app.selected_tasks.is_empty(), "Space on GroupHeader must be a no-op (D-08)");
+    }
+
+    #[test]
+    fn esc_clears_selection_and_exits_disjoint_mode() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.disjoint_select = true;
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        press_key(&mut app, KeyCode::Esc);
+        assert!(app.selected_tasks.is_empty(), "Esc should clear all selected_tasks");
+        assert!(!app.disjoint_select, "Esc should exit disjoint mode");
+    }
 }
