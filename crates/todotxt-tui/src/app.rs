@@ -4,6 +4,7 @@
 //! The two sender threads only produce `AppEvent` values — they never
 //! touch `App` or `TaskList` directly.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
@@ -124,6 +125,12 @@ pub struct App {
     pub palette: Theme,
     /// Whether NO_COLOR mode is active; preserves monochrome behavior while cycling themes.
     pub no_color: bool,
+    /// Canonical task indices that are currently multi-selected (D-01 in 19-CONTEXT.md).
+    pub selected_tasks: HashSet<usize>,
+    /// Anchor index for shift-range selection (D-02 in 19-CONTEXT.md).
+    pub selection_anchor: Option<usize>,
+    /// When true, Space marks/unmarks the cursor task and navigation does not clear the set (D-04).
+    pub disjoint_select: bool,
 }
 
 impl App {
@@ -160,6 +167,9 @@ impl App {
             styles: StyleSheet::from_theme(palette, no_color),
             palette,
             no_color,
+            selected_tasks: HashSet::new(),
+            selection_anchor: None,
+            disjoint_select: false,
         };
         app.rebuild_display_indices();
         app
@@ -940,6 +950,27 @@ impl App {
             Some(DisplayRow::Task(idx)) => Some(*idx),
             _ => self.display_indices.first().copied(),
         }
+    }
+
+    /// Toggle the cursor row's canonical index in `selected_tasks`.
+    ///
+    /// No-op when the cursor is on a `GroupHeader` row (D-08).
+    fn toggle_task_selection(&mut self) {
+        if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected).cloned() {
+            if self.selected_tasks.contains(&idx) {
+                self.selected_tasks.remove(&idx);
+            } else {
+                self.selected_tasks.insert(idx);
+            }
+        }
+    }
+
+    /// Clear the entire selection set, reset the anchor, and exit disjoint mode (D-07).
+    #[allow(dead_code)]
+    fn clear_selection(&mut self) {
+        self.selected_tasks.clear();
+        self.selection_anchor = None;
+        self.disjoint_select = false;
     }
 
     /// Toggle the completion state of the currently selected task and persist to disk.
