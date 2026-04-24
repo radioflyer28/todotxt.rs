@@ -284,6 +284,7 @@ impl App {
 
             // ── Navigation ──────────────────────────────────────────────────
             KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
+                self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 let mut next = self.selected + 1;
                 while next < row_count
                     && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
@@ -295,6 +296,7 @@ impl App {
                 }
             }
             KeyCode::Char('k') | KeyCode::Up if row_count > 0 => {
+                self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 if self.selected == 0 {
                     return Ok(());
                 }
@@ -319,6 +321,7 @@ impl App {
             KeyCode::Char('u')
                 if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
+                self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 let half = (self.list_height / 2).max(1) as usize;
                 self.selected = self.selected.saturating_sub(half);
                 while self.selected < row_count
@@ -332,6 +335,7 @@ impl App {
             KeyCode::Char('d')
                 if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
+                self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 let half = (self.list_height / 2).max(1) as usize;
                 self.selected = (self.selected + half).min(row_count.saturating_sub(1));
                 while self.selected < row_count
@@ -988,6 +992,56 @@ impl App {
         self.selected_tasks.clear();
         self.selection_anchor = None;
         self.disjoint_select = false;
+    }
+
+    /// Lazily initialize `selection_anchor` from the cursor's canonical index (D-11).
+    ///
+    /// If an anchor is already set, this is a no-op — the anchor stays stable
+    /// for the entire duration of a shift-range operation.
+    fn ensure_anchor(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = self.canonical_selected();
+        }
+    }
+
+    /// Replace `selected_tasks` with the contiguous range of task rows between
+    /// `selection_anchor` and the current cursor, skipping `GroupHeader` rows (D-08, D-09).
+    ///
+    /// If the anchor has no corresponding display row (e.g., filtered out), this is a no-op.
+    fn apply_range_selection(&mut self) {
+        let anchor_canon = match self.selection_anchor {
+            Some(a) => a,
+            None => return,
+        };
+        let cursor_canon = match self.canonical_selected() {
+            Some(c) => c,
+            None => return,
+        };
+        // Locate display-row positions for anchor and cursor canonical indices.
+        let anchor_row = self
+            .display_rows
+            .iter()
+            .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == anchor_canon));
+        let cursor_row = self
+            .display_rows
+            .iter()
+            .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == cursor_canon));
+        let (anchor_row, cursor_row) = match (anchor_row, cursor_row) {
+            (Some(a), Some(c)) => (a, c),
+            _ => return,
+        };
+        let (lo, hi) = if anchor_row <= cursor_row {
+            (anchor_row, cursor_row)
+        } else {
+            (cursor_row, anchor_row)
+        };
+        // Replace selection with only the tasks inside the [lo, hi] display range.
+        self.selected_tasks.clear();
+        for row in lo..=hi {
+            if let DisplayRow::Task(idx) = self.display_rows[row] {
+                self.selected_tasks.insert(idx);
+            }
+        }
     }
 
     /// Toggle the completion state of the currently selected task and persist to disk.
