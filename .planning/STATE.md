@@ -1,55 +1,42 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Scope
-status: planning
-last_updated: "2026-04-23T19:19:48.039Z"
-last_activity: 2026-04-23
+milestone: v1.3
+milestone_name: Feature/Hotkey Parity with todotxt.net
+current_phase: 19
+status: Defining requirements
+last_updated: "2026-04-24T00:00:00.000Z"
+last_activity: 2026-04-24
 progress:
-  total_phases: 5
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
----
-
----
-gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Compatibility + UX Alignment
-current_phase: 16
-status: Ready to plan
-last_updated: "2026-04-23T00:00:00.000Z"
-progress:
-  total_phases: 5
-  completed_phases: 2
+  total_phases: 0
+  completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 20
+  percent: 0
+---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-23)
+See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone v1.2 shipped — ready to plan v1.3.
+**Current focus:** Milestone v1.3 — TUI feature and hotkey parity with todotxt.net.
 
 ## Current Position
 
-Phase: 18
-Plan: 18-04 (complete)
-Status: v1.2 milestone closed — all phases and plans complete
+Phase: Not started (defining requirements)
+Plan: -
+Status: Defining requirements for v1.3 parity milestone
 Last activity: 2026-04-24
 
 ## Next Step
 
-v1.2 is shipped. Begin v1.3 milestone planning when ready.
+Research todotxt.net interaction patterns and define v1.3 requirements.
 
 ## Pending Decisions
 
-None.
+- Final v1.3 requirement set after parity research.
 
 ## Blockers
 
@@ -70,3 +57,10 @@ None.
 - grouping/sorting parity alignment with todotxt.net behavior
 - filter definition layout alignment + TOML persistence
 - deferred-task parity investigation and implementation if confirmed
+
+**v1.3 kickoff scope:**
+
+- TUI multi-selection parity: shift-range selection and disjoint selection mode
+- Bulk delete and append actions across selected tasks
+- Token-aware normalization of appended/edited todo.txt metadata
+- Hotkey/help parity audit against todotxt.net docs and screenshots

@@ -6,9 +6,21 @@ v1.0, v1.1, and v1.2 shipped. Core library, CLI, and TUI are complete with full 
 compatibility and UX alignment.
 
 Milestone archives:
+
 - .planning/milestones/v1.0-ROADMAP.md
 - .planning/milestones/v1.1-ROADMAP.md
 - .planning/milestones/v1.2-ROADMAP.md
+
+## Current Milestone: v1.3 Feature/Hotkey Parity with todotxt.net
+
+**Goal:** Make users switching from todotxt.net feel comfortable and familiar in the Rust TUI.
+
+**Target features:**
+
+- Multi-selection in the TUI: anchored shift-range selection plus a visual-line style selection mode for disjoint picks
+- Bulk actions on selected tasks, especially delete and append text
+- Token-aware normalization across text-edit paths so appended or edited `@context`, `+project`, priority, `t:`, `due:`, and similar fields land in the correct todo.txt positions
+- Hotkey and interaction parity grounded in todotxt.net help, screenshots, and docs
 
 ---
 
@@ -20,7 +32,7 @@ A Rust port of todotxt.net — a todo.txt manager that runs cross-platform (Wind
 
 A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
 
-## Current State
+## Product Snapshot
 
 **v1.0, v1.1, and v1.2 shipped.** Core library, CLI, and TUI are complete.
 **Active milestone:** none — beginning v1.3 planning.
@@ -69,6 +81,13 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 - ✓ TUI filter definition panel with TOML persistence (`F` key, numbered preset slots) — v1.2
 - ✓ Deferred-task `t:` toggle (`h` key, DIM styling, suppress-by-default) — v1.2
 
+### Active (v1.3)
+
+- [ ] TUI multi-selection parity: shift-range selection and disjoint selection mode
+- [ ] Bulk task operations on selected rows: delete, append, and related high-value parity actions
+- [ ] Token-aware task text normalization across append/edit flows while preserving todo.txt semantics
+- [ ] Hotkey/help parity audit against todotxt.net docs, screenshots, and observable behavior
+
 ### Planned (future milestone)
 
 - [ ] GUI interface (native desktop)
@@ -82,7 +101,7 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 ## Context
 
 **Shipped:** v1.0 on 2026-04-16, v1.1 on 2026-04-23, v1.2 on 2026-04-24.
-**Active milestone:** none — beginning v1.3 planning.
+**Active milestone:** v1.3 Feature/Hotkey Parity with todotxt.net.
 **Tech stack:** Rust stable, Cargo workspace, winnow (parser), clap (CLI), ratatui + tui-textarea + crossterm (TUI), tokio (async watching), serde_json, directories, tempfile, rstest, insta.
 **Crates:** `crates/todotxt-core` (library) + `crates/todotxt-cli` (binary) + `crates/todotxt-tui` (binary).
 **Test baseline:** 250+ tests passing, 0 warnings, 0 clippy issues.
@@ -99,7 +118,7 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
-|----------|-----------|---------|
+| -------- | --------- | ------- |
 | Rust for core + CLI first | Foundation needed before any UI work; most agent-usable surface | ✓ Shipped v1.0 |
 | Strict todo.txt format | Interop with todo.sh and ecosystem tools | ✓ Validated |
 | Cargo workspace | Separate crates for core library, CLI, future TUI/GUI | ✓ Clean separation |
@@ -109,14 +128,18 @@ A fast, cross-platform todo.txt tool with a first-class CLI for both human and A
 | Preserve todotxt.net behavioral parity in TUI UX | Reduce migration friction for existing users | ✓ Shipped v1.2 |
 | Remove theme label from status bar entirely | Conditional show adds complexity with no user benefit | ✓ v1.2 |
 | `G` jump-to-bottom removed from TUI | Hotkey conflict with grouping `g` toggle; not worth the confusion | ✓ v1.2 |
+| For parity work, split authority by concern | Use todo.txt spec for task-text semantics and todotxt.net for interaction model/hotkeys | — Pending |
 
 ## Evolution
 
+This document evolves at phase transitions and milestone boundaries.
+
 **After each milestone** (via `/gsd-complete-milestone`):
+
 1. Move Active requirements shipped → Validated with version reference
 2. Add new requirements for next milestone to Active
 3. Update Context with current state
 4. Audit Out of Scope — reasons still valid?
 
 ---
-*Last updated: 2026-04-24 after v1.2 milestone*
+Last updated: 2026-04-24 after v1.3 milestone kickoff.
