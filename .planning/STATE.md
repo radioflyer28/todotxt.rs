@@ -3,15 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
 current_phase: 20
-status: Phase Complete
-last_updated: "2026-04-24T18:00:00.000Z"
+current_plan: 01
+status: Plan 20-01 Complete — Bulk Delete Hotkey + Confirmation
+last_updated: "2026-04-24T20:15:00.000Z"
 last_activity: 2026-04-24
 progress:
   total_phases: 1
   completed_phases: 1
   total_plans: 3
-  completed_plans: 3
-  percent: 100
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -25,14 +26,14 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: 19 (verified complete)
-Plan: 19-03 (complete)
-Status: Phase 19 Complete — Selection Model + Multi-Select Foundation
+Phase: 20 (in progress)
+Plan: 20-01 (complete)
+Status: Bulk Delete Implementation Done — Moving to Plan 20-02 (Bulk Append)
 Last activity: 2026-04-24
 
 ## Next Step
 
-Start Phase 20 — Bulk Actions + Selection UX.
+Execute Plan 20-02 — Bulk Append (T hotkey) with inline editor integration.
 
 ## Pending Decisions
 
@@ -60,11 +61,12 @@ None.
 
 ## Decisions
 
-- D-01: HashSet<usize> of canonical file indices for selected_tasks (Phase 19-01)
-- D-04: disjoint_select is bool flag on App, NOT new AppMode variant (Phase 19-01)
-- D-14/D-15: Selected non-cursor=BOLD+'>' prefix; cursor+selected=REVERSED|BOLD (Phase 19-01)
-- D-09/D-11/D-12: Shift+j/k/Down/Up extend range from lazy anchor; non-shift nav clears anchor only (Phase 19-02)
-- D-10: Shift+Ctrl+D/U extend range by half-page; dispatch order: Shift+Ctrl before plain Ctrl (Phase 19-02)
+- D-01: D hotkey on non-empty selection enters DeleteConfirm mode (Phase 20-01)
+- D-02: Bulk confirmation shows count for >1 task, task preview for single/empty (Phase 20-01)
+- D-03: Deletion in descending canonical index order prevents index shifts (Phase 20-01)
+- D-04: Clear selected_tasks and reset disjoint_select after bulk delete (Phase 20-01)
+
+(Previous decisions from Phase 19: D-01–D-15 in State.md history)
 
 ## Performance Metrics
 
@@ -72,6 +74,7 @@ None.
 |-------|------|----------|-------|-------|
 | 19    | 01   | 35min    | 3     | 2     |
 | 19    | 02   | 20min    | 3     | 1     |
+| 20    | 01   | 1h       | 2     | 1     |
 
 **v1.3 kickoff scope:**
 
