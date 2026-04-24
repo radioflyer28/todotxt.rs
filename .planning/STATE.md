@@ -1,18 +1,17 @@
----
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
 current_phase: 20
-current_plan: 01
-status: Plan 20-01 Complete — Bulk Delete Hotkey + Confirmation
-last_updated: "2026-04-24T20:15:00.000Z"
+current_plan: 03
+status: Plan 20-03 Complete — Selection Visibility in Status Bar (Phase 20 COMPLETE)
+last_updated: "2026-04-24T20:45:00.000Z"
 last_activity: 2026-04-24
 progress:
   total_phases: 1
   completed_phases: 1
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -26,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: 20 (in progress)
-Plan: 20-01 (complete)
-Status: Bulk Delete Implementation Done — Moving to Plan 20-02 (Bulk Append)
+Phase: 20 (COMPLETE)
+Plan: 20-03 (complete)
+Status: All bulk-actions-selection-ux phase plans delivered. Ready for next phase.
 Last activity: 2026-04-24
 
 ## Next Step
 
-Execute Plan 20-02 — Bulk Append (T hotkey) with inline editor integration.
+Phase 20 complete. Next: Plan 21 (Smart Text Normalization) or Phase 22 (Keymap Parity).
 
 ## Pending Decisions
 
@@ -65,6 +64,8 @@ None.
 - D-02: Bulk confirmation shows count for >1 task, task preview for single/empty (Phase 20-01)
 - D-03: Deletion in descending canonical index order prevents index shifts (Phase 20-01)
 - D-04: Clear selected_tasks and reset disjoint_select after bulk delete (Phase 20-01)
+- D-12: `| N selected` appended to status bar left segment when tasks are selected (Phase 20-03)
+- D-14: No separate `[v]` prefix when disjoint_select=true — keeps status bar uncluttered (Phase 20-03)
 
 (Previous decisions from Phase 19: D-01–D-15 in State.md history)
 
@@ -75,6 +76,8 @@ None.
 | 19    | 01   | 35min    | 3     | 2     |
 | 19    | 02   | 20min    | 3     | 1     |
 | 20    | 01   | 1h       | 2     | 1     |
+| 20    | 02   | 45min    | 2     | 1     |
+| 20    | 03   | 8min     | 2     | 1     |
 
 **v1.3 kickoff scope:**
 
