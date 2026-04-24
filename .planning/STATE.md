@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
 current_phase: 19
-status: Defining requirements
+status: Executing
 last_updated: "2026-04-24T00:00:00.000Z"
 last_activity: 2026-04-24
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 3
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -26,13 +26,13 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 ## Current Position
 
 Phase: 19
-Plan: 19-01 (next)
-Status: Milestone initialized — ready to plan Phase 19
+Plan: 19-02 (next)
+Status: Executing Phase 19 — Selection Model + Multi-Select Foundation
 Last activity: 2026-04-24
 
 ## Next Step
 
-Plan Phase 19 — Selection Model + Multi-Select Foundation.
+Execute Plan 19-02 — Shift-range selection + disjoint selection mode key handling and rendering.
 
 ## Pending Decisions
 
@@ -57,6 +57,18 @@ None.
 - grouping/sorting parity alignment with todotxt.net behavior
 - filter definition layout alignment + TOML persistence
 - deferred-task parity investigation and implementation if confirmed
+
+## Decisions
+
+- D-01: HashSet<usize> of canonical file indices for selected_tasks (Phase 19-01)
+- D-04: disjoint_select is bool flag on App, NOT new AppMode variant (Phase 19-01)
+- D-14/D-15: Selected non-cursor=BOLD+'>' prefix; cursor+selected=REVERSED|BOLD (Phase 19-01)
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 19    | 01   | 35min    | 3     | 2     |
 
 **v1.3 kickoff scope:**
 
