@@ -233,6 +233,7 @@ impl App {
                             e
                         )
                     })?;
+                    self.prune_stale_selections();
                     self.rebuild_and_reanchor();
                 } else {
                     self.pending_reload = true;
@@ -937,6 +938,20 @@ impl App {
         self.apply_pending_reload()
     }
 
+    /// Prune stale canonical indices from the selection set and anchor after a reload (D-19).
+    ///
+    /// Retains only indices `< task_list.len()` — silently drops any that fell out of range.
+    /// Clears `selection_anchor` if it points to a task that no longer exists.
+    fn prune_stale_selections(&mut self) {
+        let len = self.task_list.len();
+        self.selected_tasks.retain(|&idx| idx < len);
+        if let Some(anchor) = self.selection_anchor {
+            if anchor >= len {
+                self.selection_anchor = None;
+            }
+        }
+    }
+
     /// Apply a queued `FileChanged` reload if `pending_reload` is set (D-10).
     fn apply_pending_reload(&mut self) -> color_eyre::Result<()> {
         if self.pending_reload {
@@ -948,6 +963,7 @@ impl App {
                     e
                 )
             })?;
+            self.prune_stale_selections();
             self.rebuild_and_reanchor();
         }
         Ok(())
