@@ -10,6 +10,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use todotxt_core::resolve_config_path;
 
+/// Serde helper: returns `true` as the default value for normalization toggles.
+/// Required because `#[serde(default)]` alone defaults to `false` for bool.
+fn default_true() -> bool {
+    true
+}
+
 /// Settings from the `[tui]` TOML subsection (D-04, D-05 in 13-CONTEXT.md).
 ///
 /// A `[tui]` block is optional — `#[serde(default)]` on the field in `TuiConfig`
@@ -41,6 +47,16 @@ pub struct TuiConfig {
     /// Automatically prepend today's date to new tasks.
     #[serde(default)]
     pub auto_creation_date: bool,
+    /// Normalize token placement when appending text to a task (D-07 in 21-CONTEXT.md).
+    /// When true (default), appended priority/project/context/date tokens are merged
+    /// into the task's canonical fields instead of raw string concat.
+    #[serde(default = "default_true")]
+    pub normalize_append: bool,
+    /// Normalize token placement when saving an edited task (D-06 in 21-CONTEXT.md).
+    /// When true (default), inline priority tokens and metadata in the edited line are
+    /// lifted to canonical field positions on save.
+    #[serde(default = "default_true")]
+    pub normalize_edit: bool,
     /// Named filter presets. Keys are preset names (e.g. "work", "today").
     #[serde(default)]
     pub presets: HashMap<String, TuiPreset>,
@@ -117,5 +133,47 @@ impl TuiConfig {
         std::fs::rename(&tmp_path, path)
             .map_err(|e| color_eyre::eyre::eyre!("Failed to rename config tmp to {}: {e}", path.display()))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_normalize_flags_false() {
+        // Verify that normalize_append and normalize_edit can be deserialized from TOML
+        // and that false values are correctly parsed (T-21-04 mitigation).
+        let toml_str = r#"
+normalize_append = false
+normalize_edit = false
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.normalize_append, false);
+        assert_eq!(config.normalize_edit, false);
+    }
+
+    #[test]
+    fn deserialize_normalize_flags_true() {
+        // Verify that normalize_append and normalize_edit can be deserialized as true.
+        let toml_str = r#"
+normalize_append = true
+normalize_edit = true
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.normalize_append, true);
+        assert_eq!(config.normalize_edit, true);
+    }
+
+    #[test]
+    fn deserialize_normalize_flags_default() {
+        // Verify that when normalize_append and normalize_edit are not specified in TOML,
+        // they default to true.
+        let toml_str = r#"
+auto_creation_date = false
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.normalize_append, true, "normalize_append should default to true");
+        assert_eq!(config.normalize_edit, true, "normalize_edit should default to true");
     }
 }

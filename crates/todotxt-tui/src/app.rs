@@ -11,7 +11,7 @@ use std::sync::mpsc::Receiver;
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
-use todotxt_core::{Filter, SortOrder, Task, TaskList};
+use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append};
 use tui_textarea::TextArea;
 
 use crate::config::TuiConfig;
@@ -966,8 +966,16 @@ impl App {
                         .iter()
                         .filter_map(|&idx| {
                             tasks.get(idx).map(|t| {
-                                let new_raw = format!("{} {}", t.to_raw().trim_end(), text);
-                                let new_task = Task::parse(&new_raw);
+                                let new_task = if self.config.normalize_append {
+                                    // D-07/D-08: normalize_append enabled (default) — parse-then-merge strategy.
+                                    // Tokens in `text` (priority, +proj, @ctx, due:, t:) are merged into t's fields
+                                    // and rebuilt canonically. Unknown tokens preserved in body (NORM-05).
+                                    normalize_append(t, &text)
+                                } else {
+                                    // D-08: normalize_append = false — Phase 20 raw concat fallback.
+                                    let new_raw = format!("{} {}", t.to_raw().trim_end(), &text);
+                                    Task::parse(&new_raw)
+                                };
                                 (idx, new_task)
                             })
                         })

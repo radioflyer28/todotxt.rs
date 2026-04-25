@@ -1626,11 +1626,13 @@ dependencies = [
 name = "todotxt-tui"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "color-eyre",
  "crossterm 0.28.1",
  "directories",
  "ratatui",
  "serde",
+ "tempfile",
  "thiserror",
  "todotxt-core",
  "toml",

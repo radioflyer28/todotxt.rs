@@ -110,11 +110,12 @@ Plans:
 
 Goal: make append/edit flows todo.txt-aware while preserving user text.
 Status: planned
-Plans:
+**Plans:** 3 plans
 
-- [ ] 21-01-PLAN.md — Extend `todotxt-core` normalization/build helpers for recognized metadata
-- [ ] 21-02-PLAN.md — Route TUI append flows through shared normalization helpers
-- [ ] 21-03-PLAN.md — Route TUI edit/update flows through shared normalization helpers and preserve unknown text
+Plans:
+- [ ] 21-01-PLAN.md — Implement `normalize_append` + `normalize_line` in todotxt-core with test suite
+- [ ] 21-02-PLAN.md — Add TUI config toggles and wire append flow through normalize_append
+- [ ] 21-03-PLAN.md — Wire TUI edit flow through normalize_line and add CLI `--normalize` flag
 
 ### Phase 22: Keymap + Help Parity
 
