@@ -52,16 +52,16 @@
     - [x] 20-02-PLAN.md — Bulk append workflow over selected tasks
     - [x] 20-03-PLAN.md — Selection count/status/help UX polish for bulk actions
 
-- [ ] **Phase 21: Smart Text Normalization**
+- [x] **Phase 21: Smart Text Normalization**
   - Normalize recognized todo.txt metadata during append and edit flows
   - Preserve plain text and unknown metadata verbatim
   - Centralize normalization rules in `todotxt-core`
   - **Requirements:** NORM-01, NORM-02, NORM-03, NORM-04, NORM-05, NORM-06
   - **Plans:** 3 plans
   - Plans:
-    - [ ] 21-01-PLAN.md — Extend `todotxt-core` normalization/build helpers for recognized metadata
-    - [ ] 21-02-PLAN.md — Route TUI append flows through shared normalization helpers
-    - [ ] 21-03-PLAN.md — Route TUI edit/update flows through shared normalization helpers and preserve unknown text
+    - [x] 21-01-PLAN.md — Extend `todotxt-core` normalization/build helpers for recognized metadata
+    - [x] 21-02-PLAN.md — Route TUI append flows through shared normalization helpers
+    - [x] 21-03-PLAN.md — Route TUI edit/update flows through shared normalization helpers and preserve unknown text
 
 - [ ] **Phase 22: Keymap + Help Parity**
   - Align implemented hotkeys with todotxt.net where practical
@@ -109,13 +109,13 @@ Plans:
 ### Phase 21: Smart Text Normalization
 
 Goal: make append/edit flows todo.txt-aware while preserving user text.
-Status: planned
+Status: Complete
 **Plans:** 3 plans
 
 Plans:
-- [ ] 21-01-PLAN.md — Implement `normalize_append` + `normalize_line` in todotxt-core with test suite
-- [ ] 21-02-PLAN.md — Add TUI config toggles and wire append flow through normalize_append
-- [ ] 21-03-PLAN.md — Wire TUI edit flow through normalize_line and add CLI `--normalize` flag
+- [x] 21-01-PLAN.md — Implement `normalize_append` + `normalize_line` in todotxt-core with test suite
+- [x] 21-02-PLAN.md — Add TUI config toggles and wire append flow through normalize_append
+- [x] 21-03-PLAN.md — Wire TUI edit flow through normalize_line and add CLI `--normalize` flag
 
 ### Phase 22: Keymap + Help Parity
 

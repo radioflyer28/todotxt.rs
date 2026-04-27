@@ -1,16 +1,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
-current_phase: 20
+current_phase: 21
 current_plan: 03
-status: ✅ PHASE 20 COMPLETE — Bulk Delete, Bulk Append, Selection Visibility all delivered
-last_updated: "2026-04-24T20:45:00.000Z"
-last_activity: 2026-04-24
+status: ✅ PHASE 21 COMPLETE — Smart Text Normalization delivered across all three call sites
+last_updated: "2026-04-27T00:00:00.000Z"
+last_activity: 2026-04-27
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
@@ -25,15 +25,14 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: 20 (COMPLETE)
-Plan: 20-03 (complete)
-Status: All bulk-actions-selection-ux phase plans delivered. Ready for next phase.
-Last activity: 2026-04-24
+Phase: 21 (COMPLETE)
+Plan: 21-03 (complete)
+Status: All three Phase 21 plans delivered — normalize_append, normalize_line, TUI toggles, CLI flag.
+Last activity: 2026-04-27
 
 ## Next Step
 
-Phase 20 complete. Next: Plan 21 (Smart Text Normalization) or Phase 22 (Keymap Parity).
-Next: Phase 21 — Smart Text Normalization (todo.txt-aware metadata normalization)
+Phase 21 complete. Next: Phase 22 (Keymap Parity) or review ROADMAP.md for next scheduled phase.
 
 ## Pending Decisions
 
