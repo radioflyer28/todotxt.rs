@@ -11,7 +11,7 @@ use std::sync::mpsc::Receiver;
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
-use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append};
+use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append, normalize_line};
 use tui_textarea::TextArea;
 
 use crate::config::TuiConfig;
@@ -1016,10 +1016,12 @@ impl App {
     /// Persist editor content and return to Normal mode (D-12, D-13).
     fn save_and_exit(&mut self) -> color_eyre::Result<()> {
         let text = self.editor.lines().first().cloned().unwrap_or_default();
-        let task = Task::parse(&text);
         let mode = self.mode; // Copy
         match mode {
             AppMode::Adding => {
+                // T-21-07: Adding always uses Task::parse — normalize_edit does not apply here.
+                // User is creating a new task from scratch; there is no "original" to merge into.
+                let task = Task::parse(&text);
                 self.task_list
                     .add(task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to add task: {}", e))?;
@@ -1033,6 +1035,15 @@ impl App {
                     .unwrap_or(0);
             }
             AppMode::Editing { original_idx } => {
+                // D-05/D-06: normalize_edit = true (default) applies normalize_line.
+                // normalize_line lifts inline priority tokens from body to canonical position
+                // and rebuilds via rebuild_raw. Does NOT merge onto original task — T-21-06
+                // (avoid body-doubling: user has typed the entire replacement line).
+                let task = if self.config.normalize_edit {
+                    normalize_line(&text)
+                } else {
+                    Task::parse(&text)
+                };
                 self.task_list
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;

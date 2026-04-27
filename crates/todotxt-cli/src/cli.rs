@@ -100,6 +100,11 @@ pub enum Commands {
         id: usize,
         /// Text to append (leading space added automatically)
         text: String,
+        /// Parse and normalize todo.txt tokens in TEXT (priority, +project, @context,
+        /// due:, t:) into canonical field positions instead of raw string concat.
+        /// Without this flag, existing behavior (raw append) is unchanged.
+        #[arg(long)]
+        normalize: bool,
     },
 
     /// Prepend text before a task's body (after priority/date prefixes)
