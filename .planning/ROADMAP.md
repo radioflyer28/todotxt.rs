@@ -68,3 +68,9 @@ v1.4 Kanban-Style Vertical Panes
 
 - GUI interface (native desktop)
 - CI/CD release pipeline and package distribution
+
+
+
+
+
+
