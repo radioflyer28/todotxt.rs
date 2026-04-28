@@ -1,6 +1,7 @@
 #![deny(warnings)]
 
 mod app;
+mod components;
 mod config;
 mod event;
 mod state;

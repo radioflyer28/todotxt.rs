@@ -21,6 +21,7 @@ use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
 use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState};
+use crate::components::PaneList;
 
 
 
@@ -403,28 +404,11 @@ impl App {
             }
             KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
-                let mut next = self.selected + 1;
-                while next < row_count
-                    && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
-                {
-                    next += 1;
-                }
-                if next < row_count {
-                    self.selected = next;
-                }
+                self.pane_move_down();
             }
             KeyCode::Char('k') | KeyCode::Up if row_count > 0 => {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
-                if self.selected == 0 {
-                    return Ok(());
-                }
-                let mut prev = self.selected.saturating_sub(1);
-                while prev > 0 && matches!(self.display_rows[prev], DisplayRow::GroupHeader(_)) {
-                    prev -= 1;
-                }
-                if matches!(self.display_rows[prev], DisplayRow::Task(_)) {
-                    self.selected = prev;
-                }
+                self.pane_move_up();
             }
             // Shift+Ctrl+U: half-page range extension upward (D-10).
             // MUST precede plain Ctrl+U arm so SHIFT check wins (T-19-04).
@@ -511,7 +495,7 @@ impl App {
             }
 
             _ if self.disjoint_select && self.key_is_action(key, "disjoint_mark") => {
-                self.toggle_task_selection();
+                self.pane_toggle_task_selection();
             }
 
             _ if self.key_is_action(key, "disjoint_select") => {
@@ -519,7 +503,7 @@ impl App {
             }
 
             _ if display_count > 0 && self.key_is_action(key, "toggle_done") => {
-                self.toggle_done();
+                self.pane_toggle_done();
             }
 
             _ if self.key_is_action(key, "add") => {
@@ -1360,6 +1344,7 @@ impl App {
     /// Toggle the cursor row's canonical index in `selected_tasks`.
     ///
     /// No-op when the cursor is on a `GroupHeader` row (D-08).
+    #[allow(dead_code)]
     fn toggle_task_selection(&mut self) {
         if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected).cloned() {
             if self.selected_tasks.contains(&idx) {
@@ -1433,6 +1418,7 @@ impl App {
     /// D-10: immediate save via `task_list.update()` (which calls `save()` internally).
     /// D-11: toggles both ways — incomplete→done AND done→incomplete.
     /// D-12: called by both `x` and bare `u`.
+    #[allow(dead_code)]
     fn toggle_done(&mut self) {
         let idx = match self.canonical_selected() {
             Some(i) => i,
@@ -1447,6 +1433,79 @@ impl App {
             eprintln!("toggle_done error: {e}");
         }
         self.rebuild_and_reanchor();
+    }
+
+    /// Get the canonical task index for the currently selected row in the active pane (Phase 24-02).
+    fn pane_canonical_selected(&self) -> Option<usize> {
+        let pane = self.active_pane();
+        match pane.display_rows.get(pane.selected) {
+            Some(DisplayRow::Task(idx)) => Some(*idx),
+            _ => pane.display_rows.first().and_then(|r| {
+                match r {
+                    DisplayRow::Task(idx) => Some(*idx),
+                    _ => None,
+                }
+            }),
+        }
+    }
+
+    /// Toggle the completion state of the currently selected task in the active pane (Phase 24-02).
+    fn pane_toggle_done(&mut self) {
+        let idx = match self.pane_canonical_selected() {
+            Some(i) => i,
+            None => return,
+        };
+        let task = self.task_list.tasks()[idx].clone();
+        let was_completed = task.completed;
+        let toggled = task.with_completed(!was_completed);
+        if let Err(e) = self.task_list.update(idx, toggled) {
+            eprintln!("toggle_done error: {e}");
+        }
+        self.rebuild_active_pane();
+    }
+
+    /// Toggle the cursor row's canonical index in `selected_tasks` for the active pane (Phase 24-02).
+    fn pane_toggle_task_selection(&mut self) {
+        let pane = self.active_pane();
+        if let Some(DisplayRow::Task(idx)) = pane.display_rows.get(pane.selected).cloned() {
+            if self.selected_tasks.contains(&idx) {
+                self.selected_tasks.remove(&idx);
+            } else {
+                self.selected_tasks.insert(idx);
+            }
+        }
+    }
+
+    /// Move selection down in the active pane, skipping group headers (Phase 24-02).
+    fn pane_move_down(&mut self) {
+        let pane = self.active_pane_mut();
+        let row_count = pane.display_rows.len();
+        if row_count > 0 {
+            let mut next = pane.selected + 1;
+            while next < row_count
+                && matches!(pane.display_rows[next], DisplayRow::GroupHeader(_))
+            {
+                next += 1;
+            }
+            if next < row_count {
+                pane.selected = next;
+            }
+        }
+    }
+
+    /// Move selection up in the active pane, skipping group headers (Phase 24-02).
+    fn pane_move_up(&mut self) {
+        let pane = self.active_pane_mut();
+        if pane.selected == 0 {
+            return;
+        }
+        let mut prev = pane.selected.saturating_sub(1);
+        while prev > 0 && matches!(pane.display_rows[prev], DisplayRow::GroupHeader(_)) {
+            prev -= 1;
+        }
+        if matches!(pane.display_rows.get(prev), Some(DisplayRow::Task(_))) {
+            pane.selected = prev;
+        }
     }
 
     /// Render the TUI frame with mode-aware layout.
@@ -1489,10 +1548,10 @@ impl App {
                 frame.render_widget(&self.editor, footer_cols[1]);
             }
             AppMode::Normal => {
-                // Two-row split: task list | status bar (D-14).
+                // Two-row split: panes area | status bar (D-14).
                 let chunks =
                     Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
             }
             AppMode::Filtering => {
@@ -1616,6 +1675,39 @@ impl App {
         frame.render_stateful_widget(list, area, &mut list_state);
     }
 
+    /// Render multiple vertical panes side-by-side (Phase 24-02).
+    fn render_panes(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::layout::{Constraint, Direction, Layout};
+
+        let pane_count = self.panes.len();
+        if pane_count == 0 {
+            return;
+        }
+
+        // Calculate equal width for each pane
+        let pane_constraints = vec![Constraint::Percentage(100 / pane_count as u16); pane_count];
+        let pane_areas = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(pane_constraints)
+            .split(area);
+
+        // Render each pane
+        for (pane_idx, pane) in self.panes.iter().enumerate() {
+            let pane_area = pane_areas[pane_idx];
+            let is_active = pane_idx == self.active_pane;
+
+            PaneList::render(
+                frame,
+                pane_area,
+                pane,
+                is_active,
+                &self.styles,
+                &self.task_list,
+                self.show_deferred,
+            );
+        }
+    }
+
     /// Render the one-row status bar with file info and key hints.
     fn render_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::text::{Line, Span};
@@ -1648,6 +1740,11 @@ impl App {
             .unwrap_or("todo.txt");
 
         let mut left = format!("{} | {}/{} tasks", file_name, visible, total);
+        
+        // Add pane indicator (Phase 24-02)
+        let pane_info = format!("Pane {}/{}", self.active_pane + 1, self.panes.len());
+        left.push_str(&format!(" | {}", pane_info));
+        
         if due_today > 0 || overdue > 0 {
             left.push_str(&format!(" | {} due today | {} overdue", due_today, overdue));
         }
@@ -2262,6 +2359,12 @@ mod tests {
             DisplayRow::Task(0),
         ];
         app.selected = 0;
+        // Also update pane for Phase 24-02
+        app.active_pane_mut().display_rows = vec![
+            DisplayRow::GroupHeader("Header".to_string()),
+            DisplayRow::Task(0),
+        ];
+        app.active_pane_mut().selected = 0;
         press_key(&mut app, KeyCode::Char(' '));
         assert!(app.selected_tasks.is_empty(), "Space on GroupHeader must be a no-op (D-08)");
     }
@@ -2823,3 +2926,6 @@ mod tests {
         assert_eq!(app.active_pane().selected, 1);
     }
 }
+
+
+
