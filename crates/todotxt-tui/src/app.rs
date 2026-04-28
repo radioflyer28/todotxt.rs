@@ -145,6 +145,8 @@ pub struct App {
     /// Effective key bindings (action name → (KeyCode, KeyModifiers)), built at startup.
     /// Populated by resolve_keymap — overrides where specified, defaults otherwise (D-05, Phase 22).
     pub effective_keymap: std::collections::HashMap<String, (crossterm::event::KeyCode, crossterm::event::KeyModifiers)>,
+    /// Scroll offset for the help overlay (lines scrolled from the top).
+    pub help_scroll: u16,
 }
 
 impl App {
@@ -188,6 +190,7 @@ impl App {
             disjoint_select: false,
             keymap_warnings,
             effective_keymap,
+            help_scroll: 0,
         };
         app.rebuild_display_indices();
         app
@@ -656,9 +659,23 @@ impl App {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => {
+        use crossterm::event::KeyModifiers;
+        match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => {
                 self.mode = AppMode::Normal;
+                self.help_scroll = 0;
+            }
+            (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
+                self.help_scroll = self.help_scroll.saturating_add(1);
+            }
+            (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
+                self.help_scroll = self.help_scroll.saturating_sub(1);
+            }
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                self.help_scroll = self.help_scroll.saturating_add(self.list_height / 2);
+            }
+            (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                self.help_scroll = self.help_scroll.saturating_sub(self.list_height / 2);
             }
             _ => {}
         }
@@ -1753,8 +1770,13 @@ impl App {
         lines.push(ListItem::new("    shift+j   Extend selection down"));
         lines.push(ListItem::new("    shift+k   Extend selection up"));
 
+        let total_lines = lines.len() as u16;
         let popup_width = (area.width * 4 / 5).max(40).min(area.width);
-        let popup_height = ((lines.len() as u16) + 2).min(area.height.saturating_sub(2));
+        let max_content_height = area.height.saturating_sub(4);
+        let popup_height = (total_lines + 2).min(area.height.saturating_sub(2));
+        // Clamp scroll so we never scroll past the last line.
+        let max_scroll = total_lines.saturating_sub(max_content_height);
+        let scroll_offset = self.help_scroll.min(max_scroll);
 
         let h_layout = Layout::horizontal([Constraint::Length(popup_width)])
             .flex(Flex::Center)
@@ -1766,10 +1788,20 @@ impl App {
 
         frame.render_widget(Clear, popup_area);
 
-        let list = List::new(lines).block(
-            Block::bordered().title(" Keybindings — Esc/q: close "),
-        );
-        frame.render_widget(list, popup_area);
+        let scroll_indicator = if max_scroll > 0 {
+            format!(" Keybindings — j/k: scroll  Esc/q: close ({}/{}) ", scroll_offset + 1, total_lines)
+        } else {
+            " Keybindings — Esc/q: close ".to_string()
+        };
+        let list = List::new(lines)
+            .block(Block::bordered().title(scroll_indicator))
+            .scroll_padding(0);
+        use ratatui::widgets::StatefulWidget;
+        let mut list_state = ratatui::widgets::ListState::default();
+        list_state.select(None);
+        // Use scroll offset to skip lines from the top.
+        *list_state.offset_mut() = scroll_offset as usize;
+        StatefulWidget::render(list, popup_area, frame.buffer_mut(), &mut list_state);
     }
 
     /// Render a centered popup overlay listing all keymap warnings (D-09, Phase 22).
