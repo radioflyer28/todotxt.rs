@@ -205,6 +205,7 @@ impl App {
 
     /// Move focus to the next pane (right arrow)
     pub fn focus_next_pane(&mut self) {
+        self.reconcile_active_pane();
         if self.panes.len() > 1 {
             self.active_pane = (self.active_pane + 1) % self.panes.len();
         }
@@ -212,6 +213,7 @@ impl App {
 
     /// Move focus to the previous pane (left arrow)
     pub fn focus_prev_pane(&mut self) {
+        self.reconcile_active_pane();
         if self.panes.len() > 1 {
             self.active_pane = if self.active_pane == 0 {
                 self.panes.len() - 1
@@ -224,6 +226,7 @@ impl App {
     /// Get mutable reference to the active pane
     #[allow(dead_code)]
     pub fn active_pane_mut(&mut self) -> &mut Pane {
+        self.reconcile_active_pane();
         &mut self.panes[self.active_pane]
     }
 
@@ -233,13 +236,67 @@ impl App {
         &self.panes[self.active_pane]
     }
 
-    /// Rebuild the active pane's display_rows from task_list
-    pub fn rebuild_active_pane(&mut self) {
-        let active_idx = self.active_pane;
-        let pane = &mut self.panes[active_idx];
+    /// Determine if the UI should render with the single-pane fallback path.
+    pub fn should_show_single_pane(&self) -> bool {
+        if self.panes.is_empty() {
+            return true;
+        }
+        if self.panes.len() == 1 {
+            return true;
+        }
+        self.panes.iter().all(Pane::is_empty)
+    }
 
-        // TODO: In Phase 25, this will apply pane.filter_query
-        // For now, show all tasks (empty filter)
+    /// Return display rows for the currently active rendering mode.
+    #[allow(dead_code)]
+    pub fn display_rows(&self) -> &[DisplayRow] {
+        if self.should_show_single_pane() {
+            self.panes
+                .first()
+                .map(|pane| pane.display_rows.as_slice())
+                .unwrap_or(&[])
+        } else {
+            self.panes
+                .get(self.active_pane)
+                .map(|pane| pane.display_rows.as_slice())
+                .unwrap_or(&[])
+        }
+    }
+
+    /// Return mutable display rows for the active rendering mode.
+    #[allow(dead_code)]
+    pub fn display_rows_mut(&mut self) -> &mut Vec<DisplayRow> {
+        self.reconcile_active_pane();
+        let pane_idx = if self.should_show_single_pane() {
+            0
+        } else {
+            self.active_pane
+        };
+        &mut self.panes[pane_idx].display_rows
+    }
+
+    /// Ensure pane state is always index-safe.
+    pub fn reconcile_active_pane(&mut self) {
+        if self.panes.is_empty() {
+            self.panes.push(Pane::new(0, "Tasks".to_string()));
+            self.active_pane = 0;
+            return;
+        }
+        if self.active_pane >= self.panes.len() {
+            self.active_pane = self.panes.len() - 1;
+        }
+    }
+
+    /// Rebuild display rows for the visible pane in the current mode.
+    pub fn rebuild_visible_rows(&mut self) {
+        self.reconcile_active_pane();
+        let pane_idx = if self.should_show_single_pane() {
+            0
+        } else {
+            self.active_pane
+        };
+        let pane = &mut self.panes[pane_idx];
+
         let filter = Filter::default();
         let rows: Vec<DisplayRow> = self
             .task_list
@@ -248,15 +305,18 @@ impl App {
             .map(|(source_index, _task)| DisplayRow::Task(source_index))
             .collect();
 
-        // TODO: In Phase 25, apply pane.sort_order
-        // For now, keep default order
-
         pane.display_rows = rows;
 
-        // Reconcile selection
         if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
             pane.selected = pane.display_rows.len() - 1;
+        } else if pane.display_rows.is_empty() {
+            pane.selected = 0;
         }
+    }
+
+    /// Rebuild the active pane's display_rows from task_list
+    pub fn rebuild_active_pane(&mut self) {
+        self.rebuild_visible_rows();
     }
 
     /// Main event loop. Blocks on `rx.recv()` — no polling (D-02).
@@ -289,6 +349,7 @@ impl App {
         event: AppEvent,
         terminal: &mut Tui,
     ) -> color_eyre::Result<()> {
+        self.reconcile_active_pane();
         match event {
             AppEvent::Key(key) => {
                 // Only react to key presses, not releases or repeats.
@@ -1451,6 +1512,7 @@ impl App {
 
     /// Toggle the completion state of the currently selected task in the active pane (Phase 24-02).
     fn pane_toggle_done(&mut self) {
+        self.reconcile_active_pane();
         let idx = match self.pane_canonical_selected() {
             Some(i) => i,
             None => return,
@@ -1461,11 +1523,12 @@ impl App {
         if let Err(e) = self.task_list.update(idx, toggled) {
             eprintln!("toggle_done error: {e}");
         }
-        self.rebuild_active_pane();
+        self.rebuild_visible_rows();
     }
 
     /// Toggle the cursor row's canonical index in `selected_tasks` for the active pane (Phase 24-02).
     fn pane_toggle_task_selection(&mut self) {
+        self.reconcile_active_pane();
         let pane = self.active_pane();
         if let Some(DisplayRow::Task(idx)) = pane.display_rows.get(pane.selected).cloned() {
             if self.selected_tasks.contains(&idx) {
@@ -1478,6 +1541,7 @@ impl App {
 
     /// Move selection down in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_down(&mut self) {
+        self.reconcile_active_pane();
         let pane = self.active_pane_mut();
         let row_count = pane.display_rows.len();
         if row_count > 0 {
@@ -1495,6 +1559,7 @@ impl App {
 
     /// Move selection up in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_up(&mut self) {
+        self.reconcile_active_pane();
         let pane = self.active_pane_mut();
         if pane.selected == 0 {
             return;
@@ -1514,6 +1579,7 @@ impl App {
     /// rendering via a mutable reference on some paths.
     fn draw(&mut self, frame: &mut Frame) {
         use ratatui::layout::{Constraint::{Length, Min}, Layout};
+        self.reconcile_active_pane();
 
         match self.mode {
             AppMode::DeleteConfirm => {
@@ -1679,6 +1745,11 @@ impl App {
     fn render_panes(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::layout::{Constraint, Direction, Layout};
 
+        if self.should_show_single_pane() {
+            self.render_task_list(frame, area);
+            return;
+        }
+
         let pane_count = self.panes.len();
         if pane_count == 0 {
             return;
@@ -1741,9 +1812,10 @@ impl App {
 
         let mut left = format!("{} | {}/{} tasks", file_name, visible, total);
         
-        // Add pane indicator (Phase 24-02)
-        let pane_info = format!("Pane {}/{}", self.active_pane + 1, self.panes.len());
-        left.push_str(&format!(" | {}", pane_info));
+        if !self.should_show_single_pane() && self.panes.len() > 1 {
+            let pane_info = format!("Pane {}/{}", self.active_pane + 1, self.panes.len());
+            left.push_str(&format!(" | {}", pane_info));
+        }
         
         if due_today > 0 || overdue > 0 {
             left.push_str(&format!(" | {} due today | {} overdue", due_today, overdue));
