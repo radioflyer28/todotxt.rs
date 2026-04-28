@@ -70,7 +70,7 @@ pub enum AppMode {
     FilterDefining,
     /// Bulk append mode: user types text to append to all selected tasks (D-06, Phase 20).
     AppendText,
-    /// Read-only overlay showing all keymap warnings from startup (D-09, Phase 22).
+    /// Read-only overlay showing app warnings/errors log.
     KeymapErrors,
     /// Read-only overlay showing all keybindings (D-10, Phase 22 parity).
     Help,
@@ -142,6 +142,9 @@ pub struct App {
     /// Empty when config has no [keymap] section or all entries are valid.
     /// Displayed in the status bar and the KeymapErrors overlay (Phase 22, Plan 02).
     pub keymap_warnings: Vec<String>,
+    /// Runtime warnings/errors captured while the app is running.
+    /// Displayed together with keymap warnings in the error log overlay.
+    pub runtime_warnings: Vec<String>,
     /// Effective key bindings (action name → (KeyCode, KeyModifiers)), built at startup.
     /// Populated by resolve_keymap — overrides where specified, defaults otherwise (D-05, Phase 22).
     pub effective_keymap: std::collections::HashMap<String, (crossterm::event::KeyCode, crossterm::event::KeyModifiers)>,
@@ -189,6 +192,7 @@ impl App {
             selection_anchor: None,
             disjoint_select: false,
             keymap_warnings,
+            runtime_warnings: Vec::new(),
             effective_keymap,
             help_scroll: 0,
         };
@@ -210,6 +214,25 @@ impl App {
                 key.code == *code && key.modifiers.contains(*mods)
             }
         })
+    }
+
+    fn push_runtime_warning(&mut self, msg: impl Into<String>) {
+        self.runtime_warnings.push(msg.into());
+    }
+
+    fn error_log_count(&self) -> usize {
+        self.keymap_warnings.len() + self.runtime_warnings.len()
+    }
+
+    fn error_log_lines(&self) -> Vec<String> {
+        let mut lines = Vec::with_capacity(self.error_log_count());
+        lines.extend(
+            self.keymap_warnings
+                .iter()
+                .map(|w| format!("keymap: {}", w)),
+        );
+        lines.extend(self.runtime_warnings.iter().cloned());
+        lines
     }
 
     /// Main event loop. Blocks on `rx.recv()` — no polling (D-02).
@@ -515,7 +538,7 @@ impl App {
                 };
                 if let Some(ref path) = self.config_path {
                     if let Err(e) = self.config.save(path) {
-                        eprintln!("Warning: failed to save config: {e}");
+                        self.push_runtime_warning(format!("config save failed: {e}"));
                     }
                 }
             }
@@ -592,8 +615,8 @@ impl App {
                 self.clamp_selection();
             }
 
-            // '!' opens keymap errors overlay — only when warnings exist (D-09, Phase 22)
-            KeyCode::Char('!') if !self.keymap_warnings.is_empty() => {
+            // '!' opens app error log overlay when any warnings/errors exist.
+            KeyCode::Char('!') if self.error_log_count() > 0 => {
                 self.mode = AppMode::KeymapErrors;
             }
 
@@ -630,7 +653,7 @@ impl App {
                         self.rebuild_and_reanchor();
                     }
                     Err(e) => {
-                        eprintln!("todotxt-tui: reload failed: {}", e);
+                        self.push_runtime_warning(format!("reload failed: {}", e));
                     }
                 }
             }
@@ -818,7 +841,7 @@ impl App {
                 // Persist to TOML atomically.
                 if let Some(ref path) = self.config_path.clone() {
                     if let Err(e) = self.config.save(path) {
-                        eprintln!("Warning: failed to save config: {e}");
+                        self.push_runtime_warning(format!("config save failed: {e}"));
                     }
                 }
 
@@ -1603,12 +1626,12 @@ impl App {
             left.push_str(&format!(" | {} selected", self.selected_tasks.len()));
         }
 
-        // Keymap warning indicator — only shown when warnings exist (D-08, Phase 22)
-        if !self.keymap_warnings.is_empty() {
+        // Error-log indicator — shown when keymap/runtime warnings exist.
+        let error_count = self.error_log_count();
+        if error_count > 0 {
             left.push_str(&format!(
-                " | ⚠ keymap: {} warning{} ('!' for details)",
-                self.keymap_warnings.len(),
-                if self.keymap_warnings.len() == 1 { "" } else { "s" }
+                " | ⚠ errors: {} ('!' for log)",
+                error_count
             ));
         }
 
@@ -1774,9 +1797,9 @@ impl App {
             lines.push(Line::from("  shift+ctrl+u  Extend selection half-page up"));
             lines.push(Line::from("  \u{2500}\u{2500} Presets \u{2500}\u{2500}".to_string()));
             lines.push(Line::from("         1-9  Apply filter preset"));
-            if !self.keymap_warnings.is_empty() {
+            if self.error_log_count() > 0 {
                 lines.push(Line::from("  \u{2500}\u{2500} Warnings \u{2500}\u{2500}".to_string()));
-                lines.push(Line::from("           !  Show keymap warnings"));
+                lines.push(Line::from("           !  Show error log"));
             }
 
         let total_lines = lines.len() as u16;
@@ -1809,15 +1832,17 @@ impl App {
         frame.render_widget(paragraph, popup_area);
     }
 
-    /// Render a centered popup overlay listing all keymap warnings (D-09, Phase 22).
-    /// Covers the normal task list and status bar with a bordered block + warning list.
+    /// Render a centered popup overlay listing app warnings/errors.
+    /// Covers the normal task list and status bar with a bordered block + message list.
     fn render_keymap_errors_overlay(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::layout::{Constraint, Flex, Layout};
         use ratatui::widgets::{Block, Clear, List, ListItem};
 
-        // Center a popup sized to fit warnings (max 80% width, max 60% height)
+        let messages = self.error_log_lines();
+
+        // Center a popup sized to fit messages (max 80% width, max 60% height)
         let popup_width = area.width.saturating_mul(4) / 5;
-        let popup_height = (self.keymap_warnings.len() as u16 + 2).min(area.height * 3 / 5);
+        let popup_height = (messages.len() as u16 + 2).min(area.height * 3 / 5);
         let h_layout = Layout::horizontal([Constraint::Length(popup_width)])
             .flex(Flex::Center)
             .split(area);
@@ -1828,14 +1853,13 @@ impl App {
 
         frame.render_widget(Clear, popup_area);
 
-        let items: Vec<ListItem> = self
-            .keymap_warnings
+        let items: Vec<ListItem> = messages
             .iter()
             .map(|w| ListItem::new(format!("  ⚠ {}", w)))
             .collect();
 
         let list = List::new(items).block(
-            Block::bordered().title(" Keymap Warnings — Esc/q: close "),
+            Block::bordered().title(" Error Log — Esc/q: close "),
         );
         frame.render_widget(list, popup_area);
     }
