@@ -1,0 +1,46 @@
+PHASE 24 PLANNING CONTEXT
+========================
+
+Phase: 24 - Pane Model + Layout Foundation
+Requirements: PANE-01, PANE-02, VIEW-01
+Plans: 3 total
+
+REQUIREMENTS:
+- PANE-01: User can view multiple vertical panes in the TUI, each pane showing a task list.
+- PANE-02: User can switch active focus between panes using keyboard-only controls.
+- VIEW-01: When panes are hidden, the UI reverts to the default single-pane task view.
+
+EXISTING ARCHITECTURE:
+- App struct in app.rs holds: task_list, display_rows, selected (index), mode, list_height
+- Mode enum for interaction modes: Normal, Adding, Editing, DeleteConfirm, Filtering, etc.
+- State mutation is single-threaded (D-03)
+- Module structure: main.rs → app.rs (state) → ui.rs (rendering)
+- Component pattern: filter_panel, editor, task_list, status_bar, confirm
+- Selection tracked by index into display_rows for resilience
+- visible_tasks pattern: Vec<VisibleTask> with source_index + display_id
+
+PHASE SPLIT RATIONALE (3 plans):
+24-01: Pane state model and focus selection behavior
+  - Introduces Pane struct with its own state (query, sort, selected)
+  - Adds App::panes and App::active_pane
+  - Implements pane focus navigation (left/right)
+  - File: app.rs (new Pane struct, updated App)
+
+24-02: Vertical pane layout rendering in TUI task view
+  - Updates ui.rs to split screen into N vertical sections
+  - Renders each pane side-by-side
+  - Updates status bar to show which pane is active
+  - File: ui.rs (new layout logic), components/pane_list.rs (new widget)
+
+24-03: Single-pane fallback path and layout safety guards
+  - Implements VIEW-01 (hide panes → single-pane view)
+  - Adds fallback when panes become empty
+  - Adds bounds checking and selection reconciliation
+  - File: app.rs (fallback logic), ui.rs (conditional rendering)
+
+BUILD ORDER:
+1. Plan 24-01: Define pane model and state management
+2. Plan 24-02: Implement rendering with new layout
+3. Plan 24-03: Add fallback and safety guards
+
+This ensures state layer is stable before rendering, and rendering is stable before adding edge-case handling.
