@@ -297,7 +297,10 @@ impl App {
         };
         let pane = &mut self.panes[pane_idx];
 
-        let filter = Filter::default();
+        // Per-pane query behavior (D-04, Phase 25): Apply active pane's filter_query
+        let filter_str = pane.filter_query.trim();
+        let filter = Filter::from_query(filter_str);
+        
         let rows: Vec<DisplayRow> = self
             .task_list
             .filter(&filter)
@@ -540,13 +543,19 @@ impl App {
             // filter_toggle must precede filter_open — both default to 'f';
             // filter_toggle requires CONTROL so it must be checked first.
             _ if self.key_is_action(key, "filter_toggle") => {
-                if self.filter_query.trim().is_empty() {
+                // Per-pane filter toggle (D-02, Phase 25): Apply only to active pane's filter_query
+                let current_filter = {
+                    let active_pane = self.active_pane();
+                    active_pane.filter_query.clone()
+                };
+                
+                if current_filter.trim().is_empty() {
                     if let Some(prev) = self.toggled_filter_query.take() {
-                        self.filter_query = prev;
+                        self.active_pane_mut().filter_query = prev;
                     }
                 } else {
-                    self.toggled_filter_query = Some(self.filter_query.clone());
-                    self.filter_query.clear();
+                    self.toggled_filter_query = Some(current_filter);
+                    self.active_pane_mut().filter_query.clear();
                 }
                 self.rebuild_and_reanchor();
             }
@@ -620,12 +629,14 @@ impl App {
             }
 
             _ if self.key_is_action(key, "filter_open") => {
+                // Per-pane filter panel (D-02, Phase 25): Snapshot active pane's current filter query
+                let active_pane = self.active_pane();
                 let mut editor = TextArea::default();
-                editor.insert_str(&self.filter_query);
+                editor.insert_str(&active_pane.filter_query);
                 self.filter_state = Some(FilteringState {
                     editor,
                     selected_preset: 0,
-                    snapshot: self.filter_query.clone(), // per D-02
+                    snapshot: active_pane.filter_query.clone(), // Snapshot per-pane filter state
                 });
                 self.mode = AppMode::Filtering;
             }
@@ -787,18 +798,23 @@ impl App {
     ) -> color_eyre::Result<()> {
         match key.code {
             KeyCode::Esc => {
-                // Restore prior filter (D-02) — do NOT clear
+                // Restore prior filter from snapshot — per-pane (D-02, Phase 25)
                 let snapshot = self.filter_state.as_ref().map(|s| s.snapshot.clone()).unwrap_or_default();
-                self.filter_query = snapshot;
+                self.active_pane_mut().filter_query = snapshot;
                 self.filter_state = None;
                 self.mode = AppMode::Normal;
                 self.rebuild_and_reanchor();
                 self.apply_pending_reload()?;
             }
             KeyCode::Enter => {
-                self.filter_state = None;
+                // Apply filter to active pane
+                if let Some(state) = self.filter_state.take() {
+                    let filter_text = state.editor.lines().join("").trim().to_string();
+                    self.active_pane_mut().filter_query = filter_text;
+                }
                 self.mode = AppMode::Normal;
                 self.toggled_filter_query = None;
+                self.rebuild_and_reanchor();
                 self.apply_pending_reload()?;
             }
             KeyCode::Down => {
@@ -810,7 +826,8 @@ impl App {
                         let query = self.presets[state.selected_preset].1.clone();
                         state.editor = TextArea::default();
                         state.editor.insert_str(&query);
-                        self.filter_query = query;
+                        // Per-pane: update active pane's filter (D-03, Phase 25)
+                        self.active_pane_mut().filter_query = query;
                     }
                 }
                 self.rebuild_and_reanchor();
@@ -822,7 +839,8 @@ impl App {
                         let query = self.presets[state.selected_preset].1.clone();
                         state.editor = TextArea::default();
                         state.editor.insert_str(&query);
-                        self.filter_query = query;
+                        // Per-pane: update active pane's filter (D-03, Phase 25)
+                        self.active_pane_mut().filter_query = query;
                     }
                 }
                 self.rebuild_and_reanchor();
@@ -836,19 +854,22 @@ impl App {
                         state.editor.insert_str(&query);
                         state.selected_preset = idx;
                     }
-                    self.filter_query = query;
+                    // Per-pane: update active pane's filter (D-03, Phase 25)
+                    self.active_pane_mut().filter_query = query;
                     self.rebuild_and_reanchor();
                 }
             }
             _ => {
                 if let Some(ref mut state) = self.filter_state {
                     state.editor.input(key);
-                    self.filter_query = state
+                    let filter_text = state
                         .editor
                         .lines()
                         .first()
                         .cloned()
                         .unwrap_or_default();
+                    // Per-pane: update active pane's filter as user types (D-04, Phase 25)
+                    self.active_pane_mut().filter_query = filter_text;
                 }
                 self.rebuild_and_reanchor();
             }

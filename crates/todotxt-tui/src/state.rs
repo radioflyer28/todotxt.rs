@@ -30,6 +30,10 @@ pub struct Pane {
     #[allow(dead_code)]
     pub sort_order: SortOrder,
 
+    /// Per-pane grouping toggle (tracks whether to render group headers)
+    #[allow(dead_code)]
+    pub grouping: bool,
+
     /// Name/label for the pane (e.g., "Work", "Personal")
     #[allow(dead_code)]
     pub label: String,
@@ -44,6 +48,7 @@ impl Pane {
             selected: 0,
             filter_query: String::new(),
             sort_order: SortOrder::FileOrder,
+            grouping: false,
             label,
         }
     }
@@ -126,6 +131,7 @@ mod tests {
         assert!(pane.display_rows.is_empty());
         assert_eq!(pane.selected, 0);
         assert_eq!(pane.filter_query, "");
+        assert_eq!(pane.grouping, false);
     }
 
     #[test]
