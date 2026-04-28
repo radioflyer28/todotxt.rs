@@ -230,8 +230,6 @@ impl App {
 
     /// Create a new pane with auto-label and append it to the right (D-05, D-06, D-07).
     /// Returns early if pane count >= 10 (D-03). Focus shifts to the newly created pane.
-    #[allow(dead_code)]
-
     pub fn pane_add(&mut self) {
         if self.panes.len() >= 10 {
             return;
@@ -242,9 +240,6 @@ impl App {
         self.pane_counter += 1;
         self.active_pane = pane_id;
     }
-
-    #[allow(dead_code)]
-
 
     /// Delete the active pane with adjacent focus shift and ID re-normalization (D-08, D-09, D-11).
     /// Focus shifts: prefer left (active_pane - 1), else right (0), else none.
