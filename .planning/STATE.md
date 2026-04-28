@@ -1,11 +1,11 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
-current_phase: 21
-current_plan: 03
-status: ✅ PHASE 21 COMPLETE — Smart Text Normalization delivered across all three call sites
-last_updated: "2026-04-27T00:00:00.000Z"
-last_activity: 2026-04-27
+current_phase: 22
+current_plan: 00
+status: 🗣 PHASE 22 DISCUSS COMPLETE — Context gathered, ready for planning
+last_updated: "2026-04-28T00:00:00.000Z"
+last_activity: 2026-04-28
 progress:
   total_phases: 2
   completed_phases: 2
@@ -25,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: 21 (COMPLETE)
-Plan: 21-03 (complete)
-Status: All three Phase 21 plans delivered — normalize_append, normalize_line, TUI toggles, CLI flag.
-Last activity: 2026-04-27
+Phase: 22 (DISCUSS COMPLETE)
+Plan: none yet
+Status: Context gathered — keymap schema, help overlay, parity scope, and error handling all decided.
+Last activity: 2026-04-28
 
 ## Next Step
 
-Phase 21 complete. Next: Phase 22 (Keymap Parity) or review ROADMAP.md for next scheduled phase.
+Run `/gsd-plan-phase 22` to generate plans from the context.
 
 ## Pending Decisions
 
