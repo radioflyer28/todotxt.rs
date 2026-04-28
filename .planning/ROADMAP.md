@@ -23,15 +23,15 @@ v1.4 Kanban-Style Vertical Panes
 
 ## Planned Phases
 
-- [ ] **Phase 24: Pane Model + Layout Foundation**
+- [x] **Phase 24: Pane Model + Layout Foundation**
 	- Introduce pane data model and active-pane focus mechanics
 	- Render vertical pane containers with robust fallback to single-pane view
 	- **Requirements:** PANE-01, PANE-02, VIEW-01
 	- **Plans:** 3 plans
 	- Plans:
-		- [ ] 24-01-PLAN.md — Pane state model and focus selection behavior
-		- [ ] 24-02-PLAN.md — Vertical pane layout rendering in TUI task view
-		- [ ] 24-03-PLAN.md — Single-pane fallback path and layout safety guards
+		- [x] 24-01-PLAN.md — Pane state model and focus selection behavior
+		- [x] 24-02-PLAN.md — Vertical pane layout rendering in TUI task view
+		- [x] 24-03-PLAN.md — Single-pane fallback path and layout safety guards
 
 - [ ] **Phase 25: Per-Pane Query Behavior (Sort/Group/Filter)**
 	- Track sort/group/filter independently for each pane
