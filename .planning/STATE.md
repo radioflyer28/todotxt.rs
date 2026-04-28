@@ -3,11 +3,11 @@ milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
 current_phase: 23-validation-ship-readiness
 current_plan: 05
-status: ✅ PHASE 23 COMPLETE — validation and ship-readiness complete
+status: ✅ MILESTONE v1.3 ARCHIVED — ready for next milestone definition
 milestone_status: complete
 milestone_version: v1.3
 milestone_complete_date: 2026-04-28
-next_action: /gsd-complete-milestone v1.3
+next_action: /gsd-new-milestone
 last_updated: "2026-04-28T00:00:00.000Z"
 last_activity: 2026-04-28
 progress:
@@ -31,12 +31,12 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 Phase: 23 (COMPLETE)
 Plan: 05 (COMPLETE)
-Status: Phase 23 is complete. Milestone v1.3 is ready for archival via /gsd-complete-milestone.
+Status: Milestone v1.3 archived and closed. Ready to define next milestone.
 Last activity: 2026-04-28
 
 ## Next Step
 
-Run `/gsd-complete-milestone v1.3` to archive completed milestone artifacts and prepare the next milestone.
+Run /gsd-new-milestone to define the next milestone requirements and roadmap.
 
 ## Pending Decisions
 
