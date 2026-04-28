@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Scope
 status: executing
-last_updated: "2026-04-28T19:41:08.406Z"
-last_activity: 2026-04-28 -- Phase 24 execution started
+last_updated: "2026-04-28T23:59:05.482Z"
+last_activity: 2026-04-28
 progress:
-  total_phases: 17
+  total_phases: 18
   completed_phases: 15
-  total_plans: 50
-  completed_plans: 47
-  percent: 94
+  total_plans: 53
+  completed_plans: 49
+  percent: 92
 ---
 
 gsd_state_version: 1.0
@@ -39,14 +39,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 24 — pane-model-layout-foundation
+**Current focus:** Phase 26 — pane-management-quick-hide-show
 
 ## Current Position
 
-Phase: 24 (pane-model-layout-foundation) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 24
-Last activity: 2026-04-28 -- Phase 24 execution started
+Phase: 26 (pane-management-quick-hide-show) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-04-28
 
 ## Next Step
 
