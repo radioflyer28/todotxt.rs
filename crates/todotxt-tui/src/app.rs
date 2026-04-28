@@ -301,12 +301,37 @@ impl App {
         let filter_str = pane.filter_query.trim();
         let filter = Filter::from_query(filter_str);
         
-        let rows: Vec<DisplayRow> = self
+        let mut filtered_tasks: Vec<(usize, &Task)> = self
             .task_list
             .filter(&filter)
             .into_iter()
-            .map(|(source_index, _task)| DisplayRow::Task(source_index))
             .collect();
+
+        // Per-pane sort behavior (D-09, Phase 25): Apply active pane's sort_order
+        if pane.sort_order != SortOrder::FileOrder {
+            filtered_tasks.sort_by(|(_, a), (_, b)| pane.sort_order.compare(a, b));
+        }
+
+        // Per-pane grouping behavior (D-09, Phase 25): Add group headers if enabled
+        let rows: Vec<DisplayRow> = if pane.grouping && !filtered_tasks.is_empty() {
+            let mut display_rows: Vec<DisplayRow> = Vec::new();
+            let mut last_key: Option<String> = None;
+            
+            for (source_index, task) in &filtered_tasks {
+                let key = group_key_for(task, &pane.sort_order);
+                if last_key.as_deref() != Some(&key) {
+                    display_rows.push(DisplayRow::GroupHeader(key.clone()));
+                    last_key = Some(key);
+                }
+                display_rows.push(DisplayRow::Task(*source_index));
+            }
+            display_rows
+        } else {
+            filtered_tasks
+                .into_iter()
+                .map(|(source_index, _task)| DisplayRow::Task(source_index))
+                .collect()
+        };
 
         pane.display_rows = rows;
 
@@ -424,9 +449,11 @@ impl App {
             // ── Pane navigation (left/right arrows, Phase 24) ────────────────
             KeyCode::Left => {
                 self.focus_prev_pane();
+                self.rebuild_and_reanchor();
             }
             KeyCode::Right => {
                 self.focus_next_pane();
+                self.rebuild_and_reanchor();
             }
 
             // ── Navigation — non-overridable arms ───────────────────────────
@@ -605,7 +632,9 @@ impl App {
             }
 
             _ if self.key_is_action(key, "sort_cycle") => {
-                self.sort_order = cycle_sort(self.sort_order);
+                // Per-pane sort state (D-07, Phase 25): Apply only to active pane
+                let current_sort = self.active_pane().sort_order;
+                self.active_pane_mut().sort_order = cycle_sort(current_sort);
                 self.rebuild_and_reanchor();
             }
 
@@ -692,7 +721,9 @@ impl App {
             }
 
             _ if display_count > 0 && self.key_is_action(key, "group_toggle") => {
-                self.grouping = !self.grouping;
+                // Per-pane grouping state (D-08, Phase 25): Apply only to active pane
+                let current_grouping = self.active_pane().grouping;
+                self.active_pane_mut().grouping = !current_grouping;
                 self.rebuild_and_reanchor();
             }
 
@@ -1401,9 +1432,17 @@ impl App {
     ///
     /// Saves the current canonical index, rebuilds, then restores the selection
     /// to the display row where that canonical index now appears (or row 0).
+    ///
+    /// For multi-pane mode, also updates the active pane's display_rows with per-pane query state.
     fn rebuild_and_reanchor(&mut self) {
         let old_canonical = self.canonical_selected();
         self.rebuild_display_indices();
+        
+        // Per-pane rebuild (Phase 25): Update active pane's display_rows with per-pane filter/sort/group
+        if !self.should_show_single_pane() && self.panes.len() > 1 {
+            self.rebuild_visible_rows();
+        }
+        
         self.selected = old_canonical
             .and_then(|ci| {
                 self.display_rows
@@ -1858,16 +1897,38 @@ impl App {
 
         let mut middle = String::new();
 
-        let trimmed_filter = self.filter_query.trim();
+        // Per-pane query state (Phase 25): Show active pane's filter/sort/group state
+        let (pane_filter, pane_sort, pane_grouping) = if !self.should_show_single_pane() && self.panes.len() > 1 {
+            let pane = &self.panes[self.active_pane];
+            (
+                pane.filter_query.clone(),
+                pane.sort_order,
+                pane.grouping,
+            )
+        } else {
+            // Fallback to global state when showing single pane
+            (
+                self.filter_query.clone(),
+                self.sort_order,
+                self.grouping,
+            )
+        };
+
+        let trimmed_filter = pane_filter.trim();
         if !trimmed_filter.is_empty() {
             middle.push_str(" | ");
-            middle.push_str(trimmed_filter);
+            // Truncate long filter queries for display
+            if trimmed_filter.len() > 30 {
+                middle.push_str(&format!("{}…", &trimmed_filter[..27]));
+            } else {
+                middle.push_str(trimmed_filter);
+            }
         }
-        if self.sort_order != SortOrder::FileOrder {
+        if pane_sort != SortOrder::FileOrder {
             middle.push_str(" | sort: ");
-            middle.push_str(sort_name(self.sort_order));
+            middle.push_str(sort_name(pane_sort));
         }
-        if self.grouping {
+        if pane_grouping {
             middle.push_str(" | group: on");
         }
         if self.show_deferred {
