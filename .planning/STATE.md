@@ -1,16 +1,20 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Feature/Hotkey Parity with todotxt.net
-current_phase: 22
-current_plan: 03
-status: ✅ PHASE 22 COMPLETE — All plans executed, tests passing
+current_phase: 23-validation-ship-readiness
+current_plan: 05
+status: ✅ PHASE 23 COMPLETE — validation and ship-readiness complete
+milestone_status: complete
+milestone_version: v1.3
+milestone_complete_date: 2026-04-28
+next_action: /gsd-complete-milestone v1.3
 last_updated: "2026-04-28T00:00:00.000Z"
 last_activity: 2026-04-28
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 17
+  completed_plans: 17
   percent: 100
 ---
 
@@ -25,14 +29,14 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: 22 (DISCUSS COMPLETE)
-Plan: none yet
-Status: Context gathered — keymap schema, help overlay, parity scope, and error handling all decided.
+Phase: 23 (COMPLETE)
+Plan: 05 (COMPLETE)
+Status: Phase 23 is complete. Milestone v1.3 is ready for archival via /gsd-complete-milestone.
 Last activity: 2026-04-28
 
 ## Next Step
 
-Run `/gsd-plan-phase 22` to generate plans from the context.
+Run `/gsd-complete-milestone v1.3` to archive completed milestone artifacts and prepare the next milestone.
 
 ## Pending Decisions
 
