@@ -72,6 +72,8 @@ pub enum AppMode {
     AppendText,
     /// Read-only overlay showing all keymap warnings from startup (D-09, Phase 22).
     KeymapErrors,
+    /// Read-only overlay showing all keybindings (D-10, Phase 22 parity).
+    Help,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -255,6 +257,7 @@ impl App {
                     AppMode::Filtering => self.handle_filtering_key(key)?,
                     AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
                     AppMode::KeymapErrors => self.handle_keymap_errors_key(key)?,
+                    AppMode::Help => self.handle_help_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -591,6 +594,44 @@ impl App {
                 self.mode = AppMode::KeymapErrors;
             }
 
+            // '?' opens the help overlay (D-10, Phase 22)
+            _ if self.key_is_action(key, "help") => {
+                self.mode = AppMode::Help;
+            }
+
+            // '0' clears the active filter (D-11, Phase 22)
+            _ if self.key_is_action(key, "clear_filter") => {
+                self.filter_query.clear();
+                self.toggled_filter_query = None;
+                self.rebuild_and_reanchor();
+            }
+
+            // '1'-'9' applies a preset filter by slot (D-11, Phase 22; not overridable)
+            KeyCode::Char(c @ '1'..='9') if key.modifiers == KeyModifiers::NONE => {
+                let slot = format!("f{}", c);
+                if let Some(preset) = self.config.presets.get(&slot) {
+                    if let Some(filter_str) = preset.filter.as_ref() {
+                        self.filter_query = filter_str.clone();
+                        self.toggled_filter_query = None;
+                        self.rebuild_and_reanchor();
+                    }
+                }
+            }
+
+            // '.' reloads the task file from disk (D-11, Phase 22)
+            _ if self.key_is_action(key, "reload") => {
+                match self.task_list.reload() {
+                    Ok(()) => {
+                        self.pending_reload = false;
+                        self.prune_stale_selections();
+                        self.rebuild_and_reanchor();
+                    }
+                    Err(e) => {
+                        eprintln!("todotxt-tui: reload failed: {}", e);
+                    }
+                }
+            }
+
             _ => {}
         }
         Ok(())
@@ -598,6 +639,20 @@ impl App {
 
     /// Handle key events in the KeymapErrors read-only overlay (D-09, Phase 22).
     fn handle_keymap_errors_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = AppMode::Normal;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle key events in the Help overlay (D-10, Phase 22).
+    fn handle_help_key(
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
@@ -1397,6 +1452,13 @@ impl App {
                 self.render_status_bar(frame, chunks[1]);
                 self.render_keymap_errors_overlay(frame, frame.area());
             }
+            AppMode::Help => {
+                // Task list visible behind; help overlay covers the screen (D-10, Phase 22).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_help_overlay(frame, frame.area());
+            }
         }
     }
 
@@ -1551,7 +1613,7 @@ impl App {
             middle.push_str(" [+deferred]");
         }
 
-        let right = "  q quit | n add | u edit | d del | D bulk del | T bulk app | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme";
+        let right = "  q quit | n add | u edit | d del | D bulk del | T bulk app | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -1587,6 +1649,127 @@ impl App {
         };
 
         frame.render_widget(Paragraph::new(status_line), area);
+    }
+
+    /// Render a centered help overlay showing all 19 resolved keybindings (D-10, Phase 22).
+    fn render_help_overlay(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::layout::{Constraint, Flex, Layout};
+        use ratatui::widgets::{Block, Clear, List, ListItem};
+
+        /// Format a (KeyCode, KeyModifiers) pair as a human-readable string.
+        fn chord_description(code: crossterm::event::KeyCode, mods: crossterm::event::KeyModifiers) -> String {
+            use crossterm::event::KeyCode as KC;
+            let key_str = match code {
+                KC::Char(' ') => "space".to_string(),
+                KC::Char(c) => c.to_string(),
+                KC::Backspace => "backspace".to_string(),
+                KC::Enter => "enter".to_string(),
+                KC::Left => "left".to_string(),
+                KC::Right => "right".to_string(),
+                KC::Up => "up".to_string(),
+                KC::Down => "down".to_string(),
+                KC::Tab => "tab".to_string(),
+                KC::Delete => "delete".to_string(),
+                KC::Home => "home".to_string(),
+                KC::End => "end".to_string(),
+                KC::PageUp => "pageup".to_string(),
+                KC::PageDown => "pagedown".to_string(),
+                KC::Esc => "esc".to_string(),
+                KC::F(n) => format!("f{}", n),
+                _ => format!("{:?}", code).to_lowercase(),
+            };
+            if mods.contains(crossterm::event::KeyModifiers::CONTROL) {
+                format!("ctrl+{}", key_str)
+            } else if mods.contains(crossterm::event::KeyModifiers::ALT) {
+                format!("alt+{}", key_str)
+            } else if mods.contains(crossterm::event::KeyModifiers::SHIFT) {
+                format!("shift+{}", key_str)
+            } else {
+                key_str
+            }
+        }
+
+        // Section: action description → display name mapping (presentation order)
+        let sections: &[(&str, &str, &[&str])] = &[
+            ("Tasks", "Tasks", &[
+                "add", "edit", "delete", "bulk_delete", "bulk_append", "toggle_done",
+            ]),
+            ("Filter", "Filter", &[
+                "filter_open", "filter_define", "filter_toggle", "clear_filter",
+            ]),
+            ("View", "View", &[
+                "sort_cycle", "group_toggle", "deferred_toggle", "theme_cycle", "reload",
+            ]),
+            ("Select", "Select", &[
+                "disjoint_select", "disjoint_mark",
+            ]),
+            ("App", "App", &[
+                "help", "quit",
+            ]),
+        ];
+
+        let action_labels: std::collections::HashMap<&str, &str> = [
+            ("add", "Add task"),
+            ("edit", "Edit task"),
+            ("delete", "Delete task"),
+            ("bulk_delete", "Bulk delete"),
+            ("bulk_append", "Bulk append"),
+            ("toggle_done", "Toggle done"),
+            ("filter_open", "Open filter"),
+            ("filter_define", "Define presets"),
+            ("filter_toggle", "Toggle filter on/off"),
+            ("clear_filter", "Clear filter"),
+            ("sort_cycle", "Cycle sort"),
+            ("group_toggle", "Toggle grouping"),
+            ("deferred_toggle", "Toggle deferred"),
+            ("theme_cycle", "Cycle theme"),
+            ("reload", "Reload file"),
+            ("disjoint_select", "Disjoint select"),
+            ("disjoint_mark", "Mark selection"),
+            ("help", "Show help"),
+            ("quit", "Quit"),
+        ].into_iter().collect();
+
+        // Build lines
+        let mut lines: Vec<ListItem> = Vec::new();
+
+        for (_key, section_title, actions) in sections {
+            lines.push(ListItem::new(format!("  ── {} ──", section_title)));
+            for action in *actions {
+                if let Some((code, mods)) = self.effective_keymap.get(*action) {
+                    let chord = chord_description(*code, *mods);
+                    let label = action_labels.get(action).copied().unwrap_or(action);
+                    lines.push(ListItem::new(format!("    {:>12}  {}", chord, label)));
+                }
+            }
+        }
+
+        // Fixed nav keys (not in effective_keymap since they're always hardcoded)
+        lines.push(ListItem::new("  ── Navigation ──".to_string()));
+        lines.push(ListItem::new("    j / down  Move down"));
+        lines.push(ListItem::new("    k / up    Move up"));
+        lines.push(ListItem::new("    ctrl+d    Page down"));
+        lines.push(ListItem::new("    ctrl+u    Page up"));
+        lines.push(ListItem::new("    shift+j   Extend selection down"));
+        lines.push(ListItem::new("    shift+k   Extend selection up"));
+
+        let popup_width = (area.width * 4 / 5).max(40).min(area.width);
+        let popup_height = ((lines.len() as u16) + 2).min(area.height.saturating_sub(2));
+
+        let h_layout = Layout::horizontal([Constraint::Length(popup_width)])
+            .flex(Flex::Center)
+            .split(area);
+        let v_layout = Layout::vertical([Constraint::Length(popup_height)])
+            .flex(Flex::Center)
+            .split(h_layout[0]);
+        let popup_area = v_layout[0];
+
+        frame.render_widget(Clear, popup_area);
+
+        let list = List::new(lines).block(
+            Block::bordered().title(" Keybindings — Esc/q: close "),
+        );
+        frame.render_widget(list, popup_area);
     }
 
     /// Render a centered popup overlay listing all keymap warnings (D-09, Phase 22).
