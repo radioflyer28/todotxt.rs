@@ -824,6 +824,18 @@ impl App {
                 }
             }
 
+            // Ctrl+N creates a new pane with auto-label (D-17, Phase 26)
+            _ if self.key_is_action(key, "pane_add") => {
+                self.pane_add();
+                self.rebuild_and_reanchor();
+            }
+
+            // Ctrl+W deletes the active pane with focus shift (D-18, Phase 26)
+            _ if self.key_is_action(key, "pane_delete") => {
+                self.pane_delete();
+                self.rebuild_and_reanchor();
+            }
+
             _ => {}
         }
         Ok(())
