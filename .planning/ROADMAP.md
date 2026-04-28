@@ -63,7 +63,7 @@
     - [x] 21-02-PLAN.md — Route TUI append flows through shared normalization helpers
     - [x] 21-03-PLAN.md — Route TUI edit/update flows through shared normalization helpers and preserve unknown text
 
-- [ ] **Phase 22: Keymap + Help Parity**
+- [x] **Phase 22: Keymap + Help Parity**
   - Align implemented hotkeys with todotxt.net where practical
   - Support configurable key overrides in `config.toml`
   - Make active bindings and deliberate deviations discoverable in-app
