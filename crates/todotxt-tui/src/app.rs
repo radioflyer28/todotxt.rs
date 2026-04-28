@@ -115,8 +115,9 @@ pub struct App {
     pub panes: Vec<Pane>,
     /// 0-based index of the currently active pane
     pub active_pane: usize,
-    /// Counter for auto-labeling new panes (e.g., "Pane 1", "Pane 2"). Initialized to 2; first pane is "Pane 1" (D-05).
     #[allow(dead_code)]
+
+    /// Counter for auto-labeling new panes (e.g., "Pane 1", "Pane 2"). Initialized to 2; first pane is "Pane 1" (D-05).
     pub pane_counter: usize,
 }
 
@@ -227,7 +228,48 @@ impl App {
         }
     }
 
-    /// Get mutable reference to the active pane
+    /// Create a new pane with auto-label and append it to the right (D-05, D-06, D-07).
+    /// Returns early if pane count >= 10 (D-03). Focus shifts to the newly created pane.
+    #[allow(dead_code)]
+
+    pub fn pane_add(&mut self) {
+        if self.panes.len() >= 10 {
+            return;
+        }
+        let pane_id = self.panes.len();
+        let label = format!("Pane {}", self.pane_counter);
+        self.panes.push(Pane::new(pane_id, label));
+        self.pane_counter += 1;
+        self.active_pane = pane_id;
+    }
+
+    #[allow(dead_code)]
+
+
+    /// Delete the active pane with adjacent focus shift and ID re-normalization (D-08, D-09, D-11).
+    /// Focus shifts: prefer left (active_pane - 1), else right (0), else none.
+    /// Returns early if panes list is empty (D-04).
+    pub fn pane_delete(&mut self) {
+        if self.panes.is_empty() {
+            return;
+        }
+        let focus_index = if self.active_pane > 0 {
+            self.active_pane - 1
+        } else if self.panes.len() > 1 {
+            0
+        } else {
+            0
+        };
+        self.panes.remove(self.active_pane);
+        // Re-normalize all pane IDs after deletion (D-11)
+        for (idx, pane) in self.panes.iter_mut().enumerate() {
+            pane.id = idx;
+        }
+        self.active_pane = focus_index;
+        self.reconcile_active_pane();
+    }
+
+
     #[allow(dead_code)]
     pub fn active_pane_mut(&mut self) -> &mut Pane {
         self.reconcile_active_pane();
@@ -3086,6 +3128,7 @@ mod tests {
         assert_eq!(app.active_pane().selected, 1);
     }
 }
+
 
 
 
