@@ -745,7 +745,8 @@ impl App {
 
             // '0' clears the active filter (D-11, Phase 22)
             _ if self.key_is_action(key, "clear_filter") => {
-                self.filter_query.clear();
+                // Per-pane: clear active pane's filter (Phase 25)
+                self.active_pane_mut().filter_query.clear();
                 self.toggled_filter_query = None;
                 self.rebuild_and_reanchor();
             }
@@ -755,7 +756,8 @@ impl App {
                 let slot = format!("f{}", c);
                 if let Some(preset) = self.config.presets.get(&slot) {
                     if let Some(filter_str) = preset.filter.as_ref() {
-                        self.filter_query = filter_str.clone();
+                        // Per-pane: apply preset filter to active pane (Phase 25)
+                        self.active_pane_mut().filter_query = filter_str.clone();
                         self.toggled_filter_query = None;
                         self.rebuild_and_reanchor();
                     }
