@@ -1,9 +1,24 @@
+---
+gsd_state_version: 1.0
+milestone: v1.4
+milestone_name: Scope
+status: executing
+last_updated: "2026-04-28T18:29:14.061Z"
+last_activity: 2026-04-28 -- Phase 24 execution started
+progress:
+  total_phases: 16
+  completed_phases: 14
+  total_plans: 47
+  completed_plans: 43
+  percent: 91
+---
+
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Kanban-Style Vertical Panes
 current_phase: not-started
 current_plan: none
-status: 🚧 MILESTONE v1.4 STARTED — defining requirements and roadmap
+status: Executing Phase 24
 milestone_status: in_progress
 milestone_version: v1.4
 next_action: /gsd-plan-phase 24
@@ -24,14 +39,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone v1.4 — Kanban-style vertical panes in TUI.
+**Current focus:** Phase 24 — pane-model-layout-foundation
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: -
-Status: Defining requirements and roadmap for v1.4.
-Last activity: 2026-04-28
+Phase: 24 (pane-model-layout-foundation) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 24
+Last activity: 2026-04-28 -- Phase 24 execution started
 
 ## Next Step
 
