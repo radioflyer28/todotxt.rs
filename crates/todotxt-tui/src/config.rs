@@ -245,7 +245,8 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
 ///
 /// Starts from `default_keymap()`, applies valid user overrides from `config.keymap`,
 /// and collects a warning string for every invalid entry (unknown action name or
-/// unparseable chord string). Conflict detection is added in Plan 22-02.
+/// unparseable chord string). When two actions map to the same chord, both are reverted
+/// to their defaults and a conflict warning is emitted (D-07, Plan 22-02).
 ///
 /// Returns `(effective_bindings, warnings)`.
 pub fn resolve_keymap(config: &TuiConfig) -> (HashMap<String, (KeyCode, KeyModifiers)>, Vec<String>) {
@@ -267,6 +268,29 @@ pub fn resolve_keymap(config: &TuiConfig) -> (HashMap<String, (KeyCode, KeyModif
                 "invalid key chord '{}' for action '{}' in [keymap] — default used",
                 chord_str, action
             ));
+        }
+    }
+
+    // Conflict detection (D-07, Plan 22-02): if two or more actions share the same
+    // chord after overrides are applied, revert all conflicting actions to their defaults.
+    let defaults = default_keymap();
+    let mut chord_to_actions: HashMap<(KeyCode, KeyModifiers), Vec<String>> = HashMap::new();
+    for (action, binding) in &effective {
+        chord_to_actions.entry(*binding).or_default().push(action.clone());
+    }
+    for (chord, actions) in &chord_to_actions {
+        if actions.len() > 1 {
+            let chord_desc = format!("{:?}+{:?}", chord.0, chord.1);
+            warnings.push(format!(
+                "conflict: actions [{}] all bound to {} — all reverted to defaults",
+                actions.join(", "),
+                chord_desc
+            ));
+            for action in actions {
+                if let Some(default_binding) = defaults.get(action.as_str()) {
+                    effective.insert(action.clone(), *default_binding);
+                }
+            }
         }
     }
 
@@ -415,6 +439,31 @@ auto_creation_date = false
         assert_eq!(
             effective.get("delete"),
             Some(&(KeyCode::Backspace, KeyModifiers::NONE))
+        );
+    }
+
+    #[test]
+    fn resolve_keymap_conflict_detection_reverts_both_actions() {
+        // Configure two actions to the same chord — both should revert to defaults.
+        let mut config = TuiConfig::default();
+        // "delete" default = 'd', override to "x"
+        // "toggle_done" default = "x", so this creates a conflict
+        config.keymap.insert("delete".into(), "x".into());
+        let (effective, warnings) = resolve_keymap(&config);
+        assert!(
+            warnings.iter().any(|w| w.contains("conflict")),
+            "expected a conflict warning"
+        );
+        // Both "delete" and "toggle_done" should revert to their defaults
+        assert_eq!(
+            effective.get("delete"),
+            Some(&(KeyCode::Char('d'), KeyModifiers::NONE)),
+            "delete should revert to default 'd'"
+        );
+        assert_eq!(
+            effective.get("toggle_done"),
+            Some(&(KeyCode::Char('x'), KeyModifiers::NONE)),
+            "toggle_done should revert to default 'x'"
         );
     }
 }

@@ -70,6 +70,8 @@ pub enum AppMode {
     FilterDefining,
     /// Bulk append mode: user types text to append to all selected tasks (D-06, Phase 20).
     AppendText,
+    /// Read-only overlay showing all keymap warnings from startup (D-09, Phase 22).
+    KeymapErrors,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -137,7 +139,6 @@ pub struct App {
     /// Keymap warnings collected at startup from resolve_keymap (D-10, Phase 22).
     /// Empty when config has no [keymap] section or all entries are valid.
     /// Displayed in the status bar and the KeymapErrors overlay (Phase 22, Plan 02).
-    #[allow(dead_code)]
     pub keymap_warnings: Vec<String>,
     /// Effective key bindings (action name → (KeyCode, KeyModifiers)), built at startup.
     /// Populated by resolve_keymap — overrides where specified, defaults otherwise (D-05, Phase 22).
@@ -253,6 +254,7 @@ impl App {
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
                     AppMode::Filtering => self.handle_filtering_key(key)?,
                     AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
+                    AppMode::KeymapErrors => self.handle_keymap_errors_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -584,6 +586,25 @@ impl App {
                 self.clamp_selection();
             }
 
+            // '!' opens keymap errors overlay — only when warnings exist (D-09, Phase 22)
+            KeyCode::Char('!') if !self.keymap_warnings.is_empty() => {
+                self.mode = AppMode::KeymapErrors;
+            }
+
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle key events in the KeymapErrors read-only overlay (D-09, Phase 22).
+    fn handle_keymap_errors_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = AppMode::Normal;
+            }
             _ => {}
         }
         Ok(())
@@ -1369,6 +1390,13 @@ impl App {
                 self.render_filter_defining_panel(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
+            AppMode::KeymapErrors => {
+                // Task list visible behind; overlay covers the screen (D-09, Phase 22).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_keymap_errors_overlay(frame, frame.area());
+            }
         }
     }
 
@@ -1496,6 +1524,15 @@ impl App {
             left.push_str(&format!(" | {} selected", self.selected_tasks.len()));
         }
 
+        // Keymap warning indicator — only shown when warnings exist (D-08, Phase 22)
+        if !self.keymap_warnings.is_empty() {
+            left.push_str(&format!(
+                " | ⚠ keymap: {} warning{} ('!' for details)",
+                self.keymap_warnings.len(),
+                if self.keymap_warnings.len() == 1 { "" } else { "s" }
+            ));
+        }
+
         let mut middle = String::new();
 
         let trimmed_filter = self.filter_query.trim();
@@ -1550,6 +1587,37 @@ impl App {
         };
 
         frame.render_widget(Paragraph::new(status_line), area);
+    }
+
+    /// Render a centered popup overlay listing all keymap warnings (D-09, Phase 22).
+    /// Covers the normal task list and status bar with a bordered block + warning list.
+    fn render_keymap_errors_overlay(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::layout::{Constraint, Flex, Layout};
+        use ratatui::widgets::{Block, Clear, List, ListItem};
+
+        // Center a popup sized to fit warnings (max 80% width, max 60% height)
+        let popup_width = area.width.saturating_mul(4) / 5;
+        let popup_height = (self.keymap_warnings.len() as u16 + 2).min(area.height * 3 / 5);
+        let h_layout = Layout::horizontal([Constraint::Length(popup_width)])
+            .flex(Flex::Center)
+            .split(area);
+        let v_layout = Layout::vertical([Constraint::Length(popup_height)])
+            .flex(Flex::Center)
+            .split(h_layout[0]);
+        let popup_area = v_layout[0];
+
+        frame.render_widget(Clear, popup_area);
+
+        let items: Vec<ListItem> = self
+            .keymap_warnings
+            .iter()
+            .map(|w| ListItem::new(format!("  ⚠ {}", w)))
+            .collect();
+
+        let list = List::new(items).block(
+            Block::bordered().title(" Keymap Warnings — Esc/q: close "),
+        );
+        frame.render_widget(list, popup_area);
     }
 
     /// Render the one-row delete confirmation panel (D-06, D-07).
