@@ -68,21 +68,21 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | SEL-02 | Phase 19 | Complete |
 | SEL-03 | Phase 19 | Complete |
 | SEL-04 | Phase 19 | Complete |
-| BULK-01 | Phase 20 | Pending |
-| BULK-02 | Phase 20 | Pending |
-| BULK-03 | Phase 20 | Pending |
-| NORM-01 | Phase 21 | Pending |
-| NORM-02 | Phase 21 | Pending |
-| NORM-03 | Phase 21 | Pending |
-| NORM-04 | Phase 21 | Pending |
-| NORM-05 | Phase 21 | Pending |
-| NORM-06 | Phase 21 | Pending |
-| PAR-01 | Phase 22 | Pending |
-| PAR-02 | Phase 22 | Pending |
-| PAR-03 | Phase 22 | Pending |
-| KEY-01 | Phase 22 | Pending |
-| KEY-02 | Phase 22 | Pending |
-| KEY-03 | Phase 22 | Pending |
+| BULK-01 | Phase 20 | Implemented — verification gap (Phase 23) |
+| BULK-02 | Phase 20 | Implemented — verification gap (Phase 23) |
+| BULK-03 | Phase 20 | Implemented — verification gap (Phase 23) |
+| NORM-01 | Phase 21 | Implemented — verification gap (Phase 23) |
+| NORM-02 | Phase 21 | Implemented — verification gap (Phase 23) |
+| NORM-03 | Phase 21 | Implemented — verification gap (Phase 23) |
+| NORM-04 | Phase 21 | Implemented — verification gap (Phase 23) |
+| NORM-05 | Phase 21 | Implemented — verification gap (Phase 23) |
+| NORM-06 | Phase 21 | Implemented — verification gap (Phase 23) |
+| PAR-01 | Phase 22 | Implemented — verification gap (Phase 23) |
+| PAR-02 | Phase 22 | Implemented — verification gap (Phase 23) |
+| PAR-03 | Phase 22 | Implemented — verification gap (Phase 23) |
+| KEY-01 | Phase 22 | Implemented — verification gap (Phase 23) |
+| KEY-02 | Phase 22 | Implemented — verification gap (Phase 23) |
+| KEY-03 | Phase 22 | Implemented — verification gap (Phase 23) |
 
 Coverage:
 
@@ -92,4 +92,4 @@ Coverage:
 
 ---
 Requirements defined: 2026-04-24
-Last updated: 2026-04-24 after initial definition
+Last updated: 2026-04-28 — gap closure routing via Phase 23 (verification gap)
