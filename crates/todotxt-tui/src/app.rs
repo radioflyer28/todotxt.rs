@@ -119,6 +119,9 @@ pub struct App {
 
     /// Counter for auto-labeling new panes (e.g., "Pane 1", "Pane 2"). Initialized to 2; first pane is "Pane 1" (D-05).
     pub pane_counter: usize,
+    /// When true, all panes are hidden and rendering falls back to single-pane view (D-13, Phase 26).
+    /// This flag is session-only (not persisted across restarts). All pane state is preserved.
+    pub panes_hidden: bool,
 }
 
 impl App {
@@ -167,6 +170,7 @@ impl App {
             panes: vec![Pane::new(0, "Tasks".to_string())],
             active_pane: 0,
             pane_counter: 2,
+            panes_hidden: false,
         };
         app.rebuild_display_indices();
         app.rebuild_active_pane();
@@ -262,6 +266,12 @@ impl App {
         }
         self.active_pane = focus_index;
         self.reconcile_active_pane();
+    }
+
+    /// Toggle pane visibility — hides all panes (single-pane render) or restores them (D-12, D-13, D-14, Phase 26).
+    /// Hidden state is session-only (not persisted). All pane structure and state are fully preserved.
+    pub fn pane_hide_toggle(&mut self) {
+        self.panes_hidden = !self.panes_hidden;
     }
 
 
@@ -828,6 +838,12 @@ impl App {
             // Ctrl+W deletes the active pane with focus shift (D-18, Phase 26)
             _ if self.key_is_action(key, "pane_delete") => {
                 self.pane_delete();
+                self.rebuild_and_reanchor();
+            }
+
+            // Ctrl+P toggles pane visibility (D-19, Phase 26)
+            _ if self.key_is_action(key, "pane_hide_toggle") => {
+                self.pane_hide_toggle();
                 self.rebuild_and_reanchor();
             }
 
@@ -1859,6 +1875,12 @@ impl App {
     /// Render multiple vertical panes side-by-side (Phase 24-02).
     fn render_panes(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::layout::{Constraint, Direction, Layout};
+
+        // When panes_hidden is true, render as single-pane view (D-13, Phase 26)
+        if self.panes_hidden {
+            self.render_task_list(frame, area);
+            return;
+        }
 
         if self.should_show_single_pane() {
             self.render_task_list(frame, area);

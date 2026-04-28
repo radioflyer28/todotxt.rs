@@ -245,6 +245,7 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
     // Phase 26 pane lifecycle hotkeys (D-17, D-18, D-20)
     m.insert("pane_add".into(),        (KeyCode::Char('n'), KeyModifiers::CONTROL));
     m.insert("pane_delete".into(),     (KeyCode::Char('w'), KeyModifiers::CONTROL));
+    m.insert("pane_hide_toggle".into(), (KeyCode::Char('p'), KeyModifiers::CONTROL));
     m
 }
 
