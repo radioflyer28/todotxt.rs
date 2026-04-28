@@ -15,6 +15,7 @@ use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append, normaliz
 use tui_textarea::TextArea;
 
 use crate::config::TuiConfig;
+use crate::config::resolve_keymap;
 use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
@@ -133,6 +134,14 @@ pub struct App {
     pub selection_anchor: Option<usize>,
     /// When true, Space marks/unmarks the cursor task and navigation does not clear the set (D-04).
     pub disjoint_select: bool,
+    /// Keymap warnings collected at startup from resolve_keymap (D-10, Phase 22).
+    /// Empty when config has no [keymap] section or all entries are valid.
+    /// Displayed in the status bar and the KeymapErrors overlay (Phase 22, Plan 02).
+    #[allow(dead_code)]
+    pub keymap_warnings: Vec<String>,
+    /// Effective key bindings (action name → (KeyCode, KeyModifiers)), built at startup.
+    /// Populated by resolve_keymap — overrides where specified, defaults otherwise (D-05, Phase 22).
+    pub effective_keymap: std::collections::HashMap<String, (crossterm::event::KeyCode, crossterm::event::KeyModifiers)>,
 }
 
 impl App {
@@ -144,6 +153,8 @@ impl App {
             .filter_map(|(name, p)| p.filter.as_ref().map(|f| (name.clone(), f.clone())))
             .collect();
         presets.sort_by(|(a, _), (b, _)| a.cmp(b));
+        // Resolve keymap at startup — applies user overrides, collects warnings (D-04, Phase 22).
+        let (effective_keymap, keymap_warnings) = resolve_keymap(&config);
         let mut app = App {
             should_quit: false,
             task_list,
@@ -172,9 +183,27 @@ impl App {
             selected_tasks: HashSet::new(),
             selection_anchor: None,
             disjoint_select: false,
+            keymap_warnings,
+            effective_keymap,
         };
         app.rebuild_display_indices();
         app
+    }
+
+    /// Returns true when the given key event matches the configured binding for `action` (D-05, Phase 22).
+    ///
+    /// Checks `effective_keymap` so user overrides are honoured. For bindings with no modifier
+    /// (e.g. uppercase 'D' for bulk_delete), matches on key code only — this preserves the
+    /// existing behavior where terminals may or may not report the implicit SHIFT modifier
+    /// separately for uppercase printable characters.
+    fn key_is_action(&self, key: crossterm::event::KeyEvent, action: &str) -> bool {
+        self.effective_keymap.get(action).map_or(false, |(code, mods)| {
+            if mods.is_empty() {
+                key.code == *code
+            } else {
+                key.code == *code && key.modifiers.contains(*mods)
+            }
+        })
     }
 
     /// Main event loop. Blocks on `rx.recv()` — no polling (D-02).
@@ -261,33 +290,19 @@ impl App {
         let display_count = self.display_indices.len();
         let row_count = self.display_rows.len();
         match key.code {
-            // ── Quit ────────────────────────────────────────────────────────
-            KeyCode::Char('q') => {
-                self.should_quit = true;
-            }
+            // ── Ctrl+C quit (not overridable) ────────────────────────────────
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.should_quit = true;
             }
 
-            // ── Disjoint selection mode ──────────────────────────────────────
-            // v: toggle disjoint_select on/off (D-05).
-            KeyCode::Char('v') => {
-                self.disjoint_select = !self.disjoint_select;
-            }
-            // Space: mark/unmark cursor task when disjoint mode is active (D-06).
-            // No-op on GroupHeader rows (D-08).
-            KeyCode::Char(' ') if self.disjoint_select => {
-                self.toggle_task_selection();
-            }
-            // Esc: clear entire selection and exit disjoint mode (D-07).
-            // Also clears shift-range selections made outside disjoint mode.
+            // ── Esc: clear selection / exit disjoint mode (not overridable) ──
             KeyCode::Esc if self.disjoint_select || !self.selected_tasks.is_empty() => {
                 self.selected_tasks.clear();
                 self.selection_anchor = None;
                 self.disjoint_select = false;
             }
 
-            // ── Navigation ──────────────────────────────────────────────────
+            // ── Navigation — non-overridable arms ───────────────────────────
             // Shift+j or Shift+Down: extend contiguous range selection downward (D-09, D-11).
             // MUST precede plain j/Down arm so SHIFT modifier is checked first (T-19-04).
             KeyCode::Char('j') | KeyCode::Down
@@ -349,15 +364,6 @@ impl App {
                     self.selected = prev;
                 }
             }
-            KeyCode::Char('g') if display_count > 0 => {
-                self.grouping = !self.grouping;
-                self.rebuild_and_reanchor();
-            }
-            KeyCode::Char('h') if display_count > 0 => {
-                self.show_deferred = !self.show_deferred;
-                self.rebuild_display_indices();
-                self.clamp_selection();
-            }
             // Shift+Ctrl+U: half-page range extension upward (D-10).
             // MUST precede plain Ctrl+U arm so SHIFT check wins (T-19-04).
             KeyCode::Char('u')
@@ -376,7 +382,7 @@ impl App {
                 self.clamp_selection();
                 self.apply_range_selection();
             }
-            // Ctrl+U half-page up — must come before plain 'u' (edit).
+            // Ctrl+U half-page up — must come before plain 'u' (edit alias).
             KeyCode::Char('u')
                 if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
@@ -408,7 +414,7 @@ impl App {
                 self.clamp_selection();
                 self.apply_range_selection();
             }
-            // Ctrl+D half-page down — must come before plain 'd' (delete).
+            // Ctrl+D half-page down — must come before overridable 'delete' arm.
             KeyCode::Char('d')
                 if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
@@ -423,19 +429,48 @@ impl App {
                 self.clamp_selection();
             }
 
-            // ── Done toggle ──────────────────────────────────────────────────
-            KeyCode::Char('x') if display_count > 0 => {
+            // ── Overridable actions (via effective_keymap, D-05 Phase 22) ────
+            // filter_toggle must precede filter_open — both default to 'f';
+            // filter_toggle requires CONTROL so it must be checked first.
+            _ if self.key_is_action(key, "filter_toggle") => {
+                if self.filter_query.trim().is_empty() {
+                    if let Some(prev) = self.toggled_filter_query.take() {
+                        self.filter_query = prev;
+                    }
+                } else {
+                    self.toggled_filter_query = Some(self.filter_query.clone());
+                    self.filter_query.clear();
+                }
+                self.rebuild_and_reanchor();
+            }
+
+            _ if self.key_is_action(key, "quit") => {
+                self.should_quit = true;
+            }
+
+            _ if self.disjoint_select && self.key_is_action(key, "disjoint_mark") => {
+                self.toggle_task_selection();
+            }
+
+            _ if self.key_is_action(key, "disjoint_select") => {
+                self.disjoint_select = !self.disjoint_select;
+            }
+
+            _ if display_count > 0 && self.key_is_action(key, "toggle_done") => {
                 self.toggle_done();
             }
 
-            // ── Add task — always available even on empty list ───────────────
-            KeyCode::Char('n') => {
+            _ if self.key_is_action(key, "add") => {
                 self.editor = TextArea::default();
                 self.mode = AppMode::Adding;
             }
 
-            // ── Edit task (u or e) — after Ctrl+U arm ───────────────────────
-            KeyCode::Char('u') | KeyCode::Char('e') if display_count > 0 => {
+            // edit — 'e' via keymap, 'u' kept as hardcoded alias so existing muscle memory works.
+            _ if display_count > 0
+                && (self.key_is_action(key, "edit")
+                    || (key.code == KeyCode::Char('u')
+                        && key.modifiers == KeyModifiers::NONE)) =>
+            {
                 if let Some(canonical) = self.canonical_selected() {
                     let raw = self.task_list.tasks()[canonical].to_raw().to_string();
                     let mut ed = TextArea::default();
@@ -445,30 +480,25 @@ impl App {
                 }
             }
 
-            // ── Bulk delete — D (Shift+d) when tasks are selected (D-01) ────────
-            KeyCode::Char('D') if !self.selected_tasks.is_empty() && display_count > 0 => {
+            _ if !self.selected_tasks.is_empty() && display_count > 0 && self.key_is_action(key, "bulk_delete") => {
                 self.mode = AppMode::DeleteConfirm;
             }
 
-            // ── Delete task — after Ctrl+D arm ──────────────────────────────
-            KeyCode::Char('d') if display_count > 0 => {
+            _ if display_count > 0 && self.key_is_action(key, "delete") => {
                 self.mode = AppMode::DeleteConfirm;
             }
 
-            // ── Sort cycle ──────────────────────────────────────────────────
-            KeyCode::Char('o') => {
+            _ if self.key_is_action(key, "sort_cycle") => {
                 self.sort_order = cycle_sort(self.sort_order);
                 self.rebuild_and_reanchor();
             }
 
-            // ── Bulk append — T (Shift+t) when tasks are selected (D-06) ────
-            KeyCode::Char('T') if !self.selected_tasks.is_empty() && display_count > 0 => {
+            _ if !self.selected_tasks.is_empty() && display_count > 0 && self.key_is_action(key, "bulk_append") => {
                 self.editor = TextArea::default();
                 self.mode = AppMode::AppendText;
             }
 
-            // ── Theme cycle ────────────────────────────────────────────────
-            KeyCode::Char('t') => {
+            _ if self.key_is_action(key, "theme_cycle") => {
                 self.palette = cycle_theme(self.palette);
                 self.styles = StyleSheet::from_theme(self.palette, self.no_color);
                 self.config.tui.theme = match self.palette {
@@ -482,21 +512,7 @@ impl App {
                 }
             }
 
-            // ── Ctrl+F: toggle active filter on/off ─────────────────────────
-            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if self.filter_query.trim().is_empty() {
-                    if let Some(prev) = self.toggled_filter_query.take() {
-                        self.filter_query = prev;
-                    }
-                } else {
-                    self.toggled_filter_query = Some(self.filter_query.clone());
-                    self.filter_query.clear();
-                }
-                self.rebuild_and_reanchor();
-            }
-
-            // ── Filter panel (Plan 02) ──────────────────────────────────────
-            KeyCode::Char('f') => {
+            _ if self.key_is_action(key, "filter_open") => {
                 let mut editor = TextArea::default();
                 editor.insert_str(&self.filter_query);
                 self.filter_state = Some(FilteringState {
@@ -507,8 +523,7 @@ impl App {
                 self.mode = AppMode::Filtering;
             }
 
-            // ── Preset definition panel (Plan 16-03, D-01) ──────────────────
-            KeyCode::Char('F') => {
+            _ if self.key_is_action(key, "filter_define") => {
                 let mut active_editor = TextArea::default();
                 active_editor.insert_str(&self.filter_query);
 
@@ -556,6 +571,17 @@ impl App {
                     selected_row: 0,
                 });
                 self.mode = AppMode::FilterDefining;
+            }
+
+            _ if display_count > 0 && self.key_is_action(key, "group_toggle") => {
+                self.grouping = !self.grouping;
+                self.rebuild_and_reanchor();
+            }
+
+            _ if display_count > 0 && self.key_is_action(key, "deferred_toggle") => {
+                self.show_deferred = !self.show_deferred;
+                self.rebuild_display_indices();
+                self.clamp_selection();
             }
 
             _ => {}

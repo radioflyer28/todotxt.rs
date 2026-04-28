@@ -4,6 +4,7 @@
 //! use serde to deserialize only the fields they know — unknown fields (like
 //! the CLI's `[presets]` table) are silently ignored by each side.
 
+use crossterm::event::{KeyCode, KeyModifiers};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -63,6 +64,11 @@ pub struct TuiConfig {
     /// TUI-specific settings from the `[tui]` TOML subsection.
     #[serde(default)]
     pub tui: TuiSection,
+    /// User-defined key binding overrides from the `[keymap]` TOML section (D-01, Phase 22).
+    /// Keys are action names (e.g. "delete"), values are chord strings (e.g. "backspace").
+    /// Configs without a `[keymap]` section deserialize to an empty map.
+    #[serde(default)]
+    pub keymap: HashMap<String, String>,
 }
 
 impl TuiConfig {
@@ -136,6 +142,137 @@ impl TuiConfig {
     }
 }
 
+/// Parse a human-readable key chord string into a (KeyCode, KeyModifiers) pair (D-03, Phase 22).
+///
+/// Supported formats:
+/// - Single printable char: `"n"`, `"?"`, `"0"`, `" "` (space as literal char)
+/// - Named special key: `"enter"`, `"esc"`, `"backspace"`, `"delete"`, `"up"`, `"down"`,
+///   `"left"`, `"right"`, `"tab"`, `"space"`, `"f1"`–`"f12"`
+/// - Modifier+key: `"ctrl+d"`, `"shift+f5"`, `"alt+enter"`
+///
+/// Returns `None` for empty input or unrecognized tokens.
+pub(crate) fn parse_key_chord(s: &str) -> Option<(KeyCode, KeyModifiers)> {
+    let normalized = s.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let parts: Vec<&str> = normalized.split('+').collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    // Split into modifier tokens (all but last) and the key token (last).
+    let (mod_tokens, key_token) = parts.split_at(parts.len() - 1);
+    let key_token = key_token[0];
+
+    if key_token.is_empty() {
+        return None;
+    }
+
+    // Parse modifier tokens.
+    let mut modifiers = KeyModifiers::NONE;
+    for &m in mod_tokens {
+        match m {
+            "ctrl" => modifiers |= KeyModifiers::CONTROL,
+            "shift" => modifiers |= KeyModifiers::SHIFT,
+            "alt" => modifiers |= KeyModifiers::ALT,
+            _ => return None,
+        }
+    }
+
+    // Parse the key token.
+    let key_code = match key_token {
+        "enter" => KeyCode::Enter,
+        "esc" => KeyCode::Esc,
+        "backspace" => KeyCode::Backspace,
+        "delete" | "del" => KeyCode::Delete,
+        "up" => KeyCode::Up,
+        "down" => KeyCode::Down,
+        "left" => KeyCode::Left,
+        "right" => KeyCode::Right,
+        "tab" => KeyCode::Tab,
+        "space" => KeyCode::Char(' '),
+        // F-keys: "f1"–"f12"
+        s if s.starts_with('f') && s.len() > 1 => {
+            if let Ok(n) = s[1..].parse::<u8>() {
+                if n >= 1 && n <= 12 {
+                    KeyCode::F(n)
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
+        // Single printable character
+        s if s.chars().count() == 1 => {
+            let c = s.chars().next().unwrap();
+            KeyCode::Char(c)
+        }
+        _ => return None,
+    };
+
+    Some((key_code, modifiers))
+}
+
+/// Returns the 16 default key bindings for overridable Normal-mode actions (D-02, Phase 22).
+///
+/// These defaults match the hardcoded bindings that existed before Phase 22.
+/// Used as the base map by `resolve_keymap`.
+pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
+    let mut m = HashMap::new();
+    m.insert("quit".into(),            (KeyCode::Char('q'), KeyModifiers::NONE));
+    m.insert("add".into(),             (KeyCode::Char('n'), KeyModifiers::NONE));
+    m.insert("edit".into(),            (KeyCode::Char('e'), KeyModifiers::NONE));
+    m.insert("delete".into(),          (KeyCode::Char('d'), KeyModifiers::NONE));
+    m.insert("bulk_delete".into(),     (KeyCode::Char('D'), KeyModifiers::NONE));
+    m.insert("bulk_append".into(),     (KeyCode::Char('T'), KeyModifiers::NONE));
+    m.insert("toggle_done".into(),     (KeyCode::Char('x'), KeyModifiers::NONE));
+    m.insert("filter_open".into(),     (KeyCode::Char('f'), KeyModifiers::NONE));
+    m.insert("filter_define".into(),   (KeyCode::Char('F'), KeyModifiers::NONE));
+    m.insert("filter_toggle".into(),   (KeyCode::Char('f'), KeyModifiers::CONTROL));
+    m.insert("sort_cycle".into(),      (KeyCode::Char('o'), KeyModifiers::NONE));
+    m.insert("group_toggle".into(),    (KeyCode::Char('g'), KeyModifiers::NONE));
+    m.insert("deferred_toggle".into(), (KeyCode::Char('h'), KeyModifiers::NONE));
+    m.insert("theme_cycle".into(),     (KeyCode::Char('t'), KeyModifiers::NONE));
+    m.insert("disjoint_select".into(), (KeyCode::Char('v'), KeyModifiers::NONE));
+    m.insert("disjoint_mark".into(),   (KeyCode::Char(' '), KeyModifiers::NONE));
+    m
+}
+
+/// Build the effective key binding map for this session (D-04, D-05, Phase 22).
+///
+/// Starts from `default_keymap()`, applies valid user overrides from `config.keymap`,
+/// and collects a warning string for every invalid entry (unknown action name or
+/// unparseable chord string). Conflict detection is added in Plan 22-02.
+///
+/// Returns `(effective_bindings, warnings)`.
+pub fn resolve_keymap(config: &TuiConfig) -> (HashMap<String, (KeyCode, KeyModifiers)>, Vec<String>) {
+    let mut effective = default_keymap();
+    let known_actions: std::collections::HashSet<String> =
+        effective.keys().cloned().collect();
+    let mut warnings = Vec::new();
+
+    for (action, chord_str) in &config.keymap {
+        if !known_actions.contains(action.as_str()) {
+            warnings.push(format!(
+                "unknown action '{}' in [keymap] — ignored",
+                action
+            ));
+        } else if let Some(binding) = parse_key_chord(chord_str) {
+            effective.insert(action.clone(), binding);
+        } else {
+            warnings.push(format!(
+                "invalid key chord '{}' for action '{}' in [keymap] — default used",
+                chord_str, action
+            ));
+        }
+    }
+
+    (effective, warnings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,5 +312,109 @@ auto_creation_date = false
         let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
         assert_eq!(config.normalize_append, true, "normalize_append should default to true");
         assert_eq!(config.normalize_edit, true, "normalize_edit should default to true");
+    }
+
+    // ── Phase 22 keymap tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn keymap_field_deserializes_from_toml() {
+        let toml_str = r#"
+[keymap]
+delete = "backspace"
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.keymap.get("delete").map(|s| s.as_str()), Some("backspace"));
+    }
+
+    #[test]
+    fn keymap_defaults_to_empty_when_section_absent() {
+        let toml_str = r#"
+auto_creation_date = false
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert!(config.keymap.is_empty(), "keymap should default to empty map when [keymap] is absent");
+    }
+
+    #[test]
+    fn parse_key_chord_ctrl_d() {
+        let result = parse_key_chord("ctrl+d");
+        assert_eq!(result, Some((KeyCode::Char('d'), KeyModifiers::CONTROL)));
+    }
+
+    #[test]
+    fn parse_key_chord_backspace() {
+        let result = parse_key_chord("backspace");
+        assert_eq!(result, Some((KeyCode::Backspace, KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn parse_key_chord_f5() {
+        let result = parse_key_chord("f5");
+        assert_eq!(result, Some((KeyCode::F(5), KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn parse_key_chord_question_mark() {
+        let result = parse_key_chord("?");
+        assert_eq!(result, Some((KeyCode::Char('?'), KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn parse_key_chord_space_word() {
+        let result = parse_key_chord("SPACE");
+        assert_eq!(result, Some((KeyCode::Char(' '), KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn parse_key_chord_empty_returns_none() {
+        assert_eq!(parse_key_chord(""), None);
+        assert_eq!(parse_key_chord("  "), None);
+    }
+
+    #[test]
+    fn parse_key_chord_unknown_key_returns_none() {
+        assert_eq!(parse_key_chord("ctrl+bogus_key"), None);
+        assert_eq!(parse_key_chord("bogus_key"), None);
+    }
+
+    #[test]
+    fn resolve_keymap_unknown_action_adds_warning() {
+        let mut config = TuiConfig::default();
+        config.keymap.insert("nonexistent_action".into(), "x".into());
+        let (effective, warnings) = resolve_keymap(&config);
+        assert!(
+            warnings.iter().any(|w| w.contains("nonexistent_action")),
+            "expected warning for unknown action"
+        );
+        // Default map returned unchanged — still has 16 entries
+        assert_eq!(effective.len(), default_keymap().len());
+    }
+
+    #[test]
+    fn resolve_keymap_invalid_chord_adds_warning_and_keeps_default() {
+        let mut config = TuiConfig::default();
+        config.keymap.insert("delete".into(), "bogus_chord".into());
+        let (effective, warnings) = resolve_keymap(&config);
+        assert!(
+            warnings.iter().any(|w| w.contains("bogus_chord") && w.contains("delete")),
+            "expected warning for invalid chord"
+        );
+        // Default for "delete" should still be 'd'
+        assert_eq!(
+            effective.get("delete"),
+            Some(&(KeyCode::Char('d'), KeyModifiers::NONE))
+        );
+    }
+
+    #[test]
+    fn resolve_keymap_valid_override_applied() {
+        let mut config = TuiConfig::default();
+        config.keymap.insert("delete".into(), "backspace".into());
+        let (effective, warnings) = resolve_keymap(&config);
+        assert!(warnings.is_empty(), "no warnings expected for valid override");
+        assert_eq!(
+            effective.get("delete"),
+            Some(&(KeyCode::Backspace, KeyModifiers::NONE))
+        );
     }
 }
