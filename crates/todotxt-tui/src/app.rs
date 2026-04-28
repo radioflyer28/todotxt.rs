@@ -115,6 +115,9 @@ pub struct App {
     pub panes: Vec<Pane>,
     /// 0-based index of the currently active pane
     pub active_pane: usize,
+    /// Counter for auto-labeling new panes (e.g., "Pane 1", "Pane 2"). Initialized to 2; first pane is "Pane 1" (D-05).
+    #[allow(dead_code)]
+    pub pane_counter: usize,
 }
 
 impl App {
@@ -162,6 +165,7 @@ impl App {
             help_scroll: 0,
             panes: vec![Pane::new(0, "Tasks".to_string())],
             active_pane: 0,
+            pane_counter: 2,
         };
         app.rebuild_display_indices();
         app.rebuild_active_pane();
