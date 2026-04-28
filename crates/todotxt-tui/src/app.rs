@@ -2751,4 +2751,75 @@ mod tests {
         // Must NOT contain [v] or v-mode prefix
         assert!(!left.contains("[v]"), "D-14 violated: status bar must not show [v] prefix");
     }
+
+    // ── Phase 24, Plan 01: Pane navigation tests ────────────────────────────
+
+    #[test]
+    fn test_app_initializes_with_one_pane() {
+        let app = make_app_with_tasks(&["Task 1"]);
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.active_pane, 0);
+        assert_eq!(app.panes[0].label, "Tasks");
+    }
+
+    #[test]
+    fn test_focus_next_pane_single_pane_noop() {
+        let mut app = make_app_with_tasks(&["Task 1"]);
+        let original = app.active_pane;
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, original, "Should not change with only one pane");
+    }
+
+    #[test]
+    fn test_focus_navigation_multiple_panes() {
+        let mut app = make_app_with_tasks(&["Task 1"]);
+
+        // Add two more panes manually
+        app.panes.push(Pane::new(1, "Work".to_string()));
+        app.panes.push(Pane::new(2, "Personal".to_string()));
+
+        assert_eq!(app.active_pane, 0);
+
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 1);
+
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 2);
+
+        // Wrap around
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 0);
+
+        // Test prev
+        app.focus_prev_pane();
+        assert_eq!(app.active_pane, 2);
+    }
+
+    #[test]
+    fn test_pane_selection_independence() {
+        let mut app = make_app_with_tasks(&["Task 1", "Task 2", "Task 3"]);
+        app.panes.push(Pane::new(1, "Work".to_string()));
+
+        // Manipulate selection in pane 0
+        {
+            let pane0 = &mut app.panes[0];
+            pane0.selected = 1;
+        }
+
+        // Switch to pane 1 and set different selection
+        app.focus_next_pane();
+        {
+            let pane1 = app.active_pane_mut();
+            pane1.display_rows = vec![DisplayRow::Task(0), DisplayRow::Task(1)];
+            pane1.selected = 0;
+        }
+
+        // Verify selections are independent
+        assert_eq!(app.panes[0].selected, 1);
+        assert_eq!(app.panes[1].selected, 0);
+
+        // Switch back and verify
+        app.focus_prev_pane();
+        assert_eq!(app.active_pane().selected, 1);
+    }
 }

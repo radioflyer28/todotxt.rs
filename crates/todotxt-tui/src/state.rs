@@ -113,3 +113,93 @@ pub struct FilterDefiningState {
     /// Currently focused row: 0 = active filter row, 1–9 = preset row N.
     pub selected_row: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pane_new() {
+        let pane = Pane::new(0, "Test".to_string());
+        assert_eq!(pane.id, 0);
+        assert_eq!(pane.label, "Test");
+        assert!(pane.display_rows.is_empty());
+        assert_eq!(pane.selected, 0);
+        assert_eq!(pane.filter_query, "");
+    }
+
+    #[test]
+    fn test_pane_is_empty() {
+        let mut pane = Pane::new(0, "Test".to_string());
+        assert!(pane.is_empty());
+
+        pane.display_rows.push(DisplayRow::Task(0));
+        assert!(!pane.is_empty());
+    }
+
+    #[test]
+    fn test_pane_selected_row() {
+        let mut pane = Pane::new(0, "Test".to_string());
+        pane.display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+            DisplayRow::Task(2),
+        ];
+
+        assert_eq!(pane.selected_row(), Some(&DisplayRow::Task(0)));
+
+        pane.selected = 2;
+        assert_eq!(pane.selected_row(), Some(&DisplayRow::Task(2)));
+
+        pane.selected = 5; // Out of bounds
+        assert_eq!(pane.selected_row(), None);
+    }
+
+    #[test]
+    fn test_pane_select_next() {
+        let mut pane = Pane::new(0, "Test".to_string());
+        pane.display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+            DisplayRow::Task(2),
+        ];
+
+        assert_eq!(pane.selected, 0);
+        pane.select_next();
+        assert_eq!(pane.selected, 1);
+        pane.select_next();
+        assert_eq!(pane.selected, 2);
+        pane.select_next(); // Should not go beyond last
+        assert_eq!(pane.selected, 2);
+    }
+
+    #[test]
+    fn test_pane_select_prev() {
+        let mut pane = Pane::new(0, "Test".to_string());
+        pane.display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+            DisplayRow::Task(2),
+        ];
+
+        pane.selected = 2;
+        pane.select_prev();
+        assert_eq!(pane.selected, 1);
+        pane.select_prev();
+        assert_eq!(pane.selected, 0);
+        pane.select_prev(); // Should not go below 0
+        assert_eq!(pane.selected, 0);
+    }
+
+    #[test]
+    fn test_pane_selection_empty() {
+        let mut pane = Pane::new(0, "Test".to_string());
+        // select_next on empty pane should do nothing
+        pane.select_next();
+        assert_eq!(pane.selected, 0);
+        
+        // select_prev on empty pane should do nothing
+        pane.select_prev();
+        assert_eq!(pane.selected, 0);
+    }
+}
