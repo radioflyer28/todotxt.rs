@@ -1671,7 +1671,8 @@ impl App {
     /// Render a centered help overlay showing all 19 resolved keybindings (D-10, Phase 22).
     fn render_help_overlay(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::layout::{Constraint, Flex, Layout};
-        use ratatui::widgets::{Block, Clear, List, ListItem};
+        use ratatui::text::{Line, Text};
+        use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
         /// Format a (KeyCode, KeyModifiers) pair as a human-readable string.
         fn chord_description(code: crossterm::event::KeyCode, mods: crossterm::event::KeyModifiers) -> String {
@@ -1748,34 +1749,34 @@ impl App {
         ].into_iter().collect();
 
         // Build lines
-        let mut lines: Vec<ListItem> = Vec::new();
+        let mut lines: Vec<Line> = Vec::new();
 
         for (_key, section_title, actions) in sections {
-            lines.push(ListItem::new(format!("  ── {} ──", section_title)));
+            lines.push(Line::from(format!("  \u{2500}\u{2500} {} \u{2500}\u{2500}", section_title)));
             for action in *actions {
                 if let Some((code, mods)) = self.effective_keymap.get(*action) {
                     let chord = chord_description(*code, *mods);
                     let label = action_labels.get(action).copied().unwrap_or(action);
-                    lines.push(ListItem::new(format!("    {:>12}  {}", chord, label)));
+                    lines.push(Line::from(format!("    {:>12}  {}", chord, label)));
                 }
             }
         }
 
         // Fixed nav keys (not in effective_keymap since they're always hardcoded)
-        lines.push(ListItem::new("  ── Navigation ──".to_string()));
-        lines.push(ListItem::new("    j / down  Move down"));
-        lines.push(ListItem::new("    k / up    Move up"));
-        lines.push(ListItem::new("    ctrl+d    Page down"));
-        lines.push(ListItem::new("    ctrl+u    Page up"));
-        lines.push(ListItem::new("    shift+j   Extend selection down"));
-        lines.push(ListItem::new("    shift+k   Extend selection up"));
+        lines.push(Line::from("  \u{2500}\u{2500} Navigation \u{2500}\u{2500}".to_string()));
+        lines.push(Line::from("    j / down  Move down"));
+        lines.push(Line::from("    k / up    Move up"));
+        lines.push(Line::from("    ctrl+d    Page down"));
+        lines.push(Line::from("    ctrl+u    Page up"));
+        lines.push(Line::from("    shift+j   Extend selection down"));
+        lines.push(Line::from("    shift+k   Extend selection up"));
 
         let total_lines = lines.len() as u16;
         let popup_width = (area.width * 4 / 5).max(40).min(area.width);
-        let max_content_height = area.height.saturating_sub(4);
         let popup_height = (total_lines + 2).min(area.height.saturating_sub(2));
-        // Clamp scroll so we never scroll past the last line.
-        let max_scroll = total_lines.saturating_sub(max_content_height);
+        let inner_height = popup_height.saturating_sub(2); // subtract border rows
+        // Clamp scroll so we never scroll past the last visible line.
+        let max_scroll = total_lines.saturating_sub(inner_height);
         let scroll_offset = self.help_scroll.min(max_scroll);
 
         let h_layout = Layout::horizontal([Constraint::Length(popup_width)])
@@ -1789,19 +1790,15 @@ impl App {
         frame.render_widget(Clear, popup_area);
 
         let scroll_indicator = if max_scroll > 0 {
-            format!(" Keybindings — j/k: scroll  Esc/q: close ({}/{}) ", scroll_offset + 1, total_lines)
+            format!(" Keybindings \u{2014} j/k: scroll  Esc/q: close ({}/{}) ", scroll_offset + 1, total_lines)
         } else {
-            " Keybindings — Esc/q: close ".to_string()
+            " Keybindings \u{2014} Esc/q: close ".to_string()
         };
-        let list = List::new(lines)
+        let paragraph = Paragraph::new(Text::from(lines))
             .block(Block::bordered().title(scroll_indicator))
-            .scroll_padding(0);
-        use ratatui::widgets::StatefulWidget;
-        let mut list_state = ratatui::widgets::ListState::default();
-        list_state.select(None);
-        // Use scroll offset to skip lines from the top.
-        *list_state.offset_mut() = scroll_offset as usize;
-        StatefulWidget::render(list, popup_area, frame.buffer_mut(), &mut list_state);
+            .scroll((scroll_offset, 0))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(paragraph, popup_area);
     }
 
     /// Render a centered popup overlay listing all keymap warnings (D-09, Phase 22).
