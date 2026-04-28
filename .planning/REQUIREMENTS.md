@@ -27,6 +27,12 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 - [ ] CFG-02: Each config-defined pane can set default sort, group, and filter behavior.
 - [ ] CFG-03: Invalid pane definitions fail safely with warnings and fallback behavior.
 
+### CLI Path Overrides and File Resolution
+
+- [ ] PATH-01: User can pass a CLI flag to open an alternate todo.txt file instead of the path defined in config.toml.
+- [ ] PATH-02: When an alternate todo.txt path is used and no explicit archive path is provided, archive.txt defaults to the same directory as that todo.txt path.
+- [ ] PATH-03: User can pass dedicated CLI flags for alternate archive.txt and alternate config.toml paths.
+
 ## v2 Requirements
 
 ### Pane Workflow Expansion
@@ -57,11 +63,14 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | CFG-01 | Phase 27 | Pending |
 | CFG-02 | Phase 27 | Pending |
 | CFG-03 | Phase 27 | Pending |
+| PATH-01 | Phase 27 | Pending |
+| PATH-02 | Phase 27 | Pending |
+| PATH-03 | Phase 27 | Pending |
 
 Coverage:
 
-- v1 requirements: 10 total
-- Mapped to phases: 10
+- v1 requirements: 13 total
+- Mapped to phases: 13
 - Unmapped: 0
 
 ---

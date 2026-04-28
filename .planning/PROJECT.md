@@ -21,6 +21,7 @@ Target features:
 - Pane creation/deletion hotkeys
 - Single hotkey to hide/show all panes and restore single-pane mode
 - Pane definitions in config.toml with per-pane defaults
+- CLI file-path overrides: alternate todo.txt, archive.txt, and config.toml locations
 
 ## Next Milestone Goals
 
@@ -74,6 +75,7 @@ Shipped:
 - PANE-01 through PANE-05 (layout, focus, lifecycle, pane-scoped behavior)
 - VIEW-01 and VIEW-02 (single-pane fallback and quick global toggle)
 - CFG-01 through CFG-03 (config-defined panes and fallback safety)
+- PATH-01 through PATH-03 (CLI path overrides and archive-path resolution semantics)
 
 ### Planned (future milestone)
 

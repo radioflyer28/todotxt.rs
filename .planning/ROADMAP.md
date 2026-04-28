@@ -19,6 +19,7 @@ v1.4 Kanban-Style Vertical Panes
 - Pane lifecycle hotkeys for creation and deletion
 - One-key toggle to hide/show panes and restore default single-pane view
 - Config-defined panes in config.toml with per-pane defaults for sort/group/filter
+- CLI overrides for todo/archive/config file locations with deterministic fallback behavior
 
 ## Planned Phases
 
@@ -54,12 +55,13 @@ v1.4 Kanban-Style Vertical Panes
 
 - [ ] **Phase 27: Config-Defined Panes + Validation + Ship Readiness**
 	- Load pane definitions from config.toml with per-pane sort/group/filter defaults
-	- Validate config fallback behavior and ship-readiness docs/tests
-	- **Requirements:** CFG-01, CFG-02, CFG-03
+	- Add CLI file-path override flags and archive path defaulting for alternate todo.txt paths
+	- Validate config/path fallback behavior and ship-readiness docs/tests
+	- **Requirements:** CFG-01, CFG-02, CFG-03, PATH-01, PATH-02, PATH-03
 	- **Plans:** 3 plans
 	- Plans:
-		- [ ] 27-01-PLAN.md — Config schema and startup pane materialization
-		- [ ] 27-02-PLAN.md — Invalid pane config fallback/warning behavior
+		- [ ] 27-01-PLAN.md — Config schema updates for panes and CLI path override inputs
+		- [ ] 27-02-PLAN.md — CLI override resolution rules (todo/archive/config) and fallback behavior
 		- [ ] 27-03-PLAN.md — Verification, validation, and milestone close-out
 
 ## Backlog
