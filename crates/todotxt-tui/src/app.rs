@@ -1770,6 +1770,14 @@ impl App {
         lines.push(Line::from("    ctrl+u    Page up"));
         lines.push(Line::from("    shift+j   Extend selection down"));
         lines.push(Line::from("    shift+k   Extend selection up"));
+            lines.push(Line::from("  shift+ctrl+d  Extend selection half-page down"));
+            lines.push(Line::from("  shift+ctrl+u  Extend selection half-page up"));
+            lines.push(Line::from("  \u{2500}\u{2500} Presets \u{2500}\u{2500}".to_string()));
+            lines.push(Line::from("         1-9  Apply filter preset"));
+            if !self.keymap_warnings.is_empty() {
+                lines.push(Line::from("  \u{2500}\u{2500} Warnings \u{2500}\u{2500}".to_string()));
+                lines.push(Line::from("           !  Show keymap warnings"));
+            }
 
         let total_lines = lines.len() as u16;
         let popup_width = (area.width * 4 / 5).max(40).min(area.width);
