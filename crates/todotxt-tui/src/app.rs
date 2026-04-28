@@ -615,8 +615,8 @@ impl App {
                 self.clamp_selection();
             }
 
-            // '!' opens app error log overlay when any warnings/errors exist.
-            KeyCode::Char('!') if self.error_log_count() > 0 => {
+            // '!' opens app error log overlay (even when empty for discoverability).
+            KeyCode::Char('!') => {
                 self.mode = AppMode::KeymapErrors;
             }
 
@@ -1851,10 +1851,14 @@ impl App {
 
         frame.render_widget(Clear, popup_area);
 
-        let items: Vec<ListItem> = messages
-            .iter()
-            .map(|w| ListItem::new(format!("  ⚠ {}", w)))
-            .collect();
+        let items: Vec<ListItem> = if messages.is_empty() {
+            vec![ListItem::new("  No errors logged.")]
+        } else {
+            messages
+                .iter()
+                .map(|w| ListItem::new(format!("  ⚠ {}", w)))
+                .collect()
+        };
 
         let list = List::new(items).block(
             Block::bordered().title(" Error Log — Esc/q: close "),
