@@ -1,42 +1,41 @@
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Feature/Hotkey Parity with todotxt.net
-current_phase: 23-validation-ship-readiness
-current_plan: 05
-status: ✅ MILESTONE v1.3 ARCHIVED — ready for next milestone definition
-milestone_status: complete
-milestone_version: v1.3
-milestone_complete_date: 2026-04-28
-next_action: /gsd-new-milestone
+milestone: v1.4
+milestone_name: Kanban-Style Vertical Panes
+current_phase: not-started
+current_plan: none
+status: 🚧 MILESTONE v1.4 STARTED — defining requirements and roadmap
+milestone_status: in_progress
+milestone_version: v1.4
+next_action: /gsd-plan-phase 24
 last_updated: "2026-04-28T00:00:00.000Z"
 last_activity: 2026-04-28
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 17
-  completed_plans: 17
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 12
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-24)
+See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone v1.3 — TUI feature and hotkey parity with todotxt.net.
+**Current focus:** Milestone v1.4 — Kanban-style vertical panes in TUI.
 
 ## Current Position
 
-Phase: 23 (COMPLETE)
-Plan: 05 (COMPLETE)
-Status: Milestone v1.3 archived and closed. Ready to define next milestone.
+Phase: Not started (defining requirements)
+Plan: -
+Status: Defining requirements and roadmap for v1.4.
 Last activity: 2026-04-28
 
 ## Next Step
 
-Run /gsd-new-milestone to define the next milestone requirements and roadmap.
+Run /gsd-plan-phase 24 to start executing the first v1.4 phase.
 
 ## Pending Decisions
 

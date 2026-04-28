@@ -11,11 +11,22 @@ Milestone archives:
 - .planning/milestones/v1.2-ROADMAP.md
 - .planning/milestones/v1.3-ROADMAP.md
 
+## Current Milestone: v1.4 Kanban-Style Vertical Panes
+
+Goal: introduce keyboard-first Kanban-style vertical panes in the TUI with per-pane sort/group/filter behavior, pane lifecycle hotkeys, quick hide/show toggle, and config-defined panes.
+
+Target features:
+
+- Per-pane independent sort, group, and filter state
+- Pane creation/deletion hotkeys
+- Single hotkey to hide/show all panes and restore single-pane mode
+- Pane definitions in config.toml with per-pane defaults
+
 ## Next Milestone Goals
 
-- Define new milestone requirements using /gsd-new-milestone
-- Prioritize backlog items: GUI interface and CI/CD release pipeline
-- Decide whether to expand parity scope (BULK-04+ and PAR-04+) in next cycle
+- Deliver stable multi-pane task workflows without regressing single-pane usability
+- Validate config-driven pane startup behavior with safe fallbacks
+- Keep parity and discoverability standards established in v1.3
 
 ---
 
@@ -60,7 +71,9 @@ Shipped:
 
 ### Active
 
-- None (next milestone requirements pending definition)
+- PANE-01 through PANE-05 (layout, focus, lifecycle, pane-scoped behavior)
+- VIEW-01 and VIEW-02 (single-pane fallback and quick global toggle)
+- CFG-01 through CFG-03 (config-defined panes and fallback safety)
 
 ### Planned (future milestone)
 
@@ -99,5 +112,22 @@ This scope is now complete and archived in .planning/milestones/v1.3-ROADMAP.md.
 
 </details>
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+After each phase transition:
+1. Requirements invalidated move to Out of Scope with reason.
+2. Requirements validated move to Validated with phase reference.
+3. New requirements discovered are added to Active.
+4. Key decisions are appended with rationale and outcome.
+5. What This Is is updated if product reality drifts.
+
+After each milestone:
+1. Full review of all sections.
+2. Core Value check.
+3. Out of Scope audit.
+4. Context refresh with current state.
+
 ---
-Last updated: 2026-04-28 after v1.3 milestone archival.
+Last updated: 2026-04-28 after v1.4 milestone kickoff.
