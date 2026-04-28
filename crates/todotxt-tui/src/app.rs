@@ -20,43 +20,9 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
+use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState};
 
-/// State for the @context / +project autocomplete popup (D-08, D-09 in 11-CONTEXT.md).
-#[derive(Debug, Clone)]
-pub struct AutocompleteState {
-    pub trigger: char,    // '@' or '+'
-    pub prefix: String,   // text typed after the trigger (NOT including trigger)
-    pub items: Vec<String>, // filtered token list (without trigger char)
-    pub selected: usize,  // current highlight index in popup
-    pub focused: bool,    // true when Down arrow moved focus into popup
-}
 
-impl AutocompleteState {
-    pub fn new(trigger: char, prefix: String, items: Vec<String>) -> Self {
-        AutocompleteState { trigger, prefix, items, selected: 0, focused: false }
-    }
-}
-
-/// State for the filter panel input and preset list (Phase 12, Plan 02).
-pub struct FilteringState {
-    pub editor: TextArea<'static>,
-    pub selected_preset: usize,
-    /// Snapshot of `filter_query` captured when the panel was opened (D-02).
-    /// Restored on Esc so no destructive clear occurs.
-    pub snapshot: String,
-}
-
-/// State for the F-key preset definition panel (D-01, D-06, D-07).
-pub struct FilterDefiningState {
-    /// Row 0: editable active filter with live preview (D-07).
-    pub active_editor: TextArea<'static>,
-    /// Preset names in sorted order (index 0 = preset #1).
-    pub preset_names: Vec<String>,
-    /// One editor per preset slot; index 0 corresponds to preset_names[0].
-    pub preset_editors: Vec<TextArea<'static>>,
-    /// Currently focused row: 0 = active filter row, 1–9 = preset row N.
-    pub selected_row: usize,
-}
 
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,12 +40,6 @@ pub enum AppMode {
     KeymapErrors,
     /// Read-only overlay showing all keybindings (D-10, Phase 22 parity).
     Help,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DisplayRow {
-    Task(usize),
-    GroupHeader(String),
 }
 
 /// Top-level application state.
@@ -150,6 +110,10 @@ pub struct App {
     pub effective_keymap: std::collections::HashMap<String, (crossterm::event::KeyCode, crossterm::event::KeyModifiers)>,
     /// Scroll offset for the help overlay (lines scrolled from the top).
     pub help_scroll: u16,
+    /// Vector of panes, each with independent task view state
+    pub panes: Vec<Pane>,
+    /// 0-based index of the currently active pane
+    pub active_pane: usize,
 }
 
 impl App {
@@ -195,8 +159,11 @@ impl App {
             runtime_warnings: Vec::new(),
             effective_keymap,
             help_scroll: 0,
+            panes: vec![Pane::new(0, "Tasks".to_string())],
+            active_pane: 0,
         };
         app.rebuild_display_indices();
+        app.rebuild_active_pane();
         app
     }
 
@@ -233,6 +200,62 @@ impl App {
         );
         lines.extend(self.runtime_warnings.iter().cloned());
         lines
+    }
+
+    /// Move focus to the next pane (right arrow)
+    pub fn focus_next_pane(&mut self) {
+        if self.panes.len() > 1 {
+            self.active_pane = (self.active_pane + 1) % self.panes.len();
+        }
+    }
+
+    /// Move focus to the previous pane (left arrow)
+    pub fn focus_prev_pane(&mut self) {
+        if self.panes.len() > 1 {
+            self.active_pane = if self.active_pane == 0 {
+                self.panes.len() - 1
+            } else {
+                self.active_pane - 1
+            };
+        }
+    }
+
+    /// Get mutable reference to the active pane
+    #[allow(dead_code)]
+    pub fn active_pane_mut(&mut self) -> &mut Pane {
+        &mut self.panes[self.active_pane]
+    }
+
+    /// Get immutable reference to the active pane
+    #[allow(dead_code)]
+    pub fn active_pane(&self) -> &Pane {
+        &self.panes[self.active_pane]
+    }
+
+    /// Rebuild the active pane's display_rows from task_list
+    pub fn rebuild_active_pane(&mut self) {
+        let active_idx = self.active_pane;
+        let pane = &mut self.panes[active_idx];
+
+        // TODO: In Phase 25, this will apply pane.filter_query
+        // For now, show all tasks (empty filter)
+        let filter = Filter::default();
+        let rows: Vec<DisplayRow> = self
+            .task_list
+            .filter(&filter)
+            .into_iter()
+            .map(|(source_index, _task)| DisplayRow::Task(source_index))
+            .collect();
+
+        // TODO: In Phase 25, apply pane.sort_order
+        // For now, keep default order
+
+        pane.display_rows = rows;
+
+        // Reconcile selection
+        if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
+            pane.selected = pane.display_rows.len() - 1;
+        }
     }
 
     /// Main event loop. Blocks on `rx.recv()` — no polling (D-02).
@@ -331,6 +354,14 @@ impl App {
                 self.selected_tasks.clear();
                 self.selection_anchor = None;
                 self.disjoint_select = false;
+            }
+
+            // ── Pane navigation (left/right arrows, Phase 24) ────────────────
+            KeyCode::Left => {
+                self.focus_prev_pane();
+            }
+            KeyCode::Right => {
+                self.focus_next_pane();
             }
 
             // ── Navigation — non-overridable arms ───────────────────────────

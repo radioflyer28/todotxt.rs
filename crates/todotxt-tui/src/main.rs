@@ -3,6 +3,7 @@
 mod app;
 mod config;
 mod event;
+mod state;
 mod theme;
 mod tui;
 
