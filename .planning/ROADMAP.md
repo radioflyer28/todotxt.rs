@@ -68,9 +68,9 @@
   - Run phase verifications for phases 20/21/22, Nyquist validation, docs close-out, UAT, and final audit
   - **Plans:** 5 plans
   - Plans:
-    - [ ] 23-01-PLAN.md — Phase verification run: gsd-verify-work for phases 20, 21, 22
-    - [ ] 23-02-PLAN.md — Nyquist validation close-out: gsd-validate-phase for phases 19 and 20
-    - [ ] 23-03-PLAN.md — Requirements + docs close-out: REQUIREMENTS.md, ROADMAP.md, CHANGELOG
+    - [x] 23-01-PLAN.md — Phase verification run: gsd-verify-work for phases 20, 21, 22
+    - [x] 23-02-PLAN.md — Nyquist validation close-out: gsd-validate-phase for phases 19 and 20
+    - [x] 23-03-PLAN.md — Requirements + docs close-out: REQUIREMENTS.md, ROADMAP.md, CHANGELOG
     - [ ] 23-04-PLAN.md — Human UAT checkpoint against todotxt.net parity expectations
     - [ ] 23-05-PLAN.md — Final re-audit and milestone close-out
 
@@ -120,12 +120,12 @@ Plans:
 ### Phase 23: Validation + Ship Readiness
 
 Goal: close verification gaps from audit (phases 20/21/22), run Nyquist validation, docs close-out, UAT, and final milestone audit.
-Status: planned
+Status: in-progress
 Plans:
 
-- [ ] 23-01-PLAN.md — Phase verification run: gsd-verify-work for phases 20, 21, 22
-- [ ] 23-02-PLAN.md — Nyquist validation close-out: gsd-validate-phase for phases 19 and 20
-- [ ] 23-03-PLAN.md — Requirements + docs close-out: REQUIREMENTS.md, ROADMAP.md, CHANGELOG
+- [x] 23-01-PLAN.md — Phase verification run: gsd-verify-work for phases 20, 21, 22
+- [x] 23-02-PLAN.md — Nyquist validation close-out: gsd-validate-phase for phases 19 and 20
+- [x] 23-03-PLAN.md — Requirements + docs close-out: REQUIREMENTS.md, ROADMAP.md, CHANGELOG
 - [ ] 23-04-PLAN.md — Human UAT checkpoint against todotxt.net parity expectations
 - [ ] 23-05-PLAN.md — Final re-audit and milestone close-out
 
