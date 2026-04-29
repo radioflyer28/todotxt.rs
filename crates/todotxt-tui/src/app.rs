@@ -1949,11 +1949,6 @@ impl App {
 
         let mut left = format!("{} | {}/{} tasks", file_name, visible, total);
         
-        if !self.should_show_single_pane() && self.panes.len() > 1 {
-            let pane_info = format!("Pane {}/{}", self.active_pane + 1, self.panes.len());
-            left.push_str(&format!(" | {}", pane_info));
-        }
-        
         if due_today > 0 || overdue > 0 {
             left.push_str(&format!(" | {} due today | {} overdue", due_today, overdue));
         }
