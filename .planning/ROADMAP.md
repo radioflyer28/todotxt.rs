@@ -96,10 +96,10 @@ v1.4 Kanban-Style Vertical Panes
 	- **Gap Closure:** Closes all four Nyquist compliance gaps from v1.4-MILESTONE-AUDIT.md
 	- **Plans:** 4 plans
 	- Plans:
-		- [ ] 30-01-PLAN.md — Nyquist validation Phase 24
-		- [ ] 30-02-PLAN.md — Nyquist validation Phase 25
-		- [ ] 30-03-PLAN.md — Nyquist validation Phase 26
-		- [ ] 30-04-PLAN.md — Nyquist validation Phase 27
+		- [ ] 30-01-PLAN.md — Phase 24 VALIDATION.md (PANE-01/02/VIEW-01) — nyquist_compliant: false, 12 tasks, 4 manual-only
+		- [ ] 30-02-PLAN.md — Phase 25 VALIDATION.md (PANE-03/04/VIEW-02) — nyquist_compliant: true, 18 integration tests
+		- [ ] 30-03-PLAN.md — Phase 26 VALIDATION.md (PANE-05) — nyquist_compliant: false, pane lifecycle manual-only
+		- [ ] 30-04-PLAN.md — Phase 27 VALIDATION.md (CFG-01/02/03/PATH-01/02/03) — nyquist_compliant: true, 13 automated tests
 
 ## Backlog
 
