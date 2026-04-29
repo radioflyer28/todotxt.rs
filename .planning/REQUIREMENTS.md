@@ -53,26 +53,28 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 | Requirement | Phase | Status |
 | ----------- | ----- | ------ |
-| PANE-01 | Phase 24 | Pending |
-| PANE-02 | Phase 24 | Pending |
-| PANE-03 | Phase 25 | Pending |
-| PANE-04 | Phase 25 | Pending |
-| PANE-05 | Phase 26 | Pending |
-| VIEW-01 | Phase 24/26 | Pending |
-| VIEW-02 | Phase 26 | Pending |
-| CFG-01 | Phase 27 | Pending |
-| CFG-02 | Phase 27 | Pending |
-| CFG-03 | Phase 27 | Pending |
-| PATH-01 | Phase 27 | Pending |
-| PATH-02 | Phase 27 | Pending |
-| PATH-03 | Phase 27 | Pending |
+| PANE-01 | Phase 24 → gap closure Phase 29 | Pending |
+| PANE-02 | Phase 24 → gap closure Phase 29 | Pending |
+| PANE-03 | Phase 25 → gap closure Phase 28 | Pending |
+| PANE-04 | Phase 25 → gap closure Phase 28 | Pending |
+| PANE-05 | Phase 26 | Complete |
+| VIEW-01 | Phase 24/26 → gap closure Phase 29 | Pending |
+| VIEW-02 | Phase 26 → gap closure Phase 29 (WARN-1 fix) | Pending |
+| CFG-01 | Phase 27 | Complete |
+| CFG-02 | Phase 27 | Complete |
+| CFG-03 | Phase 27 | Complete |
+| PATH-01 | Phase 27 | Complete |
+| PATH-02 | Phase 27 | Complete |
+| PATH-03 | Phase 27 | Complete |
 
 Coverage:
 
 - v1 requirements: 13 total
 - Mapped to phases: 13
 - Unmapped: 0
+- Satisfied (verified): 8
+- Partial (gap closure planned): 5 → Phases 28, 29
 
 ---
 Requirements defined: 2026-04-28
-Last updated: 2026-04-28 after milestone v1.4 initialization
+Last updated: 2026-04-29 after milestone v1.4 gap closure planning (Phases 28–30 added)

@@ -64,6 +64,43 @@ v1.4 Kanban-Style Vertical Panes
 		- [x] 27-02-PLAN.md — CLI override resolution rules (todo/archive/config) and fallback behavior
 		- [x] 27-03-PLAN.md — Verification, validation, and milestone close-out
 
+- [ ] **Phase 28: Per-Pane State Consistency Fixes** — gap closure
+	- Fix FilterDefining dialog (`F` key) to write filter query to the active pane, not global state
+	- Route non-Normal mode draw() dispatch to per-pane render path (eliminates global task list bleed-through)
+	- Rebuild all visible panes on task mutations and FileChanged events (sibling panes no longer stale)
+	- Fix cursor reanchor to use per-pane `pane.selected` instead of global `self.selected`
+	- Add integration test for FilterDefining in multi-pane mode
+	- **Requirements:** PANE-03, PANE-04
+	- **Gap Closure:** Closes FAIL-1 + WARN-2 + WARN-3 + WARN-4 from v1.4-MILESTONE-AUDIT.md
+	- **Plans:** 1 plan
+	- Plans:
+		- [ ] 28-01-PLAN.md — Per-pane state fixes and integration test
+
+- [ ] **Phase 29: Verification Artifacts + Status Bar Fix + Metadata Cleanup** — gap closure
+	- Produce Phase 24 VERIFICATION.md (covers PANE-01, PANE-02, VIEW-01)
+	- Produce Phase 25 VERIFICATION.md (covers PANE-03, PANE-04)
+	- Fix `render_status_bar` panes-hidden guard (WARN-1: status bar misleading when panes hidden)
+	- Update REQUIREMENTS.md: all 13 v1.4 checkboxes and traceability table to reflect verified deliverables
+	- Update ROADMAP.md: Phase 25 plan checkboxes `[ ]` → `[x]` (stale since execution)
+	- **Requirements:** PANE-01, PANE-02, PANE-03, PANE-04, VIEW-01, VIEW-02
+	- **Gap Closure:** Closes partial-status for phases 24/25; closes WARN-1 from v1.4-MILESTONE-AUDIT.md
+	- **Plans:** 2 plans
+	- Plans:
+		- [ ] 29-01-PLAN.md — Phase 24 + 25 verification documents and ROADMAP metadata repair
+		- [ ] 29-02-PLAN.md — Status bar fix and REQUIREMENTS.md traceability update
+
+- [ ] **Phase 30: Nyquist Validation — All v1.4 Phases** — gap closure
+	- Run Nyquist validation for Phase 24, 25, 26, 27
+	- Produce VALIDATION.md for each phase
+	- **Requirements:** (all v1.4)
+	- **Gap Closure:** Closes all four Nyquist compliance gaps from v1.4-MILESTONE-AUDIT.md
+	- **Plans:** 4 plans
+	- Plans:
+		- [ ] 30-01-PLAN.md — Nyquist validation Phase 24
+		- [ ] 30-02-PLAN.md — Nyquist validation Phase 25
+		- [ ] 30-03-PLAN.md — Nyquist validation Phase 26
+		- [ ] 30-04-PLAN.md — Nyquist validation Phase 27
+
 ## Backlog
 
 - GUI interface (native desktop)
