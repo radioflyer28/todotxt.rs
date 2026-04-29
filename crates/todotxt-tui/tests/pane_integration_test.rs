@@ -4,10 +4,13 @@
 #[cfg(test)]
 mod pane_integration_tests {
     use todotxt_tui::app::App;
+    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig};
     use todotxt_tui::state::Pane;
     use todotxt_core::{TaskList, SortOrder};
-    use std::fs::File;
+    use std::fs::{self, File};
     use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     /// Helper: Create a test App with a task list
     fn setup_test_app() -> App {
@@ -28,6 +31,14 @@ mod pane_integration_tests {
             false,
         );
         app
+    }
+
+    fn unique_temp_file(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{}_{}_{}.toml", name, std::process::id(), nanos))
     }
 
     #[test]
@@ -249,5 +260,101 @@ mod pane_integration_tests {
         // Selection should still be 100 (we don't auto-fix in navigate, only in rebuild)
         // This is expected behavior — the selection gets reconciled when display_rows is rebuilt
         assert_eq!(app.panes[0].selected, 100);
+    }
+
+    #[test]
+    fn test_startup_bootstrap_uses_configured_panes() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_todo_bootstrap.txt");
+        File::create(&test_file)
+            .expect("Failed to create test file")
+            .write_all(b"")
+            .expect("Failed to write to test file");
+        let task_list = TaskList::load(&test_file).expect("Failed to load TaskList");
+
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig {
+                label: "Work".to_string(),
+                filter: "project:work".to_string(),
+                sort: PaneSort::Priority,
+                group: true,
+            },
+            PaneConfig {
+                label: "Today".to_string(),
+                filter: "due:today".to_string(),
+                sort: PaneSort::DueDate,
+                group: false,
+            },
+        ];
+
+        let app = App::new(
+            task_list,
+            test_file,
+            config,
+            None,
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        assert_eq!(app.panes.len(), 2);
+        assert_eq!(app.panes[0].label, "Work");
+        assert_eq!(app.panes[0].filter_query, "project:work");
+        assert_eq!(app.panes[0].sort_order, SortOrder::Priority);
+        assert!(app.panes[0].grouping);
+
+        assert_eq!(app.panes[1].label, "Today");
+        assert_eq!(app.panes[1].filter_query, "due:today");
+        assert_eq!(app.panes[1].sort_order, SortOrder::DueDate);
+        assert!(!app.panes[1].grouping);
+    }
+
+    #[test]
+    fn test_invalid_pane_entries_are_skipped_and_valid_ones_load() {
+        let config_path = unique_temp_file("pane_config_invalid_skip");
+        let config_toml = r#"
+[[panes]]
+label = "Valid"
+sort = "priority"
+group = true
+
+[[panes]]
+label = "Invalid"
+sort = "nope"
+group = false
+"#;
+        fs::write(&config_path, config_toml).expect("should write config");
+
+        let config = TuiConfig::load(&config_path).expect("load should tolerate invalid pane entries");
+        assert_eq!(config.panes.len(), 1);
+        assert_eq!(config.panes[0].label, "Valid");
+        assert_eq!(config.panes[0].sort, PaneSort::Priority);
+
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_invalid_only_config_still_keeps_runtime_safe_default_pane() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_todo_invalid_only.txt");
+        File::create(&test_file)
+            .expect("Failed to create test file")
+            .write_all(b"")
+            .expect("Failed to write to test file");
+
+        let mut config = TuiConfig::default();
+        config.panes = vec![];
+        let app = App::new(
+            TaskList::load(&test_file).expect("Failed to load TaskList"),
+            test_file,
+            config,
+            None,
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.active_pane, 0);
+        assert_eq!(app.panes[0].label, "Tasks");
     }
 }

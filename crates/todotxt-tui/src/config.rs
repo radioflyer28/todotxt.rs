@@ -9,6 +9,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use todotxt_core::SortOrder;
 use todotxt_core::resolve_config_path;
 
 /// Serde helper: returns `true` as the default value for normalization toggles.
@@ -43,6 +44,27 @@ pub enum PaneSort {
     Alphabetical,
     #[default]
     FileOrder,
+}
+
+impl PaneSort {
+    pub fn to_sort_order(self) -> SortOrder {
+        match self {
+            PaneSort::Priority => SortOrder::Priority,
+            PaneSort::DueDate => SortOrder::DueDate,
+            PaneSort::Alphabetical => SortOrder::Alphabetical,
+            PaneSort::FileOrder => SortOrder::FileOrder,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_sort_order(sort: SortOrder) -> Self {
+        match sort {
+            SortOrder::Priority => PaneSort::Priority,
+            SortOrder::DueDate => PaneSort::DueDate,
+            SortOrder::Alphabetical => PaneSort::Alphabetical,
+            _ => PaneSort::FileOrder,
+        }
+    }
 }
 
 /// Persisted pane blueprint loaded from [[panes]] in config.toml.
@@ -142,8 +164,48 @@ impl TuiConfig {
         if path.exists() {
             let content = std::fs::read_to_string(path)
                 .map_err(|e| color_eyre::eyre::eyre!("reading config {}: {}", path.display(), e))?;
-            toml::from_str(&content)
-                .map_err(|e| color_eyre::eyre::eyre!("parsing config {}: {}", path.display(), e))
+
+            // Parse through toml::Value so malformed [[panes]] entries can be skipped
+            // without failing startup for the whole config file.
+            let mut root: toml::Value = toml::from_str(&content)
+                .map_err(|e| color_eyre::eyre::eyre!("parsing config {}: {}", path.display(), e))?;
+
+            let panes_value = if let toml::Value::Table(table) = &mut root {
+                table.remove("panes")
+            } else {
+                None
+            };
+
+            let mut config: TuiConfig = root
+                .try_into()
+                .map_err(|e| color_eyre::eyre::eyre!("parsing config {}: {}", path.display(), e))?;
+
+            if let Some(value) = panes_value {
+                match value {
+                    toml::Value::Array(items) => {
+                        config.panes.clear();
+                        for (idx, item) in items.into_iter().enumerate() {
+                            match item.try_into::<PaneConfig>() {
+                                Ok(pane) => config.panes.push(pane),
+                                Err(e) => eprintln!(
+                                    "warning: skipping invalid [[panes]] entry {} in {}: {}",
+                                    idx + 1,
+                                    path.display(),
+                                    e
+                                ),
+                            }
+                        }
+                    }
+                    _ => {
+                        eprintln!(
+                            "warning: expected [[panes]] array-of-tables in {}, got non-array value; ignoring panes",
+                            path.display()
+                        );
+                    }
+                }
+            }
+
+            Ok(config)
         } else {
             Ok(TuiConfig::default())
         }

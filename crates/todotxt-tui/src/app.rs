@@ -125,6 +125,33 @@ pub struct App {
 }
 
 impl App {
+    fn panes_from_config(config: &TuiConfig) -> Vec<Pane> {
+        let mut panes: Vec<Pane> = config
+            .panes
+            .iter()
+            .enumerate()
+            .map(|(idx, pane_cfg)| {
+                let label = if pane_cfg.label.trim().is_empty() {
+                    format!("Pane {}", idx + 1)
+                } else {
+                    pane_cfg.label.clone()
+                };
+
+                let mut pane = Pane::new(idx, label);
+                pane.filter_query = pane_cfg.filter.clone();
+                pane.sort_order = pane_cfg.sort.to_sort_order();
+                pane.grouping = pane_cfg.group;
+                pane
+            })
+            .collect();
+
+        if panes.is_empty() {
+            panes.push(Pane::new(0, "Tasks".to_string()));
+        }
+
+        panes
+    }
+
     pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, palette: Theme, no_color: bool) -> Self {
         // Build sorted presets vec from config for quick filter selection (Plan 02).
         let mut presets: Vec<(String, String)> = config
@@ -135,6 +162,8 @@ impl App {
         presets.sort_by(|(a, _), (b, _)| a.cmp(b));
         // Resolve keymap at startup — applies user overrides, collects warnings (D-04, Phase 22).
         let (effective_keymap, keymap_warnings) = resolve_keymap(&config);
+        let panes = Self::panes_from_config(&config);
+        let pane_counter = panes.len() + 1;
         let mut app = App {
             should_quit: false,
             task_list,
@@ -167,9 +196,9 @@ impl App {
             runtime_warnings: Vec::new(),
             effective_keymap,
             help_scroll: 0,
-            panes: vec![Pane::new(0, "Tasks".to_string())],
+            panes,
             active_pane: 0,
-            pane_counter: 2,
+            pane_counter,
             panes_hidden: false,
         };
         app.rebuild_display_indices();
