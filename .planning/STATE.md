@@ -45,12 +45,13 @@ See: .planning/PROJECT.md (updated 2026-04-28)
 
 Phase: 26 (pane-management-quick-hide-show) — COMPLETE ✓
 Phase: 27 (config-defined-panes-validation-ship-readiness) — COMPLETE ✓
-Status: Phase 27 execution and verification complete
-Last activity: 2026-04-28 -- Phase 27 execution + verification complete
+Phase: 28 (per-pane-state-consistency-fixes) — COMPLETE ✓ (commit e5d25eb)
+Status: Phase 28 execution complete — PANE-03/04 satisfied, all 5 bugs fixed, 106 tests pass
+Last activity: 2025-01-29 -- Phase 28 execution complete
 
 ## Next Step
 
-Run /gsd-complete-milestone to archive v1.4 and prepare the next milestone.
+Run /gsd-plan-phase 29 to plan verification artifact and metadata cleanup.
 
 ## Pending Decisions
 
