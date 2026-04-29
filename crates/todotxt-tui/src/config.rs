@@ -34,6 +34,30 @@ pub struct TuiPreset {
     pub filter: Option<String>,
 }
 
+/// Persisted sort options for config-defined panes.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PaneSort {
+    Priority,
+    DueDate,
+    Alphabetical,
+    #[default]
+    FileOrder,
+}
+
+/// Persisted pane blueprint loaded from [[panes]] in config.toml.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+pub struct PaneConfig {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub filter: String,
+    #[serde(default)]
+    pub sort: PaneSort,
+    #[serde(default)]
+    pub group: bool,
+}
+
 /// Phase 9 config fields. Mirrors the CLI's top-level TOML fields exactly.
 /// A `[tui]` subsection will be added in Phase 13.
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -69,6 +93,9 @@ pub struct TuiConfig {
     /// Configs without a `[keymap]` section deserialize to an empty map.
     #[serde(default)]
     pub keymap: HashMap<String, String>,
+    /// Config-defined pane blueprints loaded at startup and persisted on quit.
+    #[serde(default)]
+    pub panes: Vec<PaneConfig>,
 }
 
 impl TuiConfig {
@@ -473,5 +500,39 @@ auto_creation_date = false
             Some(&(KeyCode::Char('x'), KeyModifiers::NONE)),
             "toggle_done should revert to default 'x'"
         );
+    }
+
+    #[test]
+    fn panes_default_to_empty_when_section_absent() {
+        let toml_str = r#"
+todo_file = "tasks.txt"
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert!(config.panes.is_empty(), "panes should default to empty vec when [[panes]] is absent");
+    }
+
+    #[test]
+    fn pane_entry_defaults_missing_fields() {
+        let toml_str = r#"
+[[panes]]
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.panes.len(), 1);
+        let pane = &config.panes[0];
+        assert_eq!(pane.label, "");
+        assert_eq!(pane.filter, "");
+        assert_eq!(pane.sort, PaneSort::FileOrder);
+        assert!(!pane.group);
+    }
+
+    #[test]
+    fn pane_sort_supports_snake_case_values() {
+        let toml_str = r#"
+[[panes]]
+sort = "due_date"
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.panes.len(), 1);
+        assert_eq!(config.panes[0].sort, PaneSort::DueDate);
     }
 }
