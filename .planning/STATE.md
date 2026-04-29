@@ -18,12 +18,12 @@ milestone: v1.4
 milestone_name: Kanban-Style Vertical Panes
 current_phase: complete
 current_plan: none
-status: Phase 27 complete
+status: Phase 29 complete
 milestone_status: in_progress
 milestone_version: v1.4
-next_action: /gsd-complete-milestone
-last_updated: "2026-04-28T23:59:59.000Z"
-last_activity: 2026-04-28
+next_action: /gsd-plan-phase 30
+last_updated: "2026-04-29T00:00:00.000Z"
+last_activity: 2026-04-29
 progress:
   total_phases: 4
   completed_phases: 4
@@ -39,19 +39,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 27 — config-defined-panes-validation-ship-readiness
+**Current focus:** Phase 29 — verification-artifacts-status-bar-fix-metadata-cleanup
 
 ## Current Position
 
 Phase: 26 (pane-management-quick-hide-show) — COMPLETE ✓
 Phase: 27 (config-defined-panes-validation-ship-readiness) — COMPLETE ✓
 Phase: 28 (per-pane-state-consistency-fixes) — COMPLETE ✓ (commit e5d25eb)
-Status: Phase 28 execution complete — PANE-03/04 satisfied, all 5 bugs fixed, 106 tests pass
-Last activity: 2025-01-29 -- Phase 28 execution complete
+Phase: 29 (verification-artifacts-status-bar-fix-metadata-cleanup) — COMPLETE ✓ (commits 3b216f9, 09f83fb)
+Status: Phase 29 execution complete — all 13 v1.4 requirements verified, Phase 24/25 VERIFICATION.md created
+Last activity: 2026-04-29 — Phase 29 execution complete
 
 ## Next Step
 
-Run /gsd-plan-phase 29 to plan verification artifact and metadata cleanup.
+Run /gsd-plan-phase 30 to plan Nyquist validation for all v1.4 phases.
 
 ## Pending Decisions
 

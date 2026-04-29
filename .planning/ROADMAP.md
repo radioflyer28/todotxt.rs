@@ -76,7 +76,7 @@ v1.4 Kanban-Style Vertical Panes
 	- Plans:
 		- [x] 28-01-PLAN.md — Per-pane state fixes (FilterDefining, status bar, draw dispatch, rebuild_all_panes, cursor reanchor) + integration test
 
-- [ ] **Phase 29: Verification Artifacts + Status Bar Fix + Metadata Cleanup** — gap closure
+- [x] **Phase 29: Verification Artifacts + Status Bar Fix + Metadata Cleanup** — gap closure — completed 2026-04-29
 	- Produce Phase 24 VERIFICATION.md (covers PANE-01, PANE-02, VIEW-01)
 	- Produce Phase 25 VERIFICATION.md (covers PANE-03, PANE-04)
 	- Fix `render_status_bar` panes-hidden guard (WARN-1: status bar misleading when panes hidden)
@@ -86,8 +86,8 @@ v1.4 Kanban-Style Vertical Panes
 	- **Gap Closure:** Closes partial-status for phases 24/25; closes WARN-1 from v1.4-MILESTONE-AUDIT.md
 	- **Plans:** 2 plans
 	- Plans:
-		- [ ] 29-01-PLAN.md — Phase 24 VERIFICATION.md (PANE-01/02/VIEW-01) + Phase 25 VERIFICATION.md (PANE-03/04/VIEW-02)
-		- [ ] 29-02-PLAN.md — ROADMAP.md Phase 25 checkbox fix + REQUIREMENTS.md all-13-complete update
+		- [x] 29-01-PLAN.md — Phase 24 VERIFICATION.md (PANE-01/02/VIEW-01) + Phase 25 VERIFICATION.md (PANE-03/04/VIEW-02)
+		- [x] 29-02-PLAN.md — ROADMAP.md Phase 25 checkbox fix + REQUIREMENTS.md all-13-complete update
 
 - [ ] **Phase 30: Nyquist Validation — All v1.4 Phases** — gap closure
 	- Run Nyquist validation for Phase 24, 25, 26, 27
