@@ -89,17 +89,17 @@ v1.4 Kanban-Style Vertical Panes
 		- [x] 29-01-PLAN.md — Phase 24 VERIFICATION.md (PANE-01/02/VIEW-01) + Phase 25 VERIFICATION.md (PANE-03/04/VIEW-02)
 		- [x] 29-02-PLAN.md — ROADMAP.md Phase 25 checkbox fix + REQUIREMENTS.md all-13-complete update
 
-- [ ] **Phase 30: Nyquist Validation — All v1.4 Phases** — gap closure
+- [x] **Phase 30: Nyquist Validation — All v1.4 Phases** — gap closure
 	- Run Nyquist validation for Phase 24, 25, 26, 27
 	- Produce VALIDATION.md for each phase
 	- **Requirements:** (all v1.4)
 	- **Gap Closure:** Closes all four Nyquist compliance gaps from v1.4-MILESTONE-AUDIT.md
 	- **Plans:** 4 plans
 	- Plans:
-		- [ ] 30-01-PLAN.md — Phase 24 VALIDATION.md (PANE-01/02/VIEW-01) — nyquist_compliant: false, 12 tasks, 4 manual-only
-		- [ ] 30-02-PLAN.md — Phase 25 VALIDATION.md (PANE-03/04/VIEW-02) — nyquist_compliant: true, 18 integration tests
-		- [ ] 30-03-PLAN.md — Phase 26 VALIDATION.md (PANE-05) — nyquist_compliant: false, pane lifecycle manual-only
-		- [ ] 30-04-PLAN.md — Phase 27 VALIDATION.md (CFG-01/02/03/PATH-01/02/03) — nyquist_compliant: true, 13 automated tests
+		- [x] 30-01-PLAN.md — Phase 24 VALIDATION.md (PANE-01/02/VIEW-01) — nyquist_compliant: false, 12 tasks, 4 manual-only
+		- [x] 30-02-PLAN.md — Phase 25 VALIDATION.md (PANE-03/04/VIEW-02) — nyquist_compliant: true, 18 integration tests
+		- [x] 30-03-PLAN.md — Phase 26 VALIDATION.md (PANE-05) — nyquist_compliant: false, pane lifecycle manual-only
+		- [x] 30-04-PLAN.md — Phase 27 VALIDATION.md (CFG-01/02/03/PATH-01/02/03) — nyquist_compliant: true, 13 automated tests
 
 ## Backlog
 
