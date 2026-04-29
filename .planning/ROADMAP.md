@@ -86,8 +86,8 @@ v1.4 Kanban-Style Vertical Panes
 	- **Gap Closure:** Closes partial-status for phases 24/25; closes WARN-1 from v1.4-MILESTONE-AUDIT.md
 	- **Plans:** 2 plans
 	- Plans:
-		- [ ] 29-01-PLAN.md — Phase 24 + 25 verification documents and ROADMAP metadata repair
-		- [ ] 29-02-PLAN.md — Status bar fix and REQUIREMENTS.md traceability update
+		- [ ] 29-01-PLAN.md — Phase 24 VERIFICATION.md (PANE-01/02/VIEW-01) + Phase 25 VERIFICATION.md (PANE-03/04/VIEW-02)
+		- [ ] 29-02-PLAN.md — ROADMAP.md Phase 25 checkbox fix + REQUIREMENTS.md all-13-complete update
 
 - [ ] **Phase 30: Nyquist Validation — All v1.4 Phases** — gap closure
 	- Run Nyquist validation for Phase 24, 25, 26, 27
