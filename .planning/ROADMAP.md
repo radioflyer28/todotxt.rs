@@ -53,16 +53,16 @@ v1.4 Kanban-Style Vertical Panes
 		- [x] 26-02-PLAN.md — Global pane visibility toggle and restore semantics
 		- [x] 26-03-PLAN.md — Help/status updates for pane controls and discoverability
 
-- [ ] **Phase 27: Config-Defined Panes + Validation + Ship Readiness**
+- [x] **Phase 27: Config-Defined Panes + Validation + Ship Readiness** — completed 2026-04-28
 	- Load pane definitions from config.toml with per-pane sort/group/filter defaults
 	- Add CLI file-path override flags and archive path defaulting for alternate todo.txt paths
 	- Validate config/path fallback behavior and ship-readiness docs/tests
 	- **Requirements:** CFG-01, CFG-02, CFG-03, PATH-01, PATH-02, PATH-03
 	- **Plans:** 3 plans
 	- Plans:
-		- [ ] 27-01-PLAN.md — Config schema updates for panes and CLI path override inputs
-		- [ ] 27-02-PLAN.md — CLI override resolution rules (todo/archive/config) and fallback behavior
-		- [ ] 27-03-PLAN.md — Verification, validation, and milestone close-out
+		- [x] 27-01-PLAN.md — Config schema updates for panes and CLI path override inputs
+		- [x] 27-02-PLAN.md — CLI override resolution rules (todo/archive/config) and fallback behavior
+		- [x] 27-03-PLAN.md — Verification, validation, and milestone close-out
 
 ## Backlog
 
