@@ -831,7 +831,7 @@ impl App {
 
             _ if self.key_is_action(key, "filter_define") => {
                 let mut active_editor = TextArea::default();
-                active_editor.insert_str(&self.filter_query);
+                active_editor.insert_str(&self.active_pane().filter_query);
 
                 // Build deterministic numbered slots (f1..fN) so slot positions never shift.
                 const MIN_PRESET_SLOTS: usize = 5;
@@ -1630,6 +1630,17 @@ impl App {
         } else {
             self.canonical_selected()
         };
+
+        // GAP-1 fix (Phase 31): sync global fields from active pane when in single-pane or hidden mode
+        // In multi-pane mode, rebuild_visible_rows() uses per-pane fields directly.
+        // In single-pane or panes_hidden mode, rebuild_display_indices() (global path) is used,
+        // so we must sync the global state to match the active pane before calling rebuild_display_indices().
+        if self.should_show_single_pane() || self.panes_hidden {
+            let pane = &self.panes[self.active_pane];
+            self.filter_query = pane.filter_query.clone();
+            self.sort_order = pane.sort_order;
+            self.grouping = pane.grouping;
+        }
 
         self.rebuild_display_indices();
 
