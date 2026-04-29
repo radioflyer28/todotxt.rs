@@ -33,15 +33,15 @@ v1.4 Kanban-Style Vertical Panes
 		- [x] 24-02-PLAN.md — Vertical pane layout rendering in TUI task view
 		- [x] 24-03-PLAN.md — Single-pane fallback path and layout safety guards
 
-- [ ] **Phase 25: Per-Pane Query Behavior (Sort/Group/Filter)**
+- [x] **Phase 25: Per-Pane Query Behavior (Sort/Group/Filter)** — completed 2026-04-28
 	- Track sort/group/filter independently for each pane
 	- Route existing query hotkeys to the active pane context
 	- **Requirements:** PANE-03, PANE-04
 	- **Plans:** 3 plans
 	- Plans:
-		- [ ] 25-01-PLAN.md — Pane-scoped filter query and preset application
-		- [ ] 25-02-PLAN.md — Pane-scoped sort/group state and rendering status
-		- [ ] 25-03-PLAN.md — Navigation and action safety across pane boundaries
+		- [x] 25-01-PLAN.md — Pane-scoped filter query and preset application
+		- [x] 25-02-PLAN.md — Pane-scoped sort/group state and rendering status
+		- [x] 25-03-PLAN.md — Navigation and action safety across pane boundaries
 
 - [x] **Phase 26: Pane Management + Quick Hide/Show** — completed 2026-04-28
 	- Add hotkeys for pane creation and deletion
@@ -64,7 +64,7 @@ v1.4 Kanban-Style Vertical Panes
 		- [x] 27-02-PLAN.md — CLI override resolution rules (todo/archive/config) and fallback behavior
 		- [x] 27-03-PLAN.md — Verification, validation, and milestone close-out
 
-- [ ] **Phase 28: Per-Pane State Consistency Fixes** — gap closure
+- [x] **Phase 28: Per-Pane State Consistency Fixes** — gap closure — completed 2026-04-29
 	- Fix FilterDefining dialog (`F` key) to write filter query to the active pane, not global state
 	- Route non-Normal mode draw() dispatch to per-pane render path (eliminates global task list bleed-through)
 	- Rebuild all visible panes on task mutations and FileChanged events (sibling panes no longer stale)
