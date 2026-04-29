@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.0] - 2026-04-28
+
+### Added
+- **Config-defined panes (`[[panes]]`)** — TUI startup can now load pane blueprints from `config.toml`, including per-pane `label`, `filter`, `sort`, and `group` defaults.
+- **Safe pane fallback behavior** — Invalid pane entries (for example invalid `sort` values) are skipped with warnings while valid pane entries continue loading.
+- **TUI startup path overrides** — `todotxt-tui` now supports `--todo`, `--archive`, and `--config` path flags.
+- **Archive sibling fallback** — When `--todo` is provided without `--archive`, archive defaults to `done.txt` in the same directory as the selected todo file.
+
+### Changed
+- **Release alignment for v1.4** — Workspace crates are versioned to `1.4.0` for milestone ship readiness.
+
 ## [1.3.0] - 2026-04-28
 
 ### Added
