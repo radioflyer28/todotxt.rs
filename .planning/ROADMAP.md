@@ -43,15 +43,15 @@ v1.4 Kanban-Style Vertical Panes
 		- [ ] 25-02-PLAN.md — Pane-scoped sort/group state and rendering status
 		- [ ] 25-03-PLAN.md — Navigation and action safety across pane boundaries
 
-- [ ] **Phase 26: Pane Management + Quick Hide/Show**
+- [x] **Phase 26: Pane Management + Quick Hide/Show** — completed 2026-04-28
 	- Add hotkeys for pane creation and deletion
 	- Add one-key global pane hide/show that restores default single-pane view
 	- **Requirements:** PANE-05, VIEW-02
 	- **Plans:** 3 plans
 	- Plans:
-		- [ ] 26-01-PLAN.md — Create/delete pane hotkeys and guardrails
-		- [ ] 26-02-PLAN.md — Global pane visibility toggle and restore semantics
-		- [ ] 26-03-PLAN.md — Help/status updates for pane controls and discoverability
+		- [x] 26-01-PLAN.md — Create/delete pane hotkeys and guardrails
+		- [x] 26-02-PLAN.md — Global pane visibility toggle and restore semantics
+		- [x] 26-03-PLAN.md — Help/status updates for pane controls and discoverability
 
 - [ ] **Phase 27: Config-Defined Panes + Validation + Ship Readiness**
 	- Load pane definitions from config.toml with per-pane sort/group/filter defaults

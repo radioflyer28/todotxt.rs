@@ -39,18 +39,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 26 — pane-management-quick-hide-show
+**Current focus:** Phase 27 — config-defined-panes-validation-ship-readiness
 
 ## Current Position
 
-Phase: 26 (pane-management-quick-hide-show) — EXECUTING
-Plan: 2 of 3
-Status: Ready to execute
-Last activity: 2026-04-28
+Phase: 26 (pane-management-quick-hide-show) — COMPLETE ✓
+Phase: 27 (config-defined-panes-validation-ship-readiness) — NEXT
+Status: Phase 26 verification passed, proceeding to Phase 27
+Last activity: 2026-04-28 -- Phase 26 execution complete
 
 ## Next Step
 
-Run /gsd-plan-phase 24 to start executing the first v1.4 phase.
+Run /gsd-discuss-phase 27 to gather context and refine approach for Phase 27.
 
 ## Pending Decisions
 
