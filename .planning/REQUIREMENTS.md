@@ -55,8 +55,8 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | ----------- | ----- | ------ |
 | PANE-01 | Phase 24 (implementation) + Phase 29 (verification) | Complete |
 | PANE-02 | Phase 24 (implementation) + Phase 29 (verification) | Complete |
-| PANE-03 | Phase 25 (infrastructure) + Phase 28 (FAIL-1 fix) + Phase 29 (verification) + Phase 31 (GAP-1/GAP-2 fix) | Pending |
-| PANE-04 | Phase 25 (implementation) + Phase 28 (consistency fixes) + Phase 29 (verification) + Phase 31 (GAP-1 fix) | Pending |
+| PANE-03 | Phase 25 (infrastructure) + Phase 28 (FAIL-1 fix) + Phase 29 (verification) + Phase 31 (GAP-1/GAP-2 fix) | Complete |
+| PANE-04 | Phase 25 (implementation) + Phase 28 (consistency fixes) + Phase 29 (verification) + Phase 31 (GAP-1 fix) | Complete |
 | PANE-05 | Phase 26 | Complete |
 | VIEW-01 | Phase 24 (fallback) + Phase 26 (panes_hidden toggle) | Complete |
 | VIEW-02 | Phase 26 (Ctrl+P toggle) + Phase 28 (status bar guard) + Phase 29 (verification) | Complete |
@@ -72,7 +72,7 @@ Coverage:
 - v1 requirements: 13 total
 - Mapped to phases: 13
 - Unmapped: 0
-- Satisfied (verified): 11
+- Satisfied (verified): 13
 - Partial (gap closure planned): 2
 
 ---
