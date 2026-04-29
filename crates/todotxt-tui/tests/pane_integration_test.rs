@@ -357,4 +357,141 @@ group = false
         assert_eq!(app.active_pane, 0);
         assert_eq!(app.panes[0].label, "Tasks");
     }
+
+    #[test]
+    fn test_quit_persists_runtime_panes_into_config() {
+        let todo_path = unique_temp_file("pane_persist_todo");
+        File::create(&todo_path)
+            .expect("Failed to create todo file")
+            .write_all(b"")
+            .expect("Failed to write todo file");
+
+        let config_path = unique_temp_file("pane_persist_config");
+        let initial_config = r#"
+todo_file = "tasks.txt"
+normalize_append = false
+"#;
+        fs::write(&config_path, initial_config).expect("should write initial config");
+
+        let mut config = TuiConfig::load(&config_path).expect("should load config");
+        config.todo_file = Some(todo_path.clone());
+
+        let mut app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            config,
+            Some(config_path.clone()),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        app.panes = vec![
+            Pane::new(0, "Work".to_string()),
+            Pane::new(1, "Today".to_string()),
+        ];
+        app.panes[0].filter_query = "project:work".to_string();
+        app.panes[0].sort_order = SortOrder::Priority;
+        app.panes[0].grouping = true;
+
+        app.panes[1].filter_query = "due:today".to_string();
+        app.panes[1].sort_order = SortOrder::DueDate;
+        app.panes[1].grouping = false;
+
+        app.persist_panes_on_quit().expect("quit persistence should succeed");
+
+        let reloaded = TuiConfig::load(&config_path).expect("reloaded config should parse");
+        assert_eq!(reloaded.panes.len(), 2);
+        assert_eq!(reloaded.panes[0].label, "Work");
+        assert_eq!(reloaded.panes[0].filter, "project:work");
+        assert_eq!(reloaded.panes[0].sort, PaneSort::Priority);
+        assert!(reloaded.panes[0].group);
+
+        assert_eq!(reloaded.panes[1].label, "Today");
+        assert_eq!(reloaded.panes[1].filter, "due:today");
+        assert_eq!(reloaded.panes[1].sort, PaneSort::DueDate);
+        assert!(!reloaded.panes[1].group);
+
+        assert!(!reloaded.normalize_append, "non-pane fields should be preserved on save");
+
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_persisted_pane_data_contains_only_config_fields() {
+        let todo_path = unique_temp_file("pane_fields_todo");
+        File::create(&todo_path)
+            .expect("Failed to create todo file")
+            .write_all(b"")
+            .expect("Failed to write todo file");
+
+        let config_path = unique_temp_file("pane_fields_config");
+        fs::write(&config_path, "").expect("should create config file");
+
+        let mut app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            TuiConfig::default(),
+            Some(config_path.clone()),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        app.panes = vec![Pane::new(42, "Persist Me".to_string())];
+        app.panes[0].selected = 99;
+        app.panes[0].filter_query = "@home".to_string();
+        app.panes[0].sort_order = SortOrder::Alphabetical;
+        app.panes[0].grouping = true;
+
+        app.persist_panes_on_quit().expect("quit persistence should succeed");
+
+        let persisted = fs::read_to_string(&config_path).expect("should read persisted config");
+        assert!(persisted.contains("label = \"Persist Me\""));
+        assert!(persisted.contains("filter = \"@home\""));
+        assert!(persisted.contains("sort = \"alphabetical\""));
+        assert!(persisted.contains("group = true"));
+        assert!(!persisted.contains("id ="));
+        assert!(!persisted.contains("selected ="));
+        assert!(!persisted.contains("display_rows"));
+
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_no_pane_write_occurs_until_quit_persist_path() {
+        let todo_path = unique_temp_file("pane_no_write_todo");
+        File::create(&todo_path)
+            .expect("Failed to create todo file")
+            .write_all(b"")
+            .expect("Failed to write todo file");
+
+        let config_path = unique_temp_file("pane_no_write_config");
+        let initial_config = r#"
+[[panes]]
+label = "Initial"
+filter = "project:one"
+sort = "file_order"
+group = false
+"#;
+        fs::write(&config_path, initial_config).expect("should write initial config");
+
+        let mut app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            TuiConfig::load(&config_path).expect("should load config"),
+            Some(config_path.clone()),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        app.panes[0].filter_query = "project:changed".to_string();
+        let before_quit_write = fs::read_to_string(&config_path).expect("should read config before quit save");
+        assert!(before_quit_write.contains("project:one"));
+        assert!(!before_quit_write.contains("project:changed"));
+
+        app.persist_panes_on_quit().expect("quit persistence should succeed");
+        let after_quit_write = fs::read_to_string(&config_path).expect("should read config after quit save");
+        assert!(after_quit_write.contains("project:changed"));
+
+        let _ = fs::remove_file(&config_path);
+    }
 }

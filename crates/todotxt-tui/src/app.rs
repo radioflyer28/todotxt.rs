@@ -14,8 +14,7 @@ use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append, normalize_line};
 use tui_textarea::TextArea;
 
-use crate::config::TuiConfig;
-use crate::config::resolve_keymap;
+use crate::config::{PaneConfig, PaneSort, TuiConfig, resolve_keymap};
 use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
@@ -446,6 +445,29 @@ impl App {
             if self.should_quit {
                 break;
             }
+        }
+
+        if self.should_quit {
+            self.persist_panes_on_quit()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn persist_panes_on_quit(&mut self) -> color_eyre::Result<()> {
+        self.config.panes = self
+            .panes
+            .iter()
+            .map(|pane| PaneConfig {
+                label: pane.label.clone(),
+                filter: pane.filter_query.clone(),
+                sort: PaneSort::from_sort_order(pane.sort_order),
+                group: pane.grouping,
+            })
+            .collect();
+
+        if let Some(path) = self.config_path.clone() {
+            self.config.save(&path)?;
         }
 
         Ok(())
