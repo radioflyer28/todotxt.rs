@@ -120,6 +120,56 @@ pub struct TuiConfig {
     pub panes: Vec<PaneConfig>,
 }
 
+/// CLI-provided startup path overrides.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CliPathOverrides {
+    pub todo: Option<PathBuf>,
+    pub archive: Option<PathBuf>,
+}
+
+/// Final startup paths after applying config + CLI precedence rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupPaths {
+    pub todo_path: PathBuf,
+    pub archive_path: PathBuf,
+}
+
+/// Resolve startup todo/archive paths with deterministic precedence.
+///
+/// Precedence:
+/// - `--todo` overrides `todo_file`
+/// - `--archive` overrides `done_file`
+/// - When `--todo` is set and `--archive` is omitted, archive defaults to
+///   `{todo_dir}/done.txt`
+pub fn resolve_startup_paths(config: &TuiConfig, overrides: &CliPathOverrides) -> color_eyre::Result<StartupPaths> {
+    let todo_path = overrides.todo.clone().or_else(|| config.todo_file.clone()).ok_or_else(|| {
+        color_eyre::eyre::eyre!(
+            "todo_file is not set in config.toml. Hint: set todo_file or pass --todo"
+        )
+    })?;
+
+    let archive_path = if let Some(explicit_archive) = overrides.archive.clone() {
+        explicit_archive
+    } else if overrides.todo.is_some() {
+        todo_path
+            .parent()
+            .map(|parent| parent.join("done.txt"))
+            .unwrap_or_else(|| PathBuf::from("done.txt"))
+    } else if let Some(config_archive) = config.done_file.clone() {
+        config_archive
+    } else {
+        todo_path
+            .parent()
+            .map(|parent| parent.join("done.txt"))
+            .unwrap_or_else(|| PathBuf::from("done.txt"))
+    };
+
+    Ok(StartupPaths {
+        todo_path,
+        archive_path,
+    })
+}
+
 impl TuiConfig {
     /// Returns the platform-appropriate config file path.
     ///

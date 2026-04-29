@@ -16,6 +16,7 @@ serde        = { workspace = true }
 toml         = { workspace = true }
 thiserror    = { workspace = true }
 directories  = { workspace = true }
+clap         = { workspace = true }
 todotxt-core = { path = "../todotxt-core", features = ["watching"] }
 tui-textarea = { workspace = true }
 
