@@ -426,6 +426,62 @@ impl App {
         self.rebuild_visible_rows();
     }
 
+    /// Rebuild display rows for ALL panes using each pane's own filter/sort/group state.
+    ///
+    /// Call after any task_list mutation (add, edit, delete, reload) to keep sibling panes
+    /// fresh without waiting for focus. (WARN-3 fix, Phase 28)
+    pub fn rebuild_all_panes(&mut self) {
+        let pane_count = self.panes.len();
+        for idx in 0..pane_count {
+            // Extract per-pane settings as owned values so we can borrow self.task_list next.
+            let filter_query = self.panes[idx].filter_query.clone();
+            let sort_order = self.panes[idx].sort_order;
+            let grouping = self.panes[idx].grouping;
+
+            // Build new display rows. Use a sub-block so `filtered` (which holds &Task refs
+            // from self.task_list) is dropped before we mutably borrow self.panes[idx].
+            let new_rows: Vec<DisplayRow> = {
+                let filter = Filter::from_query(filter_query.trim());
+                let mut filtered: Vec<(usize, &Task)> = self
+                    .task_list
+                    .filter(&filter)
+                    .into_iter()
+                    .collect();
+
+                if sort_order != SortOrder::FileOrder {
+                    filtered.sort_by(|(_, a), (_, b)| sort_order.compare(a, b));
+                }
+
+                if grouping && !filtered.is_empty() {
+                    let mut rows: Vec<DisplayRow> = Vec::new();
+                    let mut last_key: Option<String> = None;
+                    for (source_index, task) in &filtered {
+                        let key = group_key_for(task, &sort_order);
+                        if last_key.as_deref() != Some(&key) {
+                            rows.push(DisplayRow::GroupHeader(key.clone()));
+                            last_key = Some(key);
+                        }
+                        rows.push(DisplayRow::Task(*source_index));
+                    }
+                    rows
+                } else {
+                    filtered
+                        .into_iter()
+                        .map(|(source_index, _)| DisplayRow::Task(source_index))
+                        .collect()
+                }
+            }; // `filtered` dropped here — self.task_list borrow released
+
+            let pane = &mut self.panes[idx];
+            pane.display_rows = new_rows;
+            if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
+                pane.selected = pane.display_rows.len() - 1;
+            } else if pane.display_rows.is_empty() {
+                pane.selected = 0;
+            }
+        }
+    }
+
     /// Main event loop. Blocks on `rx.recv()` — no polling (D-02).
     pub fn run(
         &mut self,
@@ -512,6 +568,7 @@ impl App {
                         )
                     })?;
                     self.prune_stale_selections();
+                    self.rebuild_all_panes();
                     self.rebuild_and_reanchor();
                 } else {
                     self.pending_reload = true;
@@ -1056,7 +1113,8 @@ impl App {
             // D-04: Enter = save preset definitions to TOML, return to Normal.
             KC::Enter => {
                 // Apply currently selected row on save: row 0 = active query, rows 1..N = selected preset.
-                self.filter_query = if state.selected_row == 0 {
+                // Capture new_query while `state` borrow is active; assign to active pane after state is dropped (FAIL-1 fix, Phase 28).
+                let new_query = if state.selected_row == 0 {
                     state.active_editor.lines().join("").trim().to_string()
                 } else {
                     let idx = state.selected_row - 1;
@@ -1066,7 +1124,6 @@ impl App {
                         .map(|e| e.lines().join("").trim().to_string())
                         .unwrap_or_default()
                 };
-                    self.toggled_filter_query = None;
 
                 // Update config.presets from editors.
                 for (i, name) in state.preset_names.iter().enumerate() {
@@ -1097,6 +1154,9 @@ impl App {
 
                 self.filter_defining_state = None;
                 self.mode = AppMode::Normal;
+                // Write the new query to the active pane (not global self.filter_query) — FAIL-1 fix (Phase 28).
+                self.active_pane_mut().filter_query = new_query;
+                self.toggled_filter_query = None;
                 self.rebuild_and_reanchor();
             }
 
@@ -1118,12 +1178,13 @@ impl App {
                 let selected = state.selected_row;
                 if selected == 0 {
                     state.active_editor.input(key);
-                    // D-07: live preview — update filter_query from active editor.
-                    self.filter_query = self
+                    // D-07: live preview — update active pane's filter_query from active editor (FAIL-1 fix, Phase 28).
+                    let preview_query = self
                         .filter_defining_state
                         .as_ref()
                         .map(|s| s.active_editor.lines().join("").trim().to_string())
                         .unwrap_or_default();
+                    self.active_pane_mut().filter_query = preview_query;
                     self.rebuild_and_reanchor();
                 } else {
                     let idx = selected - 1;
@@ -1420,6 +1481,7 @@ impl App {
                 // Move selection to the newly added task (D-13).
                 let canonical = self.task_list.len().saturating_sub(1);
                 self.rebuild_display_indices();
+                self.rebuild_all_panes();
                 self.selected = self
                     .display_rows
                     .iter()
@@ -1440,6 +1502,7 @@ impl App {
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
                 self.rebuild_display_indices();
+                self.rebuild_all_panes();
                 self.selected = self
                     .display_rows
                     .iter()
@@ -1557,14 +1620,38 @@ impl App {
     ///
     /// For multi-pane mode, also updates the active pane's display_rows with per-pane query state.
     fn rebuild_and_reanchor(&mut self) {
-        let old_canonical = self.canonical_selected();
+        // In multi-pane mode, capture old canonical from the active pane's cursor (WARN-4 fix, Phase 28).
+        let old_canonical = if !self.should_show_single_pane() && self.panes.len() > 1 {
+            let pane = &self.panes[self.active_pane];
+            match pane.display_rows.get(pane.selected) {
+                Some(DisplayRow::Task(idx)) => Some(*idx),
+                _ => self.canonical_selected(),
+            }
+        } else {
+            self.canonical_selected()
+        };
+
         self.rebuild_display_indices();
-        
+
         // Per-pane rebuild (Phase 25): Update active pane's display_rows with per-pane filter/sort/group
         if !self.should_show_single_pane() && self.panes.len() > 1 {
             self.rebuild_visible_rows();
+            // WARN-4 fix: reanchor the active pane's cursor after rebuild (Phase 28).
+            let new_pane_selected = old_canonical
+                .and_then(|ci| {
+                    self.panes[self.active_pane]
+                        .display_rows
+                        .iter()
+                        .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == ci))
+                })
+                .unwrap_or(0);
+            let pane = &mut self.panes[self.active_pane];
+            pane.selected = new_pane_selected;
+            if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
+                pane.selected = pane.display_rows.len() - 1;
+            }
         }
-        
+
         self.selected = old_canonical
             .and_then(|ci| {
                 self.display_rows
@@ -1705,7 +1792,7 @@ impl App {
         if let Err(e) = self.task_list.update(idx, toggled) {
             eprintln!("toggle_done error: {e}");
         }
-        self.rebuild_visible_rows();
+        self.rebuild_all_panes();
     }
 
     /// Toggle the cursor row's canonical index in `selected_tasks` for the active pane (Phase 24-02).
@@ -1768,7 +1855,7 @@ impl App {
                 // Three-row split: task list | confirm panel | status bar (D-06).
                 let chunks =
                     Layout::vertical([Min(0), Length(1), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_delete_confirm(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
@@ -1776,7 +1863,7 @@ impl App {
                 // Two-row split: task list | inline editor in footer row (D-02).
                 let chunks =
                     Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 // tui-textarea renders directly; ratatui 0.29 Widget impl for &TextArea.
                 frame.render_widget(&self.editor, chunks[1]);
                 // Autocomplete popup floats above the footer row (D-08, D-09).
@@ -1788,7 +1875,7 @@ impl App {
                 use ratatui::widgets::Paragraph;
                 let chunks =
                     Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 // Split footer row: label (9 chars) | editor
                 let footer_cols =
                     Layout::horizontal([Length(9), Min(0)]).split(chunks[1]);
@@ -1806,7 +1893,7 @@ impl App {
                 let panel_height = 1_u16 + (self.presets.len() as u16).min(5);
                 let chunks =
                     Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_filter_panel(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
@@ -1819,21 +1906,21 @@ impl App {
                 let panel_height = (2_u16 + 1 + preset_rows).max(4);
                 let chunks =
                     Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_filter_defining_panel(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
             AppMode::KeymapErrors => {
                 // Task list visible behind; overlay covers the screen (D-09, Phase 22).
                 let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
                 self.render_keymap_errors_overlay(frame, frame.area());
             }
             AppMode::Help => {
                 // Task list visible behind; help overlay covers the screen (D-10, Phase 22).
                 let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
                 self.render_help_overlay(frame, frame.area());
             }
@@ -2021,7 +2108,7 @@ impl App {
         let mut middle = String::new();
 
         // Per-pane query state (Phase 25): Show active pane's filter/sort/group state
-        let (pane_filter, pane_sort, pane_grouping) = if !self.should_show_single_pane() && self.panes.len() > 1 {
+        let (pane_filter, pane_sort, pane_grouping) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
             let pane = &self.panes[self.active_pane];
             (
                 pane.filter_query.clone(),
@@ -3207,6 +3294,76 @@ mod tests {
         // Switch back and verify
         app.focus_prev_pane();
         assert_eq!(app.active_pane().selected, 1);
+    }
+
+    // ── Phase 28: Per-pane FilterDefining FAIL-1 fix ──────────────────────────
+
+    /// Helper: create a two-pane App with the given tasks.
+    fn make_two_pane_app(task_lines: &[&str]) -> App {
+        let mut file = tempfile::NamedTempFile::new().expect("failed to create temp file");
+        for line in task_lines {
+            writeln!(file, "{}", line).unwrap();
+        }
+        let path = file.path().to_path_buf();
+        let task_list = TaskList::load(&path).expect("load failed");
+        let _ = file.keep();
+
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "All".to_string(), filter: String::new(), sort: PaneSort::default(), group: false },
+            PaneConfig { label: "Work".to_string(), filter: String::new(), sort: PaneSort::default(), group: false },
+        ];
+        App::new(task_list, path, config, None, Theme::Default, true)
+    }
+
+    #[test]
+    fn filter_defining_enter_writes_to_active_pane_not_global() {
+        // FAIL-1 regression test (Phase 28):
+        // Pressing Enter in FilterDefining mode must write the query to the active pane's
+        // filter_query, not to global self.filter_query.
+        let mut app = make_two_pane_app(&["task A +work", "task B"]);
+
+        // Confirm two panes exist and active pane is 0.
+        assert_eq!(app.panes.len(), 2);
+        assert_eq!(app.active_pane, 0);
+
+        // Set up FilterDefining state with "+work" in the active editor.
+        let mut active_editor = TextArea::default();
+        active_editor.insert_str("+work");
+        app.filter_defining_state = Some(FilterDefiningState {
+            active_editor,
+            preset_names: vec![],
+            preset_editors: vec![],
+            selected_row: 0,
+        });
+        app.mode = AppMode::FilterDefining;
+
+        // Press Enter.
+        let enter_key = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        app.handle_filter_defining_key(enter_key).unwrap();
+
+        // Active pane (0) must have "+work" as filter_query.
+        assert_eq!(
+            app.panes[0].filter_query, "+work",
+            "FAIL-1: active pane filter_query must be '+work' after Enter"
+        );
+        // Sibling pane (1) must be unchanged.
+        assert_eq!(
+            app.panes[1].filter_query, "",
+            "FAIL-1: sibling pane filter_query must be empty"
+        );
+        // Global self.filter_query must NOT be written to.
+        assert_eq!(
+            app.filter_query, "",
+            "FAIL-1: global filter_query must remain empty"
+        );
+        // Mode must return to Normal.
+        assert_eq!(app.mode, AppMode::Normal);
+        // filter_defining_state must be cleared.
+        assert!(app.filter_defining_state.is_none());
     }
 }
 
