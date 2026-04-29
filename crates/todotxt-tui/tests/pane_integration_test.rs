@@ -208,7 +208,7 @@ mod pane_integration_tests {
         
         assert_eq!(app.panes.len(), 1);
         assert_eq!(app.active_pane, 0);
-        assert_eq!(app.panes[0].label, "Tasks");
+        assert_eq!(app.panes[0].label, "");
     }
 
     #[test]
@@ -355,7 +355,7 @@ group = false
 
         assert_eq!(app.panes.len(), 1);
         assert_eq!(app.active_pane, 0);
-        assert_eq!(app.panes[0].label, "Tasks");
+        assert_eq!(app.panes[0].label, "");
     }
 
     #[test]

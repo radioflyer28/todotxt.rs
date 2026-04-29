@@ -30,6 +30,7 @@ pub enum AppMode {
     Normal,
     Adding,
     Editing { original_idx: usize },
+    PaneLabelEditing { pane_idx: usize },
     DeleteConfirm,
     Filtering,
     /// F-key preset definition panel (D-01 in 16-CONTEXT.md).
@@ -145,7 +146,7 @@ impl App {
             .collect();
 
         if panes.is_empty() {
-            panes.push(Pane::new(0, "Tasks".to_string()));
+            panes.push(Pane::new(0, String::new()));
         }
 
         panes
@@ -200,21 +201,35 @@ impl App {
             pane_counter,
             panes_hidden: false,
         };
+        // Hydrate every pane immediately so non-active panes are populated on first render.
+        app.rebuild_all_panes();
         app.rebuild_display_indices();
-        app.rebuild_active_pane();
         app
     }
 
     /// Returns true when the given key event matches the configured binding for `action` (D-05, Phase 22).
     ///
-    /// Checks `effective_keymap` so user overrides are honoured. For bindings with no modifier
-    /// (e.g. uppercase 'D' for bulk_delete), matches on key code only — this preserves the
-    /// existing behavior where terminals may or may not report the implicit SHIFT modifier
-    /// separately for uppercase printable characters.
+    /// Checks `effective_keymap` so user overrides are honoured.
+    ///
+    /// For bindings with no configured modifier, require no modifiers to avoid accidental
+    /// collisions (e.g. Ctrl+N must not also match plain 'n').
+    ///
+    /// One exception is uppercase printable bindings (e.g. 'D' for bulk_delete): terminals may
+    /// or may not report an implicit SHIFT modifier for uppercase input, so we accept either
+    /// no modifier or SHIFT-only in that case.
     fn key_is_action(&self, key: crossterm::event::KeyEvent, action: &str) -> bool {
         self.effective_keymap.get(action).map_or(false, |(code, mods)| {
             if mods.is_empty() {
-                key.code == *code
+                if key.code != *code {
+                    return false;
+                }
+
+                match code {
+                    KeyCode::Char(c) if c.is_ascii_uppercase() => {
+                        key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT
+                    }
+                    _ => key.modifiers.is_empty(),
+                }
             } else {
                 key.code == *code && key.modifiers.contains(*mods)
             }
@@ -357,7 +372,7 @@ impl App {
     /// Ensure pane state is always index-safe.
     pub fn reconcile_active_pane(&mut self) {
         if self.panes.is_empty() {
-            self.panes.push(Pane::new(0, "Tasks".to_string()));
+            self.panes.push(Pane::new(0, String::new()));
             self.active_pane = 0;
             return;
         }
@@ -419,11 +434,6 @@ impl App {
         } else if pane.display_rows.is_empty() {
             pane.selected = 0;
         }
-    }
-
-    /// Rebuild the active pane's display_rows from task_list
-    pub fn rebuild_active_pane(&mut self) {
-        self.rebuild_visible_rows();
     }
 
     /// Rebuild display rows for ALL panes using each pane's own filter/sort/group state.
@@ -549,6 +559,9 @@ impl App {
                     AppMode::Adding | AppMode::Editing { .. } => {
                         self.handle_editor_key(key)?;
                     }
+                    AppMode::PaneLabelEditing { pane_idx } => {
+                        self.handle_pane_label_edit_key(key, pane_idx)?;
+                    }
                     AppMode::AppendText => self.handle_append_text_key(key)?,
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
                     AppMode::Filtering => self.handle_filtering_key(key)?,
@@ -659,6 +672,18 @@ impl App {
             KeyCode::Char('k') | KeyCode::Up if row_count > 0 => {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 self.pane_move_up();
+            }
+
+            // Enter on selected pane header opens inline pane-label editing.
+            KeyCode::Enter
+                if !self.should_show_single_pane()
+                    && self.panes[self.active_pane].label_selected =>
+            {
+                let pane_idx = self.active_pane;
+                let current_label = self.panes[pane_idx].label.clone();
+                self.editor = TextArea::default();
+                self.editor.insert_str(&current_label);
+                self.mode = AppMode::PaneLabelEditing { pane_idx };
             }
             // Shift+Ctrl+U: half-page range extension upward (D-10).
             // MUST precede plain Ctrl+U arm so SHIFT check wins (T-19-04).
@@ -1268,6 +1293,44 @@ impl App {
         Ok(())
     }
 
+    fn handle_pane_label_edit_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        pane_idx: usize,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.editor = TextArea::default();
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Enter => {
+                let new_label = self
+                    .editor
+                    .lines()
+                    .first()
+                    .cloned()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+
+                if let Some(pane) = self.panes.get_mut(pane_idx) {
+                    pane.label = if new_label.is_empty() {
+                        format!("Pane {}", pane.id + 1)
+                    } else {
+                        new_label
+                    };
+                }
+
+                self.editor = TextArea::default();
+                self.mode = AppMode::Normal;
+            }
+            _ => {
+                self.editor.input(key);
+            }
+        }
+        Ok(())
+    }
+
     // ── Autocomplete helpers ──────────────────────────────────────────────────
 
     /// Collect all @context or +project tokens from the task list (without the trigger char).
@@ -1779,6 +1842,9 @@ impl App {
     /// Get the canonical task index for the currently selected row in the active pane (Phase 24-02).
     fn pane_canonical_selected(&self) -> Option<usize> {
         let pane = self.active_pane();
+        if pane.label_selected {
+            return None;
+        }
         match pane.display_rows.get(pane.selected) {
             Some(DisplayRow::Task(idx)) => Some(*idx),
             _ => pane.display_rows.first().and_then(|r| {
@@ -1823,6 +1889,21 @@ impl App {
     fn pane_move_down(&mut self) {
         self.reconcile_active_pane();
         let pane = self.active_pane_mut();
+
+        if pane.label_selected {
+            pane.label_selected = false;
+            pane.selected = 0;
+            while pane.selected < pane.display_rows.len()
+                && matches!(pane.display_rows[pane.selected], DisplayRow::GroupHeader(_))
+            {
+                pane.selected += 1;
+            }
+            if pane.selected >= pane.display_rows.len() {
+                pane.selected = 0;
+            }
+            return;
+        }
+
         let row_count = pane.display_rows.len();
         if row_count > 0 {
             let mut next = pane.selected + 1;
@@ -1841,7 +1922,11 @@ impl App {
     fn pane_move_up(&mut self) {
         self.reconcile_active_pane();
         let pane = self.active_pane_mut();
+        if pane.label_selected {
+            return;
+        }
         if pane.selected == 0 {
+            pane.label_selected = true;
             return;
         }
         let mut prev = pane.selected.saturating_sub(1);
@@ -1879,6 +1964,16 @@ impl App {
                 frame.render_widget(&self.editor, chunks[1]);
                 // Autocomplete popup floats above the footer row (D-08, D-09).
                 self.render_autocomplete_popup(frame, chunks[1]);
+            }
+            AppMode::PaneLabelEditing { .. } => {
+                // Two-row split: panes | inline pane label editor.
+                use ratatui::widgets::Paragraph;
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                let footer_cols = Layout::horizontal([Length(13), Min(0)]).split(chunks[1]);
+                frame.render_widget(Paragraph::new("Pane label: "), footer_cols[0]);
+                frame.render_widget(&self.editor, footer_cols[1]);
             }
             AppMode::AppendText => {
                 // Two-row split: task list | inline editor with "Append: " label in footer row (D-11).
@@ -2058,6 +2153,7 @@ impl App {
                 pane_area,
                 pane,
                 is_active,
+                is_active && pane.label_selected,
                 &self.styles,
                 &self.task_list,
                 self.show_deferred,
@@ -2073,17 +2169,16 @@ impl App {
 
         let tasks = self.task_list.tasks();
         let total = tasks.len();
-        let visible = self.display_indices.len();
+        let scoped_indices = self.status_scope_task_indices();
+        let visible = scoped_indices.len();
 
-        let due_today = self
-            .display_indices
+        let due_today = scoped_indices
             .iter()
             .filter(|&&ci| {
                 !tasks[ci].completed && tasks[ci].due_status() == DueStatus::Today
             })
             .count();
-        let overdue = self
-            .display_indices
+        let overdue = scoped_indices
             .iter()
             .filter(|&&ci| {
                 !tasks[ci].completed && tasks[ci].due_status() == DueStatus::Overdue
@@ -2136,14 +2231,9 @@ impl App {
         };
 
         let trimmed_filter = pane_filter.trim();
-        if !trimmed_filter.is_empty() {
+        if let Some(filter_display) = Self::format_status_filter(trimmed_filter) {
             middle.push_str(" | ");
-            // Truncate long filter queries for display
-            if trimmed_filter.len() > 30 {
-                middle.push_str(&format!("{}…", &trimmed_filter[..27]));
-            } else {
-                middle.push_str(trimmed_filter);
-            }
+            middle.push_str(&filter_display);
         }
         if pane_sort != SortOrder::FileOrder {
             middle.push_str(" | sort: ");
@@ -2168,13 +2258,22 @@ impl App {
             middle
         } else {
             let available = total_width.saturating_sub(left_len);
-            if available == 0 {
+            if available < 3 {
+                // Too narrow to show anything meaningful
                 String::new()
-            } else if available == 1 {
-                "…".to_string()
             } else {
+                // Truncate middle at pipe boundaries for cleaner appearance
                 let truncated: String = middle.chars().take(available - 1).collect();
-                format!("{}…", truncated)
+                let last_pipe = truncated.rfind(" | ");
+                if let Some(pos) = last_pipe {
+                    if pos > 0 {
+                        format!("{}…", &truncated[..pos])
+                    } else {
+                        format!("{}…", truncated)
+                    }
+                } else {
+                    format!("{}…", truncated)
+                }
             }
         };
 
@@ -2192,6 +2291,38 @@ impl App {
         };
 
         frame.render_widget(Paragraph::new(status_line), area);
+    }
+
+    /// Returns canonical task indices for status-bar counts in the active visual scope.
+    /// In multi-pane mode this is the active pane's task rows (excluding group headers);
+    /// otherwise it uses the single-pane/global display indices.
+    fn status_scope_task_indices(&self) -> Vec<usize> {
+        if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            self.panes[self.active_pane]
+                .display_rows
+                .iter()
+                .filter_map(|row| match row {
+                    DisplayRow::Task(idx) => Some(*idx),
+                    DisplayRow::GroupHeader(_) => None,
+                })
+                .collect()
+        } else {
+            self.display_indices.clone()
+        }
+    }
+
+    fn format_status_filter(trimmed_filter: &str) -> Option<String> {
+        if trimmed_filter.is_empty() {
+            return None;
+        }
+
+        let value = if trimmed_filter.len() > 30 {
+            format!("{}…", &trimmed_filter[..27])
+        } else {
+            trimmed_filter.to_string()
+        };
+
+        Some(format!("filter: {}", value))
     }
 
     /// Render a centered help overlay showing all 19 resolved keybindings (D-10, Phase 22).
@@ -2306,6 +2437,10 @@ impl App {
         lines.push(Line::from("  shift+ctrl+u  Extend selection half-page up"));
         lines.push(Line::from("  \u{2500}\u{2500} Presets \u{2500}\u{2500}".to_string()));
         lines.push(Line::from("         1-9  Apply filter preset"));
+        lines.push(Line::from("  \u{2500}\u{2500} Pane label \u{2500}\u{2500}".to_string()));
+        lines.push(Line::from("      up @ top  Select pane header"));
+        lines.push(Line::from("         enter  Edit pane label"));
+        lines.push(Line::from("     enter/esc  Save / cancel label edit"));
         lines.push(Line::from("  \u{2500}\u{2500} Errors \u{2500}\u{2500}".to_string()));
         lines.push(Line::from("           !  Show error log"));
 
@@ -2697,6 +2832,52 @@ mod tests {
             kind: KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         }).unwrap();
+    }
+
+    fn press_ctrl_key(app: &mut App, code: crossterm::event::KeyCode) {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        app.handle_normal_key(KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+    }
+
+    #[test]
+    fn ctrl_n_triggers_pane_add_not_add_mode() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        assert_eq!(app.mode, AppMode::Normal);
+        assert_eq!(app.panes.len(), 1);
+
+        press_ctrl_key(&mut app, KeyCode::Char('n'));
+
+        assert_eq!(app.mode, AppMode::Normal, "Ctrl+N should not enter Adding mode");
+        assert_eq!(app.panes.len(), 2, "Ctrl+N should add a pane");
+    }
+
+    #[test]
+    fn ctrl_w_triggers_pane_delete_not_noop() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.pane_add();
+        assert_eq!(app.panes.len(), 2);
+
+        press_ctrl_key(&mut app, KeyCode::Char('w'));
+
+        assert_eq!(app.panes.len(), 1, "Ctrl+W should delete active pane");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn ctrl_p_triggers_pane_hide_toggle() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        assert!(!app.panes_hidden);
+
+        press_ctrl_key(&mut app, KeyCode::Char('p'));
+        assert!(app.panes_hidden, "Ctrl+P should hide panes");
+
+        press_ctrl_key(&mut app, KeyCode::Char('p'));
+        assert!(!app.panes_hidden, "Ctrl+P should toggle panes back on");
     }
 
     #[test]
@@ -3236,6 +3417,34 @@ mod tests {
         assert!(!left.contains("[v]"), "D-14 violated: status bar must not show [v] prefix");
     }
 
+    #[test]
+    fn status_scope_uses_active_pane_tasks_in_multi_pane_mode() {
+        let mut app = make_two_pane_app(&["new task one", "old task", "new task two"]);
+
+        app.panes[0].filter_query = "new".to_string();
+        app.panes[1].filter_query = "old".to_string();
+        app.active_pane = 1;
+        app.rebuild_all_panes();
+
+        let scoped = app.status_scope_task_indices();
+        assert_eq!(scoped.len(), 1, "status scope should use active pane filtered task count");
+        assert_eq!(scoped[0], 1, "active pane filter 'old' should target canonical index 1");
+    }
+
+    #[test]
+    fn status_filter_display_has_explicit_label() {
+        let display = App::format_status_filter("new").expect("filter text should be shown");
+        assert_eq!(display, "filter: new");
+    }
+
+    #[test]
+    fn status_filter_display_truncates_long_values() {
+        let long_filter = "abcdefghijklmnopqrstuvwxyz0123456789";
+        let display = App::format_status_filter(long_filter).expect("filter text should be shown");
+        assert!(display.starts_with("filter: "));
+        assert!(display.ends_with('…'));
+    }
+
     // ── Phase 24, Plan 01: Pane navigation tests ────────────────────────────
 
     #[test]
@@ -3243,7 +3452,7 @@ mod tests {
         let app = make_app_with_tasks(&["Task 1"]);
         assert_eq!(app.panes.len(), 1);
         assert_eq!(app.active_pane, 0);
-        assert_eq!(app.panes[0].label, "Tasks");
+        assert_eq!(app.panes[0].label, "");
     }
 
     #[test]
@@ -3305,6 +3514,86 @@ mod tests {
         // Switch back and verify
         app.focus_prev_pane();
         assert_eq!(app.active_pane().selected, 1);
+    }
+
+    #[test]
+    fn startup_populates_non_active_panes_without_focus_change() {
+        let app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+
+        assert_eq!(app.panes.len(), 2, "expected two panes from config");
+        assert!(!app.panes[0].display_rows.is_empty(), "active pane should be populated at startup");
+        assert!(!app.panes[1].display_rows.is_empty(), "non-active pane should be populated at startup");
+    }
+
+    #[test]
+    fn pane_label_can_be_selected_with_up_from_top() {
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].selected = 0;
+        assert!(!app.panes[1].label_selected);
+
+        press_key(&mut app, KeyCode::Up);
+
+        assert!(app.panes[1].label_selected, "Up from top should select pane header");
+    }
+
+    #[test]
+    fn pane_label_edit_save_updates_label() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].label_selected = true;
+        assert_eq!(app.panes[1].label, "Work");
+
+        press_key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, AppMode::PaneLabelEditing { pane_idx: 1 });
+
+        app.editor = TextArea::default();
+        app.editor.insert_str("Errands");
+
+        app.handle_pane_label_edit_key(
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            },
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(app.panes[1].label, "Errands");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn pane_label_edit_escape_cancels_changes() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].label_selected = true;
+        let original = app.panes[1].label.clone();
+
+        press_key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, AppMode::PaneLabelEditing { pane_idx: 1 });
+        app.editor = TextArea::default();
+        app.editor.insert_str("Temp");
+
+        app.handle_pane_label_edit_key(
+            KeyEvent {
+                code: KeyCode::Esc,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            },
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(app.panes[1].label, original);
+        assert_eq!(app.mode, AppMode::Normal);
     }
 
     // ── Phase 28: Per-pane FilterDefining FAIL-1 fix ──────────────────────────

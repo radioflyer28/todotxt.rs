@@ -1,0 +1,252 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+     Running unittests src\lib.rs (C:\Users\akriz\code\todotxt.net\target\debug\deps\todotxt_tui-a9c6a43ecd41fd93.exe)
+
+running 82 tests
+test app::tests::apply_range_selection_replaces_prior_selection ... ok
+test app::tests::apply_range_selection_selects_tasks_from_anchor_to_cursor ... ok
+test app::tests::ctrl_n_triggers_pane_add_not_add_mode ... ok
+test app::tests::filter_defining_enter_writes_to_active_pane_not_global ... ok
+test app::tests::bulk_append_empty_input_cancels_without_mutation ... ok
+test app::tests::bulk_delete_multiple_tasks_shows_count ... ok
+test app::tests::apply_range_selection_works_upward_from_anchor ... ok
+test app::tests::bulk_delete_cancel_clears_selection ... ok
+test app::tests::bulk_append_esc_cancels_without_mutation ... ok
+test app::tests::ensure_anchor_does_not_overwrite_existing_anchor ... ok
+test app::tests::filter_hidden_tasks_remain_selected_d20 ... ok
+test app::tests::ctrl_p_triggers_pane_hide_toggle ... ok
+test app::tests::ctrl_w_triggers_pane_delete_not_noop ... ok
+test app::tests::ensure_anchor_sets_anchor_from_cursor_when_unset ... ok
+test app::tests::plain_j_clears_anchor_but_not_selected_tasks ... ok
+test app::tests::esc_clears_selection_and_exits_disjoint_mode ... ok
+test app::tests::pane_label_can_be_selected_with_up_from_top ... ok
+test app::tests::pane_label_edit_escape_cancels_changes ... ok
+test app::tests::plain_k_clears_anchor_but_not_selected_tasks ... ok
+test app::tests::pane_label_edit_save_updates_label ... ok
+test app::tests::rebuild_and_reanchor_does_not_clear_selected_tasks ... ok
+test app::tests::selection_state_initialized_empty ... ok
+test app::tests::shift_down_extends_selection_downward ... ok
+test app::tests::reload_clears_out_of_range_anchor ... ok
+test app::tests::status_filter_display_has_explicit_label ... ok
+test app::tests::status_filter_display_truncates_long_values ... ok
+test app::tests::shift_j_sets_anchor_on_first_use_then_extends_down ... ok
+test app::tests::reload_retains_valid_anchor ... ok
+test app::tests::rebuild_display_indices_does_not_clear_selected_tasks ... ok
+test app::tests::shift_k_shrinks_selection_back_toward_anchor ... ok
+test app::tests::reload_prunes_out_of_range_selections ... ok
+test app::tests::shift_up_extends_selection_upward ... ok
+test app::tests::single_task_delete_via_selection_shows_preview ... ok
+test app::tests::shift_j_extends_selection_further_down ... ok
+test app::tests::space_toggles_task_in_disjoint_mode ... ok
+test app::tests::space_no_op_on_group_header_in_disjoint_mode ... ok
+test config::tests::deserialize_normalize_flags_default ... ok
+test app::tests::sort_change_does_not_clear_selected_tasks ... ok
+test config::tests::deserialize_normalize_flags_false ... ok
+test app::tests::status_bar_selection_indicator_absent_when_empty ... ok
+test config::tests::deserialize_normalize_flags_true ... ok
+test config::tests::keymap_defaults_to_empty_when_section_absent ... ok
+test app::tests::startup_populates_non_active_panes_without_focus_change ... ok
+test config::tests::keymap_field_deserializes_from_toml ... ok
+test config::tests::parse_key_chord_backspace ... ok
+test config::tests::parse_key_chord_ctrl_d ... ok
+test config::tests::panes_default_to_empty_when_section_absent ... ok
+test app::tests::test_focus_navigation_multiple_panes ... ok
+test config::tests::parse_key_chord_empty_returns_none ... ok
+test config::tests::pane_entry_defaults_missing_fields ... ok
+test config::tests::pane_sort_supports_snake_case_values ... ok
+test config::tests::parse_key_chord_f5 ... ok
+test config::tests::parse_key_chord_question_mark ... ok
+test config::tests::parse_key_chord_space_word ... ok
+test config::tests::parse_key_chord_unknown_key_returns_none ... ok
+test config::tests::resolve_keymap_conflict_detection_reverts_both_actions ... ok
+test app::tests::space_no_op_when_not_in_disjoint_mode ... ok
+test config::tests::resolve_keymap_unknown_action_adds_warning ... ok
+test app::tests::status_bar_selection_indicator_present_when_tasks_selected ... ok
+test config::tests::resolve_keymap_invalid_chord_adds_warning_and_keeps_default ... ok
+test app::tests::shift_range_skips_group_headers_in_navigation ... ok
+test app::tests::toggle_task_selection_no_op_on_group_header ... ok
+test config::tests::resolve_keymap_valid_override_applied ... ok
+test state::tests::test_pane_is_empty ... ok
+test state::tests::test_pane_select_next ... ok
+test state::tests::test_pane_select_prev ... ok
+test state::tests::test_pane_new ... ok
+test state::tests::test_pane_selected_row ... ok
+test app::tests::test_app_initializes_with_one_pane ... ok
+test state::tests::test_pane_selection_empty ... ok
+test theme::tests::parses_default_aliases_and_unknowns ... ok
+test app::tests::status_bar_disjoint_mode_shows_count_not_v_prefix ... ok
+test app::tests::test_pane_selection_independence ... ok
+test app::tests::v_key_toggles_disjoint_select_off ... ok
+test theme::tests::parses_light_theme_case_insensitive ... ok
+test app::tests::toggle_task_selection_removes_if_already_selected ... ok
+test app::tests::test_focus_next_pane_single_pane_noop ... ok
+test app::tests::toggle_task_selection_adds_canonical_index ... ok
+test app::tests::bulk_append_applies_text_to_all_selected ... ok
+test app::tests::v_key_toggles_disjoint_select_on ... ok
+test app::tests::status_scope_uses_active_pane_tasks_in_multi_pane_mode ... ok
+test app::tests::bulk_delete_descending_order ... ok
+
+test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src\main.rs (C:\Users\akriz\code\todotxt.net\target\debug\deps\todotxt_tui-2c288382debffbed.exe)
+
+running 82 tests
+test app::tests::apply_range_selection_replaces_prior_selection ... ok
+test app::tests::bulk_delete_cancel_clears_selection ... ok
+test app::tests::apply_range_selection_selects_tasks_from_anchor_to_cursor ... ok
+test app::tests::ensure_anchor_does_not_overwrite_existing_anchor ... ok
+test app::tests::esc_clears_selection_and_exits_disjoint_mode ... ok
+test app::tests::apply_range_selection_works_upward_from_anchor ... ok
+test app::tests::bulk_delete_multiple_tasks_shows_count ... ok
+test app::tests::plain_j_clears_anchor_but_not_selected_tasks ... ok
+test app::tests::ctrl_p_triggers_pane_hide_toggle ... ok
+test app::tests::ctrl_w_triggers_pane_delete_not_noop ... ok
+test app::tests::ctrl_n_triggers_pane_add_not_add_mode ... ok
+test app::tests::bulk_append_empty_input_cancels_without_mutation ... ok
+test app::tests::ensure_anchor_sets_anchor_from_cursor_when_unset ... ok
+test app::tests::bulk_append_esc_cancels_without_mutation ... ok
+test app::tests::filter_hidden_tasks_remain_selected_d20 ... ok
+test app::tests::filter_defining_enter_writes_to_active_pane_not_global ... ok
+test app::tests::pane_label_edit_escape_cancels_changes ... ok
+test app::tests::pane_label_can_be_selected_with_up_from_top ... ok
+test app::tests::pane_label_edit_save_updates_label ... ok
+test app::tests::plain_k_clears_anchor_but_not_selected_tasks ... ok
+test app::tests::rebuild_and_reanchor_does_not_clear_selected_tasks ... ok
+test app::tests::rebuild_display_indices_does_not_clear_selected_tasks ... ok
+test app::tests::status_filter_display_has_explicit_label ... ok
+test app::tests::status_filter_display_truncates_long_values ... ok
+test app::tests::reload_clears_out_of_range_anchor ... ok
+test app::tests::selection_state_initialized_empty ... ok
+test app::tests::shift_down_extends_selection_downward ... ok
+test app::tests::reload_prunes_out_of_range_selections ... ok
+test app::tests::shift_j_extends_selection_further_down ... ok
+test app::tests::reload_retains_valid_anchor ... ok
+test app::tests::shift_k_shrinks_selection_back_toward_anchor ... ok
+test app::tests::shift_j_sets_anchor_on_first_use_then_extends_down ... ok
+test app::tests::shift_range_skips_group_headers_in_navigation ... ok
+test app::tests::shift_up_extends_selection_upward ... ok
+test app::tests::space_no_op_on_group_header_in_disjoint_mode ... ok
+test app::tests::sort_change_does_not_clear_selected_tasks ... ok
+test app::tests::single_task_delete_via_selection_shows_preview ... ok
+test config::tests::deserialize_normalize_flags_false ... ok
+test config::tests::deserialize_normalize_flags_true ... ok
+test config::tests::deserialize_normalize_flags_default ... ok
+test config::tests::keymap_defaults_to_empty_when_section_absent ... ok
+test config::tests::keymap_field_deserializes_from_toml ... ok
+test config::tests::pane_entry_defaults_missing_fields ... ok
+test config::tests::panes_default_to_empty_when_section_absent ... ok
+test config::tests::parse_key_chord_backspace ... ok
+test config::tests::pane_sort_supports_snake_case_values ... ok
+test config::tests::parse_key_chord_ctrl_d ... ok
+test config::tests::parse_key_chord_empty_returns_none ... ok
+test config::tests::parse_key_chord_f5 ... ok
+test config::tests::parse_key_chord_question_mark ... ok
+test config::tests::parse_key_chord_space_word ... ok
+test config::tests::parse_key_chord_unknown_key_returns_none ... ok
+test config::tests::resolve_keymap_conflict_detection_reverts_both_actions ... ok
+test config::tests::resolve_keymap_unknown_action_adds_warning ... ok
+test config::tests::resolve_keymap_valid_override_applied ... ok
+test config::tests::resolve_keymap_invalid_chord_adds_warning_and_keeps_default ... ok
+test app::tests::space_no_op_when_not_in_disjoint_mode ... ok
+test state::tests::test_pane_is_empty ... ok
+test state::tests::test_pane_select_next ... ok
+test state::tests::test_pane_new ... ok
+test state::tests::test_pane_select_prev ... ok
+test state::tests::test_pane_selected_row ... ok
+test app::tests::space_toggles_task_in_disjoint_mode ... ok
+test state::tests::test_pane_selection_empty ... ok
+test theme::tests::parses_default_aliases_and_unknowns ... ok
+test theme::tests::parses_light_theme_case_insensitive ... ok
+test app::tests::startup_populates_non_active_panes_without_focus_change ... ok
+test app::tests::status_bar_disjoint_mode_shows_count_not_v_prefix ... ok
+test app::tests::status_bar_selection_indicator_absent_when_empty ... ok
+test app::tests::status_bar_selection_indicator_present_when_tasks_selected ... ok
+test app::tests::status_scope_uses_active_pane_tasks_in_multi_pane_mode ... ok
+test app::tests::test_app_initializes_with_one_pane ... ok
+test app::tests::test_focus_navigation_multiple_panes ... ok
+test app::tests::toggle_task_selection_adds_canonical_index ... ok
+test app::tests::test_focus_next_pane_single_pane_noop ... ok
+test app::tests::test_pane_selection_independence ... ok
+test app::tests::v_key_toggles_disjoint_select_on ... ok
+test app::tests::toggle_task_selection_removes_if_already_selected ... ok
+test app::tests::toggle_task_selection_no_op_on_group_header ... ok
+test app::tests::v_key_toggles_disjoint_select_off ... ok
+test app::tests::bulk_append_applies_text_to_all_selected ... ok
+test app::tests::bulk_delete_descending_order ... ok
+
+test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\config_panes_test.rs (C:\Users\akriz\code\todotxt.net\target\debug\deps\config_panes_test-e1f5ca3a6af80102.exe)
+
+running 3 tests
+test config_panes_test_valid_entries_deserialize_and_map_fields ... ok
+test config_panes_test_invalid_sort_is_skipped_while_other_entries_survive ... ok
+test config_panes_test_missing_and_empty_sections_deserialize_safely ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\fallback_test.rs (C:\Users\akriz\code\todotxt.net\target\debug\deps\fallback_test-b8b57c37a2881a5a.exe)
+
+running 8 tests
+test test_display_rows_fallback ... ok
+test test_single_pane_mode_with_all_empty ... ok
+test test_display_rows_multi_pane ... ok
+test test_single_pane_mode_with_one_pane ... ok
+test test_reconcile_empty_panes ... ok
+test test_single_pane_mode_with_empty_panes ... ok
+test test_reconcile_out_of_bounds_active_pane ... ok
+test test_multi_pane_mode_with_populated_panes ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\pane_integration_test.rs (C:\Users\akriz\code\todotxt.net\target\debug\deps\pane_integration_test-a08c7213776d49df.exe)
+
+running 18 tests
+test pane_integration_tests::test_active_pane_mut_reconciles_bounds ... ok
+test pane_integration_tests::test_invalid_only_config_still_keeps_runtime_safe_default_pane ... ok
+test pane_integration_tests::test_empty_pane_allows_sort_modification ... ok
+test pane_integration_tests::test_empty_pane_allows_filter_modification ... ok
+test pane_integration_tests::test_pane_filter_state_preserved_on_navigation ... ok
+test pane_integration_tests::test_empty_pane_allows_grouping_modification ... ok
+test pane_integration_tests::test_pane_grouping_state_preserved_on_navigation ... ok
+test pane_integration_tests::test_startup_bootstrap_uses_configured_panes ... ok
+test pane_integration_tests::test_pane_navigation_wraps_around ... ok
+test pane_integration_tests::test_reconcile_active_pane_creates_default_pane_when_empty ... ok
+test pane_integration_tests::test_pane_selection_clamped_on_navigation ... ok
+test pane_integration_tests::test_single_pane_fallback_when_all_panes_empty ... ok
+test pane_integration_tests::test_invalid_pane_entries_are_skipped_and_valid_ones_load ... ok
+test pane_integration_tests::test_pane_sort_state_preserved_on_navigation ... ok
+test pane_integration_tests::test_reconcile_active_pane_ensures_bounds ... ok
+test pane_integration_tests::test_no_pane_write_occurs_until_quit_persist_path ... ok
+test pane_integration_tests::test_quit_persists_runtime_panes_into_config ... ok
+test pane_integration_tests::test_persisted_pane_data_contains_only_config_fields ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\path_resolution_test.rs (C:\Users\akriz\code\todotxt.net\target\debug\deps\path_resolution_test-ba5258010f6c4d46.exe)
+
+running 5 tests
+test path_resolution_test_cli_archive_overrides_config_archive ... ok
+test path_resolution_test_no_cli_flags_uses_config_values ... ok
+test path_resolution_test_cli_todo_overrides_config_todo ... ok
+test path_resolution_test_cli_todo_and_archive_are_used_exactly ... ok
+test path_resolution_test_cli_todo_without_archive_defaults_archive_to_todo_sibling_done ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\single_pane_test.rs (C:\Users\akriz\code\todotxt.net\target\debug\deps\single_pane_test-54138a889758d3b1.exe)
+
+running 5 tests
+test test_single_pane_mode_sort_state_preserved ... ok
+test test_multi_pane_mode_per_pane_state_independent ... ok
+test test_single_pane_mode_grouping_state_preserved ... ok
+test test_single_pane_mode_filter_state_preserved ... ok
+test test_panes_hidden_mode_state_preserved ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests todotxt_tui
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

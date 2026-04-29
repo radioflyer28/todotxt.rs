@@ -37,6 +37,9 @@ pub struct Pane {
     /// Name/label for the pane (e.g., "Work", "Personal")
     #[allow(dead_code)]
     pub label: String,
+
+    /// True when pane header/title is selected for label editing.
+    pub label_selected: bool,
 }
 
 impl Pane {
@@ -50,6 +53,7 @@ impl Pane {
             sort_order: SortOrder::FileOrder,
             grouping: false,
             label,
+            label_selected: false,
         }
     }
 
@@ -132,6 +136,7 @@ mod tests {
         assert_eq!(pane.selected, 0);
         assert_eq!(pane.filter_query, "");
         assert_eq!(pane.grouping, false);
+        assert!(!pane.label_selected);
     }
 
     #[test]
