@@ -134,6 +134,13 @@ pub struct StartupPaths {
     pub archive_path: PathBuf,
 }
 
+fn default_archive_for_todo(todo_path: &Path) -> PathBuf {
+    todo_path
+        .parent()
+        .map(|parent| parent.join("done.txt"))
+        .unwrap_or_else(|| PathBuf::from("done.txt"))
+}
+
 /// Resolve startup todo/archive paths with deterministic precedence.
 ///
 /// Precedence:
@@ -151,17 +158,11 @@ pub fn resolve_startup_paths(config: &TuiConfig, overrides: &CliPathOverrides) -
     let archive_path = if let Some(explicit_archive) = overrides.archive.clone() {
         explicit_archive
     } else if overrides.todo.is_some() {
-        todo_path
-            .parent()
-            .map(|parent| parent.join("done.txt"))
-            .unwrap_or_else(|| PathBuf::from("done.txt"))
+        default_archive_for_todo(&todo_path)
     } else if let Some(config_archive) = config.done_file.clone() {
         config_archive
     } else {
-        todo_path
-            .parent()
-            .map(|parent| parent.join("done.txt"))
-            .unwrap_or_else(|| PathBuf::from("done.txt"))
+        default_archive_for_todo(&todo_path)
     };
 
     Ok(StartupPaths {
