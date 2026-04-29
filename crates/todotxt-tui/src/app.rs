@@ -2103,6 +2103,9 @@ impl App {
             ("Select", "Select", &[
                 "disjoint_select", "disjoint_mark",
             ]),
+            ("Panes", "Panes", &[
+                "pane_add", "pane_delete", "pane_hide_toggle",
+            ]),
             ("App", "App", &[
                 "help", "quit",
             ]),
@@ -2126,6 +2129,9 @@ impl App {
             ("reload", "Reload file"),
             ("disjoint_select", "Disjoint select"),
             ("disjoint_mark", "Mark selection"),
+            ("pane_add", "Create pane"),
+            ("pane_delete", "Delete pane"),
+            ("pane_hide_toggle", "Toggle panes"),
             ("help", "Show help"),
             ("quit", "Quit"),
         ].into_iter().collect();
