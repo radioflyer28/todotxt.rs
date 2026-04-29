@@ -71,10 +71,10 @@ v1.4 Kanban-Style Vertical Panes
 	- Fix cursor reanchor to use per-pane `pane.selected` instead of global `self.selected`
 	- Add integration test for FilterDefining in multi-pane mode
 	- **Requirements:** PANE-03, PANE-04
-	- **Gap Closure:** Closes FAIL-1 + WARN-2 + WARN-3 + WARN-4 from v1.4-MILESTONE-AUDIT.md
+	- **Gap Closure:** Closes FAIL-1 + WARN-1 + WARN-2 + WARN-3 + WARN-4 from v1.4-MILESTONE-AUDIT.md
 	- **Plans:** 1 plan
 	- Plans:
-		- [ ] 28-01-PLAN.md — Per-pane state fixes and integration test
+		- [ ] 28-01-PLAN.md — Per-pane state fixes (FilterDefining, status bar, draw dispatch, rebuild_all_panes, cursor reanchor) + integration test
 
 - [ ] **Phase 29: Verification Artifacts + Status Bar Fix + Metadata Cleanup** — gap closure
 	- Produce Phase 24 VERIFICATION.md (covers PANE-01, PANE-02, VIEW-01)
