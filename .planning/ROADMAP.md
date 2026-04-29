@@ -101,6 +101,16 @@ v1.4 Kanban-Style Vertical Panes
 		- [x] 30-03-PLAN.md — Phase 26 VALIDATION.md (PANE-05) — nyquist_compliant: false, pane lifecycle manual-only
 		- [x] 30-04-PLAN.md — Phase 27 VALIDATION.md (CFG-01/02/03/PATH-01/02/03) — nyquist_compliant: true, 13 automated tests
 
+- [ ] **Phase 31: Single-Pane Filter/Sort/Group Bridge Fix** — gap closure
+	- Fix PANE-03 + PANE-04 regression: query actions (filter/sort/group) write to per-pane state but render_task_list() reads stale global fields in single-pane and panes_hidden modes
+	- Sync global filter_query/sort_order/grouping from active pane in rebuild_and_reanchor() when in single-pane or panes_hidden mode
+	- Fix FilterDefining panel (F key) pre-fill to read from active_pane().filter_query instead of global self.filter_query
+	- **Requirements:** PANE-03, PANE-04
+	- **Gap Closure:** Closes GAP-1 and GAP-2 from v1.4-MILESTONE-AUDIT.md Rev 2
+	- **Plans:** 1 plan
+	- Plans:
+		- [ ] 31-01-PLAN.md — Bridge fix: sync global fields + filter pre-fill fix + regression test
+
 ## Backlog
 
 - GUI interface (native desktop)
