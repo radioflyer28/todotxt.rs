@@ -142,11 +142,11 @@ impl PaneList {
                         }
                         DisplayRow::Task(ci) => {
                             let t = &tasks[*ci];
-                            let full_content = format!("{}: {}", ci + 1, t.to_raw());
+                            let full_content = t.to_raw();
                             let content = if usable_width > 0 {
                                 Self::truncate_for_width(&full_content, usable_width)
                             } else {
-                                full_content
+                                full_content.to_string()
                             };
 
                             // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
