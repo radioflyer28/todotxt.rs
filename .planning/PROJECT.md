@@ -12,14 +12,24 @@ Milestone archives:
 - .planning/milestones/v1.3-ROADMAP.md
 - .planning/milestones/v1.4-ROADMAP.md
 
-## Current Milestone
+## Current Milestone: v1.5 Task Properties + Workspace Quick Picker
 
-None — v1.4 archived 2026-04-29. Run `/gsd-new-milestone` to begin the next milestone.
+Goal: reduce friction when editing task metadata and moving work between labeled todo.txt workspaces.
+
+Target features:
+
+- `s` due-date picker and `i` priority picker with overwrite semantics
+- Multi-select-safe property edits for due/priority
+- Config-defined workspace quick picker with labeled todo/done file pairs
+- Clipboard-friendly copy/cut/paste workflows across workspace files
+- Hierarchical metadata token conventions (for example `@email/waiting`) without breaking todo.txt compatibility
+- Preserve flexible view behavior (filter/sort/group) across workspace switching and metadata edits
 
 ## Next Milestone Goals
 
-- Decide which future-scope items move forward (GUI, packaging, CI/CD, or further TUI workflow expansion)
-- Preserve the parity and discoverability standards established through v1.4
+- Ship low-friction property editing and workspace switching for high-frequency task maintenance workflows
+- Strengthen cross-workspace flow using minimal clipboard primitives rather than complex migration tooling
+- Preserve discoverability and predictable view behavior from v1.4 while extending metadata ergonomics
 
 ---
 
@@ -68,6 +78,14 @@ Shipped:
 - VIEW-01 and VIEW-02 (single-pane fallback and quick global toggle)
 - CFG-01 through CFG-03 (config-defined panes and fallback safety)
 - PATH-01 through PATH-03 (CLI path overrides and archive-path resolution semantics)
+
+### Active (v1.5)
+
+- PROP-01 through PROP-04 (task property pickers and bulk overwrite safety)
+- WS-01 through WS-04 (workspace config schema and quick file switching)
+- CLIP-01 through CLIP-04 (basic clipboard transfer across workspace files)
+- META-01 through META-02 (todo.txt-native metadata with hierarchical token conventions)
+- VIEW-03 (view consistency across workspace and metadata flows)
 
 ### Planned (future milestone)
 
@@ -124,4 +142,4 @@ After each milestone:
 4. Context refresh with current state.
 
 ---
-Last updated: 2026-04-28 after v1.4 milestone kickoff.
+Last updated: 2026-04-29 after v1.5 milestone kickoff.

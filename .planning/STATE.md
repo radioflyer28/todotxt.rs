@@ -1,21 +1,21 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Kanban-Style Vertical Panes
-current_phase: 32
+milestone: v1.5
+milestone_name: Task Properties + Workspace Quick Picker
+current_phase: 33
 current_plan: none
-status: archived
-milestone_status: archived
-milestone_version: v1.4
-next_action: /gsd-new-milestone
+status: requirements_and_roadmap_defined
+milestone_status: active
+milestone_version: v1.5
+next_action: /gsd-plan-phase 33
 last_updated: "2026-04-29T23:59:00.000Z"
 last_activity: 2026-04-29
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 11
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,28 +25,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** v1.4 milestone closeout and archival preparation
+**Current focus:** v1.5 kickoff — task property helpers and workspace quick picker
 
 ## Current Position
 
-Phase: 28 (per-pane-state-consistency-fixes) — COMPLETE ✓ (commit e5d25eb)
-Phase: 29 (verification-artifacts-status-bar-fix-metadata-cleanup) — COMPLETE ✓ (commits 3b216f9, 09f83fb)
-Phase: 30 (nyquist-validation-v1.4-phases) — COMPLETE ✓
-Phase: 31 (single-pane-filter-sort-group-bridge-fix) — COMPLETE ✓ (commit 30189ed)
-Phase: 32 (post-audit-pane-ux-and-delete-polish) — COMPLETE ✓ (artifact capture complete; code and regressions verified)
-Status: v1.4 complete — all 13 requirements satisfied, audit passed, post-audit polish documented, package tests green
-Last activity: 2026-04-29 — milestone documentation refreshed for closeout
+Phase: Not started (planning complete)
+Plan: none
+Status: v1.5 initialized — requirements and roadmap defined
+Last activity: 2026-04-29 — milestone v1.5 created from user-approved scope
 
 ## Next Step
 
-Run /gsd-complete-milestone v1.4 to archive ROADMAP.md and REQUIREMENTS.md into .planning/milestones/ and prepare the next milestone.
+Run /gsd-plan-phase 33 to begin implementation for property picker foundations (`s` due picker, `i` priority picker).
 
 ## Deferred Items
 
 Items acknowledged and deferred at milestone close on 2026-04-29:
 
 | Category | Item | Status |
-|----------|------|--------|
+| -------- | ---- | ------ |
 | verification_gap | Phase 19: 19-VERIFICATION.md | human_needed |
 | verification_gap | Phase 20: 20-VERIFICATION.md | human_needed |
 | verification_gap | Phase 21: 21-VERIFICATION.md | human_needed |
