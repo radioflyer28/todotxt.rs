@@ -1361,6 +1361,7 @@ impl App {
     }
 
     /// Recompute autocomplete state from the current editor line.
+    /// Handles both token autocomplete (@/+) and date autocomplete (due:/t:).
     fn update_autocomplete(&mut self) {
         match self.mode {
             AppMode::Adding | AppMode::Editing { .. } => {}
@@ -1368,6 +1369,26 @@ impl App {
             _ => { self.autocomplete = None; return; }
         }
         let line = self.editor.lines().first().cloned().unwrap_or_default();
+        
+        // Check for date patterns first (due: or t:)
+        if let Some((month_year, _pos)) = self.extract_date_pattern(&line) {
+            if let Ok(date_suggestions) = crate::state::generate_date_suggestions(&month_year) {
+                if !date_suggestions.is_empty() {
+                    // Use a special trigger character '#' for date autocomplete
+                    if let Some(ref mut ac) = self.autocomplete {
+                        if ac.trigger == '#' && ac.prefix == month_year {
+                            ac.items = date_suggestions;
+                            ac.selected = ac.selected.min(ac.items.len().saturating_sub(1));
+                            return;
+                        }
+                    }
+                    self.autocomplete = Some(AutocompleteState::new('#', month_year, date_suggestions));
+                    return;
+                }
+            }
+        }
+        
+        // Fall back to token autocomplete (@/+)
         // Find last @ or + in the line.
         let trigger_pos = line.rfind(|c: char| c == '@' || c == '+');
         if let Some(pos) = trigger_pos {
@@ -1401,21 +1422,86 @@ impl App {
         }
     }
 
-    /// Insert the currently selected autocomplete token into the editor.
+    /// Extract date pattern from line if present.
+    /// Detects patterns like "due:2026-07-" or "t:2026-07-" and returns (month_year, position).
+    /// Returns None if no valid date pattern is found.
+    fn extract_date_pattern(&self, line: &str) -> Option<(String, usize)> {
+        // Look for "due:" or "t:" followed by date pattern
+        let patterns = ["due:", "t:"];
+        for pattern in &patterns {
+            if let Some(pos) = line.rfind(pattern) {
+                let after_pattern = &line[pos + pattern.len()..];
+                // Match YYYY-MM or YYYY-MM- (potentially incomplete date)
+                // Pattern: digits-digits or digits-digits-
+                if after_pattern.len() >= 7 {
+                    let candidate = &after_pattern[..7]; // First 7 chars (YYYY-MM)
+                    let parts: Vec<&str> = candidate.split('-').collect();
+                    if parts.len() == 2 {
+                        if parts[0].len() == 4 && parts[1].len() == 2 {
+                            if parts[0].chars().all(|c| c.is_ascii_digit()) &&
+                               parts[1].chars().all(|c| c.is_ascii_digit()) {
+                                // Valid YYYY-MM pattern
+                                return Some((candidate.to_string(), pos));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Insert the currently selected autocomplete token or date into the editor.
     fn accept_completion(&mut self) {
-        let (trigger, token) = match &self.autocomplete {
-            Some(ac) => match ac.items.get(ac.selected) {
-                Some(token) => (ac.trigger, token.clone()),
-                None => { self.autocomplete = None; return; }
-            },
-            None => return,
-        };
         let line = self.editor.lines().first().cloned().unwrap_or_default();
-        if let Some(pos) = line.rfind(trigger) {
-            let new_line = format!("{}{}{}", &line[..=pos], token, "");
-            let mut new_editor = tui_textarea::TextArea::default();
-            new_editor.insert_str(&new_line);
-            self.editor = new_editor;
+        
+        match &self.autocomplete {
+            Some(ac) => {
+                if ac.trigger == '#' {
+                    // Date autocomplete: extract day from selected item (e.g., "14 Tue")
+                    if let Some(item) = ac.items.get(ac.selected) {
+                        if let Some(day_str) = item.split_whitespace().next() {
+                            // Reconstruct full date: month_year + day
+                            let full_date = format!("{}-{}", ac.prefix, day_str);
+                            
+                            // Find and replace the date pattern in the line
+                            if let Some((pattern_str, pos)) = self.extract_date_pattern(&line) {
+                                let pattern = if line[pos..].starts_with("due:") {
+                                    "due:"
+                                } else {
+                                    "t:"
+                                };
+                                let new_line = format!(
+                                    "{}{}{}{}",
+                                    &line[..pos],
+                                    pattern,
+                                    full_date,
+                                    if pos + pattern.len() + pattern_str.len() < line.len() {
+                                        &line[pos + pattern.len() + pattern_str.len()..]
+                                    } else {
+                                        ""
+                                    }
+                                );
+                                let mut new_editor = tui_textarea::TextArea::default();
+                                new_editor.insert_str(&new_line);
+                                self.editor = new_editor;
+                            }
+                        }
+                    }
+                } else {
+                    // Token autocomplete: insert selected token after trigger
+                    if let Some(token) = ac.items.get(ac.selected) {
+                        let trigger = ac.trigger;
+                        if let Some(pos) = line.rfind(trigger) {
+                            let new_line = format!("{}{}{}", &line[..=pos], token, "");
+                            let mut new_editor = tui_textarea::TextArea::default();
+                            new_editor.insert_str(&new_line);
+                            self.editor = new_editor;
+                        }
+                    }
+                }
+            }
+            None => return,
         }
         self.autocomplete = None;
     }
