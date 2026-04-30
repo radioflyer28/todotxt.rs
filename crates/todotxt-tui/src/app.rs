@@ -19,7 +19,7 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
-use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts, get_existing_projects, rank_matches};
+use crate::state::{Pane, DisplayRow, AutocompleteState, AutocompleteMode, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts, get_existing_projects, rank_matches};
 use crate::components::PaneList;
 
 
@@ -1021,7 +1021,7 @@ impl App {
             }
 
             // '@' opens quick context setter from Normal mode (Phase 33, Plan 02)
-            KeyCode::Char('@') if key.modifiers == KeyModifiers::NONE => {
+            _ if self.key_is_action(key, "quick_context") => {
                 if !self.has_quick_setter_targets() {
                     self.push_runtime_warning("quick context setter requires an active task or selection");
                     return Ok(());
@@ -1034,7 +1034,7 @@ impl App {
             }
 
             // '+' opens quick project setter from Normal mode (Phase 33, Plan 02)
-            KeyCode::Char('+') if key.modifiers == KeyModifiers::NONE => {
+            _ if self.key_is_action(key, "quick_project") => {
                 if !self.has_quick_setter_targets() {
                     self.push_runtime_warning("quick project setter requires an active task or selection");
                     return Ok(());
@@ -2740,7 +2740,7 @@ impl App {
             middle.push_str(" [+deferred]");
         }
 
-        let right = "  q quit | n add | u edit | d/Del/Bksp del | D bulk del (confirm) | T bulk app | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
+        let right = "  q quit | n add | u edit | d/Del/Bksp del | D bulk del (confirm) | T bulk app | @ context | + project | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -2863,6 +2863,9 @@ impl App {
             ("Tasks", "Tasks", &[
                 "add", "edit", "delete", "bulk_delete", "bulk_append", "toggle_done",
             ]),
+            ("Quick Edits", "Quick Edits", &[
+                "quick_context", "quick_project",
+            ]),
             ("Filter", "Filter", &[
                 "filter_open", "filter_define", "filter_toggle", "clear_filter",
             ]),
@@ -2898,6 +2901,8 @@ impl App {
             ("reload", "Reload file"),
             ("disjoint_select", "Disjoint select"),
             ("disjoint_mark", "Mark selection"),
+            ("quick_context", "Quick context setter"),
+            ("quick_project", "Quick project setter"),
             ("pane_add", "Create pane"),
             ("pane_delete", "Delete pane"),
             ("pane_hide_toggle", "Toggle panes"),
@@ -3077,11 +3082,31 @@ impl App {
         let popup_height = (ac.items.len() as u16).min(5).min(footer_area.y);
         if popup_height == 0 { return; }
 
+        let popup_title = match ac.mode {
+            AutocompleteMode::QuickSetter(trigger) => {
+                let label = if trigger == '@' { "context" } else { "project" };
+                let target_count = if self.selected_tasks.is_empty() {
+                    1
+                } else {
+                    self.selected_tasks.len()
+                };
+                Some(format!(
+                    " {}{} | input: {} | {} target(s) | ↑↓ nav  Tab/Enter apply  Esc cancel ",
+                    trigger,
+                    label,
+                    ac.prefix,
+                    target_count
+                ))
+            }
+            _ => None,
+        };
+
         let popup_width = ac.items.iter()
             .map(|s| s.len() + 4) // 4 for trigger char + borders
             .max()
             .unwrap_or(20)
-            .min(40) as u16;
+            .max(popup_title.as_ref().map(|s| s.len() + 2).unwrap_or(0))
+            .min(88) as u16;
         let popup_width = popup_width.min(frame.area().width);
 
         let popup_area = Rect {
@@ -3101,8 +3126,14 @@ impl App {
             Style::default().add_modifier(Modifier::DIM)
         };
 
+        let popup_block = if let Some(title) = popup_title {
+            Block::default().borders(Borders::ALL).title(title)
+        } else {
+            Block::default().borders(Borders::ALL)
+        };
+
         let popup_list = List::new(items)
-            .block(Block::default().borders(Borders::ALL))
+            .block(popup_block)
             .highlight_style(highlight_style);
 
         let mut list_state = ListState::default().with_selected(Some(ac.selected));
