@@ -19,7 +19,7 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
-use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts};
+use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts, get_existing_projects};
 use crate::components::PaneList;
 
 
@@ -1031,6 +1031,19 @@ impl App {
                 items.sort();
                 self.autocomplete = Some(AutocompleteState::new_quick_setter('@', String::new(), items));
                 self.mode = AppMode::QuickSetter('@');
+            }
+
+            // '+' opens quick project setter from Normal mode (Phase 33, Plan 02)
+            KeyCode::Char('+') if key.modifiers == KeyModifiers::NONE => {
+                if !self.has_quick_setter_targets() {
+                    self.push_runtime_warning("quick project setter requires an active task or selection");
+                    return Ok(());
+                }
+
+                let mut items: Vec<String> = get_existing_projects(&self.task_list).into_iter().collect();
+                items.sort();
+                self.autocomplete = Some(AutocompleteState::new_quick_setter('+', String::new(), items));
+                self.mode = AppMode::QuickSetter('+');
             }
 
             _ => {}
