@@ -39,7 +39,8 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
     - [x] 33-01-PLAN.md — Date autocomplete and due-date picker
     - [x] 33-02-PLAN.md — Quick context/project setters with autocomplete
 
-- [x] **Phase 34: Bulk Action Safety + Metadata Preservation** (completed 2026-04-30)
+- [x] **Phase 34: Bulk Action Safety + Metadata Preservation**
+ (completed 2026-04-30)
 
   - Add affected-count preview and cancel path for high-impact actions
   - Preserve non-target metadata, avoid duplicate tag tokens, and keep stable selection targeting in bulk operations
@@ -55,6 +56,8 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
   - Support paste during new-task entry (`n`) for duplicate-and-tweak workflows
   - **Requirements:** CLIP-01, CLIP-02, CLIP-03, CLIP-04
   - **Plans:** 2 plans
+    - [ ] 35-01-PLAN.md — Clipboard backend integration + `y` copy action
+    - [ ] 35-02-PLAN.md — Paste workflows (`p` in Normal mode + Ctrl+V in Adding mode)
 
 - [ ] **Phase 36: Recovery Path (Short-Horizon Undo)**
   - Implement lightweight undo for destructive/high-impact actions
