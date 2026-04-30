@@ -1,13 +1,26 @@
 //! State structures for multi-pane TUI model.
 
-use todotxt_core::SortOrder;
+use todotxt_core::{SortOrder, TaskList};
 use chrono::NaiveDate;
 use chrono::Datelike;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayRow {
     Task(usize),
     GroupHeader(String),
+}
+
+/// Mode for autocomplete interactions (Phase 33, Plan 02).
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
+pub enum AutocompleteMode {
+    /// Token autocomplete from editor mode (@/+ in text input)
+    TokenAutocomplete(char),
+    /// Quick setter from Normal mode (@/+ hotkey)
+    QuickSetter(char),
+    /// Date autocomplete (special trigger)
+    DateAutocomplete,
 }
 
 /// Represents a single pane view with independent state.
@@ -89,9 +102,13 @@ impl Pane {
 }
 
 /// State for the @context / +project autocomplete popup (D-08, D-09 in 11-CONTEXT.md).
+/// Extended for quick-setter mode (Phase 33, Plan 02).
 #[derive(Debug, Clone)]
 pub struct AutocompleteState {
-    pub trigger: char,    // '@' or '+'
+    #[allow(dead_code)]
+    pub mode: AutocompleteMode, // Type of autocomplete interaction
+    #[allow(dead_code)]
+    pub trigger: char,    // '@', '+', or '#'
     pub prefix: String,   // text typed after the trigger (NOT including trigger)
     pub items: Vec<String>, // filtered token list (without trigger char)
     pub selected: usize,  // current highlight index in popup
@@ -99,8 +116,27 @@ pub struct AutocompleteState {
 }
 
 impl AutocompleteState {
+    /// Create autocomplete state for token autocomplete from editor
     pub fn new(trigger: char, prefix: String, items: Vec<String>) -> Self {
-        AutocompleteState { trigger, prefix, items, selected: 0, focused: false }
+        let mode = if trigger == '#' {
+            AutocompleteMode::DateAutocomplete
+        } else {
+            AutocompleteMode::TokenAutocomplete(trigger)
+        };
+        AutocompleteState { mode, trigger, prefix, items, selected: 0, focused: false }
+    }
+
+    /// Create autocomplete state for quick setter from Normal mode
+        #[allow(dead_code)]
+    pub fn new_quick_setter(trigger: char, prefix: String, items: Vec<String>) -> Self {
+        AutocompleteState {
+            mode: AutocompleteMode::QuickSetter(trigger),
+            trigger,
+            prefix,
+            items,
+            selected: 0,
+            focused: false,
+        }
     }
 }
 
@@ -218,6 +254,49 @@ pub fn generate_date_suggestions(month_year: &str) -> Result<Vec<String>, String
     }
 
     Ok(suggestions)
+}
+
+/// Rank token matches for quick setters (Phase 33, Plan 02).
+/// Returns matches in order: exact matches, prefix matches, near-matches (substring/fuzzy).
+/// Per D-05: Show potentially redundant near-matches to expose variants.
+#[allow(dead_code)]
+pub fn rank_matches(typed_prefix: &str, candidates: Vec<String>) -> Vec<String> {
+    if typed_prefix.is_empty() {
+        return candidates;
+    }
+
+    let typed_lower = typed_prefix.to_lowercase();
+    let mut exact_matches = Vec::new();
+    let mut prefix_matches = Vec::new();
+    let mut near_matches = Vec::new();
+
+    for candidate in candidates {
+        let candidate_lower = candidate.to_lowercase();
+        if candidate_lower == typed_lower {
+            exact_matches.push(candidate);
+        } else if candidate_lower.starts_with(&typed_lower) {
+            prefix_matches.push(candidate);
+        } else if candidate_lower.contains(&typed_lower) {
+            near_matches.push(candidate);
+        }
+    }
+
+    // Combine: exact first, then prefix, then near-matches
+    exact_matches.extend(prefix_matches);
+    exact_matches.extend(near_matches);
+    exact_matches
+}
+
+/// Extract all @context tokens from task list, deduplicated and sorted.
+#[allow(dead_code)]
+pub fn get_existing_contexts(task_list: &TaskList) -> HashSet<String> {
+    task_list.tasks().iter().flat_map(|t| t.contexts.clone()).collect()
+}
+
+/// Extract all +project tokens from task list, deduplicated and sorted.
+#[allow(dead_code)]
+pub fn get_existing_projects(task_list: &TaskList) -> HashSet<String> {
+    task_list.tasks().iter().flat_map(|t| t.projects.clone()).collect()
 }
 
 /// State for the filter panel input and preset list (Phase 12, Plan 02).
@@ -417,5 +496,73 @@ mod tests {
         picker.selected_day = Some(31);
         picker.select_next();
         assert_eq!(picker.selected_day, Some(31), "Should not go beyond last day");
+    }
+
+    #[test]
+    fn test_rank_matches_exact() {
+        let candidates = vec!["email".to_string(), "work".to_string(), "personal".to_string()];
+        let result = rank_matches("email", candidates);
+        assert_eq!(result[0], "email", "Exact match should be first");
+    }
+
+    #[test]
+    fn test_rank_matches_prefix() {
+        let candidates = vec!["email".to_string(), "work".to_string(), "waiting".to_string()];
+        let result = rank_matches("wa", candidates);
+        assert_eq!(result[0], "waiting", "Prefix match should be first");
+    }
+
+    #[test]
+    fn test_rank_matches_case_insensitive() {
+        let candidates = vec!["Email".to_string(), "WORK".to_string()];
+        let result = rank_matches("email", candidates);
+        assert_eq!(result[0], "Email", "Should match case-insensitively");
+    }
+
+    #[test]
+    fn test_rank_matches_substring() {
+        let candidates = vec!["waiting".to_string(), "email".to_string()];
+        let result = rank_matches("ait", candidates);
+        assert_eq!(result[0], "waiting", "Substring match should appear");
+    }
+
+    #[test]
+    fn test_rank_matches_order_exact_prefix_substring() {
+        let candidates = vec!["work".to_string(), "works".to_string(), "network".to_string()];
+        let result = rank_matches("work", candidates);
+        assert_eq!(result[0], "work", "Exact match first");
+        assert_eq!(result[1], "works", "Prefix match second");
+        assert_eq!(result[2], "network", "Substring match third");
+    }
+
+    #[test]
+    fn test_rank_matches_empty_prefix() {
+        let candidates = vec!["email".to_string(), "work".to_string()];
+        let result = rank_matches("", candidates);
+        assert_eq!(result.len(), 2, "Empty prefix should return all candidates");
+    }
+
+    #[test]
+    fn test_autocomplete_state_new_token() {
+        let ac = AutocompleteState::new('@', "em".to_string(), vec!["email".to_string()]);
+        assert_eq!(ac.mode, AutocompleteMode::TokenAutocomplete('@'));
+        assert_eq!(ac.trigger, '@');
+        assert_eq!(ac.prefix, "em");
+        assert!(!ac.focused);
+    }
+
+    #[test]
+    fn test_autocomplete_state_new_date() {
+        let ac = AutocompleteState::new('#', "2026-07".to_string(), vec!["01 Mon".to_string()]);
+        assert_eq!(ac.mode, AutocompleteMode::DateAutocomplete);
+        assert_eq!(ac.trigger, '#');
+    }
+
+    #[test]
+    fn test_autocomplete_state_new_quick_setter() {
+        let ac = AutocompleteState::new_quick_setter('@', "".to_string(), vec!["email".to_string()]);
+        assert_eq!(ac.mode, AutocompleteMode::QuickSetter('@'));
+        assert_eq!(ac.trigger, '@');
+        assert_eq!(ac.prefix, "");
     }
 }
