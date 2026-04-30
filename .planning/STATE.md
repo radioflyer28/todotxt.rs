@@ -22,7 +22,6 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
 **Current focus:** v1.5 kickoff — capture friction, bulk safety, clipboard, and undo
@@ -40,7 +39,6 @@ Run /gsd-plan-phase 33 to begin implementation for fast capture flow and propert
 
 ## Deferred Items
 
-Items acknowledged and deferred at milestone close on 2026-04-29:
 
 | Category | Item | Status |
 | -------- | ---- | ------ |
@@ -53,14 +51,14 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 Known deferred items at close: 5 (verification gaps from v1.3 phases 19-22, dormant seed SEED-005)
 
 ## Pending Decisions
-
+Phase: 33 complete (2 plans executed) — Phase 34 ready for planning
 None.
-
+Status: v1.5 Phase 33 complete — date autocomplete, due-date picker, quick context/project setters with autocomplete
 ## Blockers
 
 None.
 
-## Accumulated Context
+Run /gsd-plan-phase 34 to plan bulk action safety, metadata preservation, and count preview UX.
 
 **Shipped milestones:**
 
