@@ -148,7 +148,7 @@ impl PaneList {
                             let is_selected = selected_tasks.contains(ci);
                             let is_cursor = row_idx == pane.selected;
                             let prefix = if disjoint_select && is_cursor {
-                                if is_selected { "[x] " } else { "[ ] " }
+                                "V "
                             } else if is_selected && !is_cursor {
                                 "> "
                             } else {

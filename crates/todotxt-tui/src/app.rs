@@ -2964,7 +2964,7 @@ impl App {
                         let is_selected = self.selected_tasks.contains(ci);
                         let is_cursor = row_idx == self.selected;
                         let prefix = if self.disjoint_select && is_cursor {
-                            if is_selected { "[x] " } else { "[ ] " }
+                            "V "
                         } else if is_selected && !is_cursor {
                             "> "
                         } else {
