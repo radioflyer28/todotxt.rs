@@ -60,13 +60,13 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
     - [x] 35-01-PLAN.md — Clipboard backend integration + `y` copy action
     - [x] 35-02-PLAN.md — Paste workflows (`p` in Normal mode + Ctrl+V in Adding mode)
 
-- [ ] **Phase 36: Recovery Path (Short-Horizon Undo)**
+- [x] **Phase 36: Recovery Path (Short-Horizon Undo)**
   - Implement lightweight undo for destructive/high-impact actions
   - Provide clear undo feedback and safe behavior when undo history is empty
   - **Requirements:** UNDO-01, UNDO-02, UNDO-03
   - **Plans:** 2 plans
-    - [ ] 36-01-PLAN.md — UndoEntry type + push_undo_entry/apply_undo core logic + Ctrl+Z dispatch (TDD)
-    - [ ] 36-02-PLAN.md — Wire push_undo_entry into all 10 mutation sites + integration tests
+    - [x] 36-01-PLAN.md — UndoEntry type + push_undo_entry/apply_undo core logic + Ctrl+Z dispatch (TDD)
+    - [x] 36-02-PLAN.md — Wire push_undo_entry into all 10 mutation sites + integration tests
 
 - [ ] **Phase 37: Metadata Flexibility + View Continuity**
   - Keep metadata todo.txt-native while supporting hierarchical tag conventions

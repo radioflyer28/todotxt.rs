@@ -4,13 +4,13 @@ milestone: v1.5
 milestone_name: Scope
 status: executing
 last_updated: "2026-04-30T17:48:09.607Z"
-last_activity: 2026-04-30 -- Phase 35 execution started
+last_activity: 2026-04-30 -- Phase 36 execution complete
 progress:
   total_phases: 27
-  completed_phases: 25
+  completed_phases: 26
   total_plans: 72
-  completed_plans: 69
-  percent: 96
+  completed_plans: 71
+  percent: 99
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 35 — basic-clipboard-workflows
+**Current focus:** Phase 36 — recovery-path-short-horizon-undo
 
 ## Current Position
 
-Phase: 35 (basic-clipboard-workflows) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 35
-Last activity: 2026-04-30 -- Phase 35 execution started
+Phase: 36 (recovery-path-short-horizon-undo) — COMPLETE
+Plan: 2 of 2
+Status: Phase 36 complete
+Last activity: 2026-04-30 -- Phase 36 execution complete
 
 ## Next Step
 
