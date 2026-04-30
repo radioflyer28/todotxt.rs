@@ -2152,7 +2152,7 @@ impl App {
                     dp.focused = true;
                 }
             }
-            KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && (ch.is_ascii_digit() || ch == '-') => {
+            KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && (ch.is_ascii_digit() || ch == '-' || ch == '/') => {
                 if let Some(ref mut dp) = self.date_picker {
                     // First typed character starts direct date entry from scratch.
                     // This keeps arrow navigation for day picking, while allowing YYYY-MM-DD typing.
@@ -2160,7 +2160,9 @@ impl App {
                         dp.month_year.clear();
                     }
 
-                    if ch == '-' {
+                    let typed = if ch == '/' { '-' } else { ch };
+
+                    if typed == '-' {
                         if dp.month_year.len() == 4 && !dp.month_year.contains('-') {
                             dp.month_year.push('-');
                             dp.day_input.clear();
@@ -2170,11 +2172,11 @@ impl App {
                             dp.month_year.push('-');
                         }
                         if dp.month_year.len() < 7 {
-                            dp.month_year.push(ch);
+                            dp.month_year.push(typed);
                         }
                         dp.day_input.clear();
                     } else if dp.day_input.len() < 2 {
-                        dp.day_input.push(ch);
+                        dp.day_input.push(typed);
                     }
 
                     dp.suggestions = crate::state::generate_date_suggestions(&dp.month_year)
@@ -3106,6 +3108,11 @@ impl App {
             left.push_str(&format!(" | {} selected", self.selected_tasks.len()));
         }
 
+        // Show explicit indicator when disjoint select mode is active, even with zero selected rows.
+        if self.disjoint_select {
+            left.push_str(" | SELECT mode (space=mark, v=exit)");
+        }
+
         // Error-log indicator — shown when keymap/runtime warnings exist.
         let error_count = self.error_log_count();
         if error_count > 0 {
@@ -3552,18 +3559,26 @@ impl App {
         use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 
         let dp = match &self.date_picker {
-            Some(dp) if !dp.suggestions.is_empty() => dp,
-            _ => return,
+            Some(dp) => dp,
+            None => return,
         };
 
-        let popup_height = (dp.suggestions.len() as u16).min(10).min(footer_area.y);
+        let suggestions_height = if dp.suggestions.is_empty() { 1 } else { dp.suggestions.len() as u16 };
+        let popup_height = suggestions_height.min(10).max(3).min(footer_area.y);
         if popup_height == 0 { return; }
+
+        let title = if dp.day_input.is_empty() {
+            format!(" Set due date: {} (type YYYY-MM-DD or use arrows) ", dp.month_year)
+        } else {
+            format!(" Set due date: {}-{} (type YYYY-MM-DD or use arrows) ", dp.month_year, dp.day_input)
+        };
 
         let popup_width = dp.suggestions.iter()
             .map(|s| s.len() + 4)
             .max()
             .unwrap_or(20)
-            .min(40) as u16;
+            .max(title.len() + 2)
+            .min(72) as u16;
         let popup_width = popup_width.min(frame.area().width);
 
         let popup_area = Rect {
@@ -3573,9 +3588,14 @@ impl App {
             height: popup_height,
         };
 
-        let items: Vec<ListItem> = dp.suggestions.iter()
-            .map(|day_str| ListItem::new(day_str.clone()))
-            .collect();
+        let items: Vec<ListItem> = if dp.suggestions.is_empty() {
+            vec![ListItem::new(" Type YYYY-MM-DD, then Enter ")]
+        } else {
+            dp.suggestions
+                .iter()
+                .map(|day_str| ListItem::new(day_str.clone()))
+                .collect()
+        };
 
         let highlight_style = if dp.focused {
             Style::default().add_modifier(Modifier::REVERSED)
@@ -3583,20 +3603,17 @@ impl App {
             Style::default().add_modifier(Modifier::DIM)
         };
 
-        let selected_idx = dp.selected_day
-            .and_then(|day| {
+        let selected_idx = if dp.suggestions.is_empty() {
+            None
+        } else {
+            dp.selected_day.and_then(|day| {
                 dp.suggestions.iter().position(|s| {
                     s.split_whitespace().next()
                         .and_then(|d| d.parse::<u32>().ok())
                         .map(|d| d == day)
                         .unwrap_or(false)
                 })
-            });
-
-        let title = if dp.day_input.is_empty() {
-            format!(" Set due date: {} (type YYYY-MM-DD or use arrows) ", dp.month_year)
-        } else {
-            format!(" Set due date: {}-{} (type YYYY-MM-DD or use arrows) ", dp.month_year, dp.day_input)
+            })
         };
         let popup_list = List::new(items)
             .block(Block::default().borders(Borders::ALL).title(title))
