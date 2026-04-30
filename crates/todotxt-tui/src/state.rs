@@ -418,6 +418,16 @@ pub struct FilterDefiningState {
     pub selected_row: usize,
 }
 
+/// Snapshot of task list state captured before a mutating action (Phase 36, UNDO-01/02, D-04/D-05).
+/// Stored as `Option<UndoEntry>` on `App`; restored via `apply_undo()`.
+#[derive(Debug, Clone)]
+pub struct UndoEntry {
+    /// Full clone of all tasks at the moment of snapshot.
+    pub tasks: Vec<todotxt_core::Task>,
+    /// Primary cursor position (`App::selected`) at the moment of snapshot.
+    pub selected: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

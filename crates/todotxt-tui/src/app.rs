@@ -140,6 +140,9 @@ pub struct App {
     /// Clipboard instance, lazily initialized on first copy/paste operation (Phase 35, CLIP-01).
     /// Kept as `None` until first use to avoid startup errors in headless environments.
     pub clipboard: Option<Clipboard>,
+    /// Single-level undo entry: snapshot of task list + cursor before the last mutating action
+    /// (Phase 36, UNDO-01/02, D-02/D-04). `None` = no undo available.
+    pub undo_entry: Option<crate::state::UndoEntry>,
 }
 
 impl App {
@@ -222,6 +225,7 @@ impl App {
             pane_counter,
             panes_hidden: false,
             clipboard: None,
+            undo_entry: None,
         };
         // Hydrate every pane immediately so non-active panes are populated on first render.
         app.rebuild_all_panes();
@@ -260,6 +264,32 @@ impl App {
 
     fn push_runtime_warning(&mut self, msg: impl Into<String>) {
         self.runtime_warnings.push(msg.into());
+    }
+
+    /// Capture a snapshot of the current task list and cursor as an undo entry (Phase 36, D-04/D-05).
+    /// Overwrites any previous entry (depth-1 semantics, D-02).
+    #[allow(dead_code)]
+    fn push_undo_entry(&mut self) {
+        self.undo_entry = Some(crate::state::UndoEntry {
+            tasks: self.task_list.tasks().to_vec(),
+            selected: self.selected,
+        });
+    }
+
+    /// Restore the task list from the undo entry, if one exists (Phase 36, D-04, UNDO-01/02/03).
+    /// Silent no-op when `undo_entry` is `None` (D-08/D-10).
+    fn apply_undo(&mut self) -> color_eyre::Result<()> {
+        let entry = match self.undo_entry.take() {
+            Some(e) => e,
+            None => return Ok(()),
+        };
+        self.task_list
+            .replace_all(entry.tasks)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to restore undo: {}", e))?;
+        self.selected = entry.selected;
+        self.rebuild_all_panes();
+        self.rebuild_and_reanchor();
+        Ok(())
     }
 
     fn error_log_count(&self) -> usize {
@@ -639,6 +669,12 @@ impl App {
             // ── Ctrl+C quit (not overridable) ────────────────────────────────
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.should_quit = true;
+            }
+
+            // ── Ctrl+Z: undo last mutating action (Phase 36, UNDO-01/02/03, D-01/D-07) ──
+            // Must precede any plain 'z' arm. Silent no-op when history empty (D-08/D-10).
+            KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_undo()?;
             }
 
             // ── Esc: clear selection / exit disjoint mode (not overridable) ──
@@ -5215,6 +5251,77 @@ mod tests {
         assert_eq!(app.mode, AppMode::Normal);
         // filter_defining_state must be cleared.
         assert!(app.filter_defining_state.is_none());
+    }
+
+    // ── Phase 36: Undo infrastructure tests ──────────────────────────────────
+
+    #[test]
+    fn push_then_apply_restores_task_list() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected = 0;
+        // Snapshot before mutation
+        app.push_undo_entry();
+        // Mutate: delete task B (index 1)
+        app.task_list.delete(1).unwrap();
+        app.rebuild_all_panes();
+        assert_eq!(app.task_list.tasks().len(), 1, "should have 1 task after delete");
+        // Undo
+        app.apply_undo().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 2, "should have 2 tasks after undo");
+        let names: Vec<String> = app.task_list.tasks().iter().map(|t| t.body.clone()).collect();
+        assert!(names.iter().any(|n| n.contains("task A")), "task A must be present");
+        assert!(names.iter().any(|n| n.contains("task B")), "task B must be present");
+        assert_eq!(app.selected, 0, "cursor must be restored to 0");
+    }
+
+    #[test]
+    fn apply_undo_when_empty_is_no_op() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        app.undo_entry = None;
+        // apply_undo with no snapshot must not panic and must leave tasks intact
+        app.apply_undo().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 1, "task list unchanged when undo_entry is None");
+    }
+
+    #[test]
+    fn second_push_overwrites_first() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 0;
+        // First push: 3 tasks
+        app.push_undo_entry();
+        // Mutate: delete C (index 2) → 2 tasks
+        app.task_list.delete(2).unwrap();
+        // Second push: 2 tasks
+        app.push_undo_entry();
+        // Mutate: delete B (now index 1) → 1 task
+        app.task_list.delete(1).unwrap();
+        assert_eq!(app.task_list.tasks().len(), 1);
+        // Undo should restore to 2 tasks (second push), not 3
+        app.apply_undo().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 2, "should restore to 2 tasks (second snapshot)");
+    }
+
+    #[test]
+    fn apply_undo_clears_entry() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.push_undo_entry();
+        app.apply_undo().unwrap();
+        assert!(app.undo_entry.is_none(), "undo_entry must be None after apply_undo (second Ctrl+Z is a no-op)");
+    }
+
+    #[test]
+    fn ctrl_z_in_normal_mode_triggers_apply_undo() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected = 0;
+        // Snapshot before mutation
+        app.push_undo_entry();
+        // Mutate: delete task B
+        app.task_list.delete(1).unwrap();
+        app.rebuild_all_panes();
+        assert_eq!(app.task_list.tasks().len(), 1);
+        // Simulate Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks().len(), 2, "Ctrl+Z must restore the task list");
     }
 }
 
