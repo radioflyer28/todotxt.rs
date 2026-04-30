@@ -18,6 +18,8 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 - [ ] TAG-01: Pressing `@` in normal mode opens a quick context setter for active or selected tasks.
 - [ ] TAG-02: Pressing `+` in normal mode opens a quick project setter for active or selected tasks.
 - [ ] TAG-03: Quick tag setters avoid duplicate tokens and preserve all non-target metadata.
+- [ ] TAG-04: Context/project setters show autocomplete matches while typing, including potentially redundant near-matches.
+- [ ] TAG-05: Autocomplete supports arrow-key selection and tab-to-complete for fast token entry.
 
 ### Safe Bulk Actions
 
@@ -75,6 +77,8 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | TAG-01 | Phase 33 | Pending |
 | TAG-02 | Phase 33 | Pending |
 | TAG-03 | Phase 34 | Pending |
+| TAG-04 | Phase 33 | Pending |
+| TAG-05 | Phase 33 | Pending |
 | BULK-01 | Phase 34 | Pending |
 | BULK-02 | Phase 34 | Pending |
 | BULK-03 | Phase 34 | Pending |
@@ -91,8 +95,8 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 Coverage:
 
-- v1 requirements: 21 total
-- Mapped to phases: 21
+- v1 requirements: 23 total
+- Mapped to phases: 23
 - Unmapped: 0
 
 ---

@@ -20,6 +20,7 @@ Target features:
 
 - `s` due-date picker and `i` priority picker with overwrite semantics
 - `@` quick context setter and `+` quick project setter for active/selected tasks
+- Autocomplete match list for `@`/`+` setters with arrow-key selection and tab completion
 - Fast add/edit task flows with predictable key behavior and minimal mode switching
 - Safe bulk operations with affected-count preview and explicit cancel path
 - Basic clipboard workflows: cut/copy selected tasks and paste to create new tasks
@@ -85,7 +86,7 @@ Shipped:
 ### Active (v1.5)
 
 - CAP-01 through CAP-05 (fast capture/edit and property picker workflows)
-- TAG-01 through TAG-03 (quick context/project setters and token safety)
+- TAG-01 through TAG-05 (quick context/project setters, autocomplete, and token safety)
 - BULK-01 through BULK-03 (high-impact bulk action safety)
 - CLIP-01 through CLIP-04 (basic clipboard cut/copy/paste workflows)
 - UNDO-01 through UNDO-03 (short-horizon recovery path)
