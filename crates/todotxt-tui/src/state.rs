@@ -110,6 +110,8 @@ pub struct AutocompleteState {
     #[allow(dead_code)]
     pub trigger: char,    // '@', '+', or '#'
     pub prefix: String,   // text typed after the trigger (NOT including trigger)
+    #[allow(dead_code)]
+    pub all_items: Vec<String>, // original candidate pool (used by quick setters)
     pub items: Vec<String>, // filtered token list (without trigger char)
     pub selected: usize,  // current highlight index in popup
     pub focused: bool,    // true when Down arrow moved focus into popup
@@ -123,16 +125,19 @@ impl AutocompleteState {
         } else {
             AutocompleteMode::TokenAutocomplete(trigger)
         };
-        AutocompleteState { mode, trigger, prefix, items, selected: 0, focused: false }
+        let all_items = items.clone();
+        AutocompleteState { mode, trigger, prefix, all_items, items, selected: 0, focused: false }
     }
 
     /// Create autocomplete state for quick setter from Normal mode
         #[allow(dead_code)]
     pub fn new_quick_setter(trigger: char, prefix: String, items: Vec<String>) -> Self {
+        let all_items = items.clone();
         AutocompleteState {
             mode: AutocompleteMode::QuickSetter(trigger),
             trigger,
             prefix,
+            all_items,
             items,
             selected: 0,
             focused: false,
