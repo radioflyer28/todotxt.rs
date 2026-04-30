@@ -2963,7 +2963,13 @@ impl App {
                         // Visual precedence: selected non-cursor rows get `>` prefix (D-14).
                         let is_selected = self.selected_tasks.contains(ci);
                         let is_cursor = row_idx == self.selected;
-                        let prefix = if is_selected && !is_cursor { "> " } else { "" };
+                        let prefix = if self.disjoint_select && is_cursor {
+                            if is_selected { "[x] " } else { "[ ] " }
+                        } else if is_selected && !is_cursor {
+                            "> "
+                        } else {
+                            ""
+                        };
                         let content = format!("{}{}{}: {}", prefix, indent, ci + 1, t.to_raw());
                         // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
                         // Style precedence: completed (DIM) > deferred shown (DIM) > priority A/B/C > overdue > plain.
@@ -3060,6 +3066,7 @@ impl App {
                 is_active,
                 is_active && pane.label_selected,
                 &self.selected_tasks,
+                self.disjoint_select,
                 &self.styles,
                 &self.task_list,
                 self.show_deferred,

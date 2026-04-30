@@ -51,6 +51,7 @@ impl PaneList {
         is_active: bool,
         label_selected: bool,
         selected_tasks: &HashSet<usize>,
+        disjoint_select: bool,
         stylesheet: &StyleSheet,
         task_list: &todotxt_core::TaskList,
         show_deferred: bool,
@@ -146,7 +147,13 @@ impl PaneList {
                             let t = &tasks[*ci];
                             let is_selected = selected_tasks.contains(ci);
                             let is_cursor = row_idx == pane.selected;
-                            let prefix = if is_selected && !is_cursor { "> " } else { "" };
+                            let prefix = if disjoint_select && is_cursor {
+                                if is_selected { "[x] " } else { "[ ] " }
+                            } else if is_selected && !is_cursor {
+                                "> "
+                            } else {
+                                ""
+                            };
                             let full_content = t.to_raw();
                             let prefixed = format!("{}{}", prefix, full_content);
                             let content = if usable_width > 0 {
