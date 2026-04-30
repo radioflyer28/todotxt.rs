@@ -488,3 +488,113 @@ fn rebuild_raw(task: &Task) -> String {
     // Remove trailing space when body is empty and there are no tags
     result.trim_end().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn date(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    /// with_priority sets new priority and preserves all other metadata fields.
+    #[test]
+    fn test_with_priority_preserves_metadata() {
+        let task = Task::parse("(B) 2025-12-01 fix login bug @work @home +proj1 +proj2 due:2026-03-01 t:2026-02-01");
+        let result = task.with_priority(Some('A'));
+
+        assert_eq!(result.priority, Some('A'));
+        assert_eq!(result.creation_date, Some(date(2025, 12, 1)));
+        assert_eq!(result.due_date, Some(date(2026, 3, 1)));
+        assert_eq!(result.threshold_date, Some(date(2026, 2, 1)));
+        assert_eq!(result.projects, vec!["proj1".to_string(), "proj2".to_string()]);
+        assert!(result.contexts.contains(&"work".to_string()));
+        assert!(result.contexts.contains(&"home".to_string()));
+        assert_eq!(result.completed, false);
+        assert!(result.to_raw().starts_with("(A) "), "raw should start with (A): {}", result.to_raw());
+        assert!(result.to_raw().contains("due:2026-03-01"), "should contain due date: {}", result.to_raw());
+        assert!(!result.to_raw().contains("(B)"), "should not contain old priority: {}", result.to_raw());
+        // Exactly one due: token
+        assert_eq!(result.to_raw().matches("due:").count(), 1, "exactly one due: token: {}", result.to_raw());
+    }
+
+    /// with_priority(None) clears priority — no '(' token in raw output.
+    #[test]
+    fn test_with_priority_clears_priority() {
+        let task = Task::parse("(A) 2025-12-01 fix login bug @work +proj1 due:2026-03-01");
+        let result = task.with_priority(None);
+
+        assert_eq!(result.priority, None);
+        assert!(!result.to_raw().contains('('), "raw should not contain '(': {}", result.to_raw());
+        assert_eq!(result.creation_date, Some(date(2025, 12, 1)));
+        assert_eq!(result.due_date, Some(date(2026, 3, 1)));
+        assert_eq!(result.projects, vec!["proj1".to_string()]);
+        assert!(result.contexts.contains(&"work".to_string()));
+    }
+
+    /// with_priority on completed task preserves x prefix and completion_date.
+    #[test]
+    fn test_with_priority_on_completed_task() {
+        let task = Task::parse("x 2026-01-15 2025-12-01 fix login bug @work +proj1 due:2026-03-01");
+        let result = task.with_priority(Some('C'));
+
+        assert_eq!(result.completed, true);
+        assert_eq!(result.completion_date, Some(date(2026, 1, 15)));
+        assert_eq!(result.creation_date, Some(date(2025, 12, 1)));
+        assert_eq!(result.priority, Some('C'));
+        assert!(result.to_raw().starts_with("x "), "raw should start with 'x ': {}", result.to_raw());
+        assert_eq!(result.due_date, Some(date(2026, 3, 1)));
+        assert_eq!(result.projects, vec!["proj1".to_string()]);
+        assert!(result.contexts.contains(&"work".to_string()));
+    }
+
+    /// with_due_date replaces existing due: token — no duplicates.
+    #[test]
+    fn test_with_due_date_no_duplicate() {
+        let task = Task::parse("(A) 2025-12-01 fix login bug @work +proj1 due:2026-03-01 t:2026-02-01");
+        let result = task.with_due_date(Some(date(2026, 6, 15)));
+
+        assert_eq!(result.due_date, Some(date(2026, 6, 15)));
+        assert!(result.to_raw().contains("due:2026-06-15"), "should contain new due: {}", result.to_raw());
+        assert!(!result.to_raw().contains("due:2026-03-01"), "old due: should be gone: {}", result.to_raw());
+        assert_eq!(result.priority, Some('A'));
+        assert_eq!(result.threshold_date, Some(date(2026, 2, 1)));
+        assert_eq!(result.projects, vec!["proj1".to_string()]);
+        assert!(result.contexts.contains(&"work".to_string()));
+        // Exactly one due: token
+        assert_eq!(result.to_raw().matches("due:").count(), 1, "exactly one due: token: {}", result.to_raw());
+    }
+
+    /// with_due_date(None) removes the due: token entirely.
+    #[test]
+    fn test_with_due_date_removes_due_token() {
+        let task = Task::parse("(A) 2025-12-01 fix login bug +proj1 due:2026-03-01");
+        let result = task.with_due_date(None);
+
+        assert_eq!(result.due_date, None);
+        assert!(!result.to_raw().contains("due:"), "raw should not contain 'due:': {}", result.to_raw());
+        assert_eq!(result.priority, Some('A'));
+        assert_eq!(result.projects, vec!["proj1".to_string()]);
+    }
+
+    /// with_priority preserves projects and contexts without adding duplicates.
+    #[test]
+    fn test_with_priority_preserves_projects_contexts() {
+        let task = Task::parse("(B) 2025-12-01 fix bug @work @home +proj1 +proj2");
+        let result = task.with_priority(Some('Z'));
+
+        assert_eq!(result.priority, Some('Z'));
+        assert_eq!(result.projects, vec!["proj1".to_string(), "proj2".to_string()]);
+        assert_eq!(result.contexts.len(), 2);
+        assert!(result.contexts.contains(&"work".to_string()));
+        assert!(result.contexts.contains(&"home".to_string()));
+        assert!(result.to_raw().contains("+proj1"), "raw should contain +proj1: {}", result.to_raw());
+        assert!(result.to_raw().contains("+proj2"), "raw should contain +proj2: {}", result.to_raw());
+        assert!(result.to_raw().contains("@work"), "raw should contain @work: {}", result.to_raw());
+        assert!(result.to_raw().contains("@home"), "raw should contain @home: {}", result.to_raw());
+        // No duplicates
+        assert_eq!(result.to_raw().matches("+proj1").count(), 1);
+        assert_eq!(result.to_raw().matches("+proj2").count(), 1);
+    }
+}
