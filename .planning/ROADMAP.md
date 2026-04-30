@@ -51,13 +51,13 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
     - [x] 34-02-PLAN.md — Metadata preservation tests (TDD: with_priority/with_due_date round-trips)
     - [x] 34-03-PLAN.md — Count preview for T + s setter D-13 refactor + D wording
 
-- [ ] **Phase 35: Basic Clipboard Workflows**
+- [x] **Phase 35: Basic Clipboard Workflows** (completed 2026-04-30)
   - Implement cut/copy selected task text and paste-as-new-task behavior
   - Support paste during new-task entry (`n`) for duplicate-and-tweak workflows
   - **Requirements:** CLIP-01, CLIP-02, CLIP-03, CLIP-04
   - **Plans:** 2 plans
-    - [ ] 35-01-PLAN.md — Clipboard backend integration + `y` copy action
-    - [ ] 35-02-PLAN.md — Paste workflows (`p` in Normal mode + Ctrl+V in Adding mode)
+    - [x] 35-01-PLAN.md — Clipboard backend integration + `y` copy action
+    - [x] 35-02-PLAN.md — Paste workflows (`p` in Normal mode + Ctrl+V in Adding mode)
 
 - [ ] **Phase 36: Recovery Path (Short-Horizon Undo)**
   - Implement lightweight undo for destructive/high-impact actions

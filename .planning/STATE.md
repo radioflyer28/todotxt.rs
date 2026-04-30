@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Scope
 status: executing
-last_updated: "2026-04-30T14:51:34.775Z"
-last_activity: 2026-04-30 -- Phase 34 execution started
+last_updated: "2026-04-30T17:48:09.607Z"
+last_activity: 2026-04-30 -- Phase 35 execution started
 progress:
-  total_phases: 26
-  completed_phases: 24
-  total_plans: 70
-  completed_plans: 67
+  total_phases: 27
+  completed_phases: 25
+  total_plans: 72
+  completed_plans: 69
   percent: 96
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 34 — bulk-action-safety-metadata-preservation
+**Current focus:** Phase 35 — basic-clipboard-workflows
 
 ## Current Position
 
-Phase: 34 (bulk-action-safety-metadata-preservation) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 34
-Last activity: 2026-04-30 -- Phase 34 execution started
+Phase: 35 (basic-clipboard-workflows) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 35
+Last activity: 2026-04-30 -- Phase 35 execution started
 
 ## Next Step
 
