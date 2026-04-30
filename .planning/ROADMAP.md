@@ -28,6 +28,7 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
 
 ## Planned Phases
 
+- [x] **Phase 33: Fast Capture + Property Pickers (`s` due, `i` priority)** (completed 2026-04-29)
   - Keep add/edit flows fast with predictable key behavior and minimal mode switching
   - Add due-date and priority pickers with overwrite semantics for active or selected tasks
   - Add quick context/project setters triggered by `@` and `+` in normal mode
@@ -35,18 +36,10 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
   - Add date autocomplete for partial `due:`/`t:` inputs, including valid day options and weekday labels, and align `s` picker suggestions
   - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, TAG-01, TAG-02, TAG-04, TAG-05, DATE-01, DATE-02, DATE-03, DATE-04
   - **Plans:** 2 plans
-    - [ ] 33-01-PLAN.md — Date autocomplete and due-date picker
-    - [ ] 33-02-PLAN.md — Quick context/project setters with autocomplete
-- [x] **Phase 33: Fast Capture + Property Pickers (`s` due, `i` priority)** ✅ (completed 2026-04-29)
-  - Keep add/edit flows fast with predictable key behavior and minimal mode switching
-  - Add due-date and priority pickers with overwrite semantics for active or selected tasks
-  - Add quick context/project setters triggered by `@` and `+` in normal mode
-  - Add autocomplete match list with arrow-key navigation and tab-to-complete for context/project setters
-  - Add date autocomplete for partial `due:`/`t:` inputs, including valid day options and weekday labels, and align `s` picker suggestions
-  - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, TAG-01, TAG-02, TAG-04, TAG-05, DATE-01, DATE-02, DATE-03, DATE-04
-  - **Plans:** 2 plans ✅
-    - [x] 33-01-PLAN.md — Date autocomplete and due-date picker ✅
-    - [x] 33-02-PLAN.md — Quick context/project setters with autocomplete ✅
+    - [x] 33-01-PLAN.md — Date autocomplete and due-date picker
+    - [x] 33-02-PLAN.md — Quick context/project setters with autocomplete
+
+- [ ] **Phase 34: Bulk Action Safety + Metadata Preservation**
 
   - Add affected-count preview and cancel path for high-impact actions
   - Preserve non-target metadata, avoid duplicate tag tokens, and keep stable selection targeting in bulk operations
