@@ -1,23 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.5
-milestone_name: Capture Flow + Bulk Safety + Clipboard + Undo
-current_phase: 34
-current_plan: 34-01-PLAN.md
-status: phase_34_planned
-milestone_status: active
-milestone_version: v1.5
-next_action: /gsd-execute-phase 34
-last_updated: "2026-04-30T01:00:00.000Z"
-last_activity: 2026-04-30
-stopped_at: "Phase 34 planned — 3 plans in 2 waves"
-resume_file: ".planning/phases/34-bulk-action-safety-metadata-preservation/34-CONTEXT.md"
+milestone_name: Scope
+status: executing
+last_updated: "2026-04-30T14:51:34.775Z"
+last_activity: 2026-04-30 -- Phase 34 execution started
 progress:
-  total_phases: 5
-  completed_phases: 1
-  total_plans: 14
-  completed_plans: 2
-  percent: 18
+  total_phases: 26
+  completed_phases: 24
+  total_plans: 70
+  completed_plans: 67
+  percent: 96
 ---
 
 # Project State
@@ -27,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** v1.5 — Phase 34: Bulk Action Safety + Metadata Preservation
+**Current focus:** Phase 34 — bulk-action-safety-metadata-preservation
 
 ## Current Position
 
-Phase: 33 complete (2/2 plans executed) — Phase 34 ready for discuss/plan
-Plan: none
-Status: Phase 33 shipped — date autocomplete, due-date picker (`s`), quick `@`/`+` setters with fuzzy autocomplete
-Last activity: 2026-04-29 — Phase 33 (Fast Capture + Property Pickers) fully executed
+Phase: 34 (bulk-action-safety-metadata-preservation) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 34
+Last activity: 2026-04-30 -- Phase 34 execution started
 
 ## Next Step
 

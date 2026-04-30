@@ -39,16 +39,16 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
     - [x] 33-01-PLAN.md — Date autocomplete and due-date picker
     - [x] 33-02-PLAN.md — Quick context/project setters with autocomplete
 
-- [ ] **Phase 34: Bulk Action Safety + Metadata Preservation**
+- [x] **Phase 34: Bulk Action Safety + Metadata Preservation** (completed 2026-04-30)
 
   - Add affected-count preview and cancel path for high-impact actions
   - Preserve non-target metadata, avoid duplicate tag tokens, and keep stable selection targeting in bulk operations
   - Add `i` priority picker overlay (CAP-04 gap from Phase 33)
   - **Requirements:** CAP-04, CAP-05, TAG-03, BULK-01, BULK-02, BULK-03
   - **Plans:** 3 plans
-    - [ ] 34-01-PLAN.md — `i` priority picker overlay (PriorityPickerState + handler + render + binding)
-    - [ ] 34-02-PLAN.md — Metadata preservation tests (TDD: with_priority/with_due_date round-trips)
-    - [ ] 34-03-PLAN.md — Count preview for T + s setter D-13 refactor + D wording
+    - [x] 34-01-PLAN.md — `i` priority picker overlay (PriorityPickerState + handler + render + binding)
+    - [x] 34-02-PLAN.md — Metadata preservation tests (TDD: with_priority/with_due_date round-trips)
+    - [x] 34-03-PLAN.md — Count preview for T + s setter D-13 refactor + D wording
 
 - [ ] **Phase 35: Basic Clipboard Workflows**
   - Implement cut/copy selected task text and paste-as-new-task behavior
