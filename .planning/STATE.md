@@ -1,34 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.4
-milestone_name: Scope
-status: phase-complete
-last_updated: "2026-04-28T23:59:59.000Z"
-last_activity: 2026-04-28
-progress:
-  total_phases: 18
-  completed_phases: 16
-  total_plans: 53
-  completed_plans: 53
-  percent: 100
----
-
-gsd_state_version: 1.0
-milestone: v1.4
 milestone_name: Kanban-Style Vertical Panes
-current_phase: 30
+current_phase: 32
 current_plan: none
-status: Phase 30 complete
-milestone_status: ready_for_audit
+status: archived
+milestone_status: archived
 milestone_version: v1.4
-next_action: /gsd-audit-milestone v1.4
-last_updated: "2026-04-29T00:30:00.000Z"
+next_action: /gsd-new-milestone
+last_updated: "2026-04-29T23:59:00.000Z"
 last_activity: 2026-04-29
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 16
-  completed_plans: 16
+  total_phases: 9
+  completed_phases: 9
+  total_plans: 19
+  completed_plans: 19
   percent: 100
 ---
 
@@ -36,23 +22,38 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-28)
+See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 29 — verification-artifacts-status-bar-fix-metadata-cleanup
+**Current focus:** v1.4 milestone closeout and archival preparation
 
 ## Current Position
 
-Phase: 26 (pane-management-quick-hide-show) — COMPLETE ✓
-Phase: 27 (config-defined-panes-validation-ship-readiness) — COMPLETE ✓
 Phase: 28 (per-pane-state-consistency-fixes) — COMPLETE ✓ (commit e5d25eb)
 Phase: 29 (verification-artifacts-status-bar-fix-metadata-cleanup) — COMPLETE ✓ (commits 3b216f9, 09f83fb)
-Status: Phase 29 execution complete — all 13 v1.4 requirements verified, Phase 24/25 VERIFICATION.md created
-Last activity: 2026-04-29 — Phase 29 execution complete
+Phase: 30 (nyquist-validation-v1.4-phases) — COMPLETE ✓
+Phase: 31 (single-pane-filter-sort-group-bridge-fix) — COMPLETE ✓ (commit 30189ed)
+Phase: 32 (post-audit-pane-ux-and-delete-polish) — COMPLETE ✓ (artifact capture complete; code and regressions verified)
+Status: v1.4 complete — all 13 requirements satisfied, audit passed, post-audit polish documented, package tests green
+Last activity: 2026-04-29 — milestone documentation refreshed for closeout
 
 ## Next Step
 
-Run /gsd-plan-phase 30 to plan Nyquist validation for all v1.4 phases.
+Run /gsd-complete-milestone v1.4 to archive ROADMAP.md and REQUIREMENTS.md into .planning/milestones/ and prepare the next milestone.
+
+## Deferred Items
+
+Items acknowledged and deferred at milestone close on 2026-04-29:
+
+| Category | Item | Status |
+|----------|------|--------|
+| verification_gap | Phase 19: 19-VERIFICATION.md | human_needed |
+| verification_gap | Phase 20: 20-VERIFICATION.md | human_needed |
+| verification_gap | Phase 21: 21-VERIFICATION.md | human_needed |
+| verification_gap | Phase 22: 22-VERIFICATION.md | human_needed |
+| seed | SEED-005: Add unit tests for Phase 22 manual-only validation gaps (mode transitions + filter mutations) | dormant |
+
+Known deferred items at close: 5 (verification gaps from v1.3 phases 19-22, dormant seed SEED-005)
 
 ## Pending Decisions
 

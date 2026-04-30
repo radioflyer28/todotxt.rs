@@ -2,7 +2,7 @@
 
 ## Current State
 
-v1.0, v1.1, v1.2, and v1.3 are shipped. Core library, CLI, and TUI are complete with todo.sh compatibility, parity-oriented multi-select/bulk workflows, shared normalization, configurable keymaps, and verification/validation close-out.
+v1.0 through v1.4 are shipped. The Rust port now has a fully functional CLI, interactive TUI, and Kanban-style vertical pane layout — all verified and archived.
 
 Milestone archives:
 
@@ -10,24 +10,16 @@ Milestone archives:
 - .planning/milestones/v1.1-ROADMAP.md
 - .planning/milestones/v1.2-ROADMAP.md
 - .planning/milestones/v1.3-ROADMAP.md
+- .planning/milestones/v1.4-ROADMAP.md
 
-## Current Milestone: v1.4 Kanban-Style Vertical Panes
+## Current Milestone
 
-Goal: introduce keyboard-first Kanban-style vertical panes in the TUI with per-pane sort/group/filter behavior, pane lifecycle hotkeys, quick hide/show toggle, and config-defined panes.
-
-Target features:
-
-- Per-pane independent sort, group, and filter state
-- Pane creation/deletion hotkeys
-- Single hotkey to hide/show all panes and restore single-pane mode
-- Pane definitions in config.toml with per-pane defaults
-- CLI file-path overrides: alternate todo.txt, archive.txt, and config.toml locations
+None — v1.4 archived 2026-04-29. Run `/gsd-new-milestone` to begin the next milestone.
 
 ## Next Milestone Goals
 
-- Deliver stable multi-pane task workflows without regressing single-pane usability
-- Validate config-driven pane startup behavior with safe fallbacks
-- Keep parity and discoverability standards established in v1.3
+- Decide which future-scope items move forward (GUI, packaging, CI/CD, or further TUI workflow expansion)
+- Preserve the parity and discoverability standards established through v1.4
 
 ---
 
@@ -70,7 +62,7 @@ Shipped:
 - PAR-01 through PAR-03 complete (parity/discoverability/deviation documentation)
 - KEY-01 through KEY-03 complete (configurable keymaps + fallback safety)
 
-### Active
+### Validated (v1.4)
 
 - PANE-01 through PANE-05 (layout, focus, lifecycle, pane-scoped behavior)
 - VIEW-01 and VIEW-02 (single-pane fallback and quick global toggle)
