@@ -19,7 +19,7 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
-use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState};
+use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts};
 use crate::components::PaneList;
 
 
@@ -28,6 +28,7 @@ use crate::components::PaneList;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
     Normal,
+    QuickSetter(char),
     Adding,
     Editing { original_idx: usize },
     PaneLabelEditing { pane_idx: usize },
@@ -562,6 +563,7 @@ impl App {
                 // AppMode is Copy — match copies the value, releasing the borrow.
                 match self.mode {
                     AppMode::Normal => self.handle_normal_key(key)?,
+                    AppMode::QuickSetter(_) => self.handle_quick_setter_key(key)?,
                     AppMode::Adding | AppMode::Editing { .. } => {
                         self.handle_editor_key(key)?;
                     }
@@ -1018,8 +1020,45 @@ impl App {
                 }
             }
 
+            // '@' opens quick context setter from Normal mode (Phase 33, Plan 02)
+            KeyCode::Char('@') if key.modifiers == KeyModifiers::NONE => {
+                if !self.has_quick_setter_targets() {
+                    self.push_runtime_warning("quick context setter requires an active task or selection");
+                    return Ok(());
+                }
+
+                let mut items: Vec<String> = get_existing_contexts(&self.task_list).into_iter().collect();
+                items.sort();
+                self.autocomplete = Some(AutocompleteState::new_quick_setter('@', String::new(), items));
+                self.mode = AppMode::QuickSetter('@');
+            }
+
             _ => {}
         }
+        Ok(())
+    }
+
+    fn has_quick_setter_targets(&self) -> bool {
+        if self
+            .selected_tasks
+            .iter()
+            .any(|&idx| idx < self.task_list.len())
+        {
+            return true;
+        }
+
+        self.active_canonical_selected().is_some()
+    }
+
+    fn handle_quick_setter_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        if key.code == KeyCode::Esc {
+            self.autocomplete = None;
+            self.mode = AppMode::Normal;
+        }
+
         Ok(())
     }
 
@@ -2240,6 +2279,14 @@ impl App {
                     Layout::vertical([Min(0), Length(1)]).split(frame.area());
                 self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
+            }
+            AppMode::QuickSetter(_) => {
+                // Keep Normal-mode layout and render quick-setter popup above status.
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_autocomplete_popup(frame, chunks[1]);
             }
             AppMode::Filtering => {
                 let panel_height = 1_u16 + (self.presets.len() as u16).min(5);
