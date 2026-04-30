@@ -47,6 +47,8 @@ pub enum AppMode {
     DatePicker,
     /// Priority picker overlay for setting priority on active/selected tasks (Phase 34, Plan 01).
     PriorityPicker,
+    /// Count preview before bulk append — shows "Appending to N tasks" (D-06, Phase 34).
+    AppendTextConfirm,
 }
 
 /// Top-level application state.
@@ -73,6 +75,8 @@ pub struct App {
     pub date_picker: Option<DatePickerState>,
     /// Active priority picker state, or `None` when not shown (Phase 34, Plan 01).
     pub priority_picker: Option<PriorityPickerState>,
+    /// Count of tasks targeted by AppendTextConfirm mode (Phase 34, Plan 03).
+    pub append_confirm_count: usize,
     /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
     pub display_indices: Vec<usize>,
     /// Toggle grouped rendering with non-selectable header rows.
@@ -186,6 +190,7 @@ impl App {
             autocomplete: None,
             date_picker: None,
             priority_picker: None,
+            append_confirm_count: 0,
             display_indices: Vec::new(),
             grouping: false,
             display_rows: Vec::new(),
@@ -583,6 +588,7 @@ impl App {
                     AppMode::Help => self.handle_help_key(key)?,
                     AppMode::DatePicker => self.handle_date_picker_key(key)?,
                     AppMode::PriorityPicker => self.handle_priority_picker_key(key)?,
+                    AppMode::AppendTextConfirm => self.handle_append_text_confirm_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -852,8 +858,16 @@ impl App {
             }
 
             _ if !self.selected_tasks.is_empty() && display_count > 0 && self.key_is_action(key, "bulk_append") => {
-                self.editor = TextArea::default();
-                self.mode = AppMode::AppendText;
+                let n = self.selected_tasks.len();
+                if n > 1 {
+                    // D-06: show count banner before text entry when multiple tasks targeted
+                    self.append_confirm_count = n;
+                    self.mode = AppMode::AppendTextConfirm;
+                } else {
+                    // Single task — go directly to append text editor
+                    self.editor = TextArea::default();
+                    self.mode = AppMode::AppendText;
+                }
             }
 
             _ if self.key_is_action(key, "theme_cycle") => {
@@ -1822,6 +1836,30 @@ impl App {
         Ok(())
     }
 
+    // ── Append text confirm key handler (count preview, D-06) ──────────────────
+
+    fn handle_append_text_confirm_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Enter => {
+                // Confirmed — open text editor for bulk append
+                self.editor = TextArea::default();
+                self.mode = AppMode::AppendText;
+                // append_confirm_count no longer needed; AppendText reads selected_tasks directly
+            }
+            KeyCode::Esc => {
+                // Cancel — selection preserved per D-03 (do NOT clear selected_tasks)
+                self.append_confirm_count = 0;
+                self.mode = AppMode::Normal;
+                self.apply_pending_reload()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     // ── Append text key handler ────────────────────────────────────────────────
 
     fn handle_append_text_key(
@@ -1923,9 +1961,13 @@ impl App {
                 // Accept selected day and mutate task(s)
                 if let Some(dp) = self.date_picker.take() {
                     if let Some(selected_day) = dp.selected_day {
-                        let date_str = format!("{}-{:02}", dp.month_year, selected_day);
-                        let new_due_token = format!("due:{}", date_str);
-                        
+                        // D-13: parse date for structured mutation via with_due_date()
+                        use chrono::NaiveDate;
+                        let new_date = NaiveDate::parse_from_str(
+                            &format!("{}-{:02}", dp.month_year, selected_day),
+                            "%Y-%m-%d",
+                        ).map_err(|e| color_eyre::eyre::eyre!("Invalid date: {}", e))?;
+
                         // Determine targets: selected tasks or active task
                         let targets: Vec<usize> = if !self.selected_tasks.is_empty() {
                             let mut indices: Vec<usize> = self.selected_tasks.iter().copied().collect();
@@ -1940,23 +1982,15 @@ impl App {
                             }
                         };
 
-                        // Update each task
+                        // Update each task via structured mutation (D-13)
                         let tasks = self.task_list.tasks();
                         let mut replacements: Vec<(usize, Task)> = Vec::new();
-                        
+
                         for &idx in &targets {
                             if let Some(task) = tasks.get(idx) {
-                                // Reconstruct task line without old due: token
-                                let raw_without_due = task.to_raw()
-                                    .split_whitespace()
-                                    .filter(|token| !token.starts_with("due:"))
-                                    .collect::<Vec<_>>()
-                                    .join(" ");
-                                
-                                // Append new due token and re-parse to normalize
-                                let new_line = format!("{} {}", raw_without_due.trim_end(), new_due_token);
-                                let normalized = normalize_line(&new_line);
-                                replacements.push((idx, normalized));
+                                // with_due_date() rebuilds via rebuild_raw,
+                                // preserving all non-due fields (D-13)
+                                replacements.push((idx, task.clone().with_due_date(Some(new_date))));
                             }
                         }
 
@@ -2627,6 +2661,13 @@ impl App {
                 self.render_status_bar(frame, chunks[1]);
                 self.render_priority_picker_overlay(frame, chunks[1]);
             }
+            AppMode::AppendTextConfirm => {
+                // Task list visible behind; count confirmation banner floats above (Phase 34, Plan 03).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_append_text_confirm(frame, chunks[1]);
+            }
         }
     }
 
@@ -3117,23 +3158,15 @@ impl App {
         use ratatui::text::{Line, Span};
         use ratatui::widgets::Paragraph;
 
-        let tasks = self.task_list.tasks();
-
         let text = if self.selected_tasks.len() > 1 {
-            // Bulk confirmation: show count, not task preview (D-02)
+            // Bulk confirmation: show count, not task preview (D-02, D-07)
             format!("Delete {} tasks?  y=confirm  any=cancel", self.selected_tasks.len())
         } else if self.selected_tasks.len() == 1 {
-            // Single-task-via-selection: show existing preview (D-02)
-            let idx = *self.selected_tasks.iter().next().unwrap();
-            let preview = tasks.get(idx).map(|t| t.to_raw().to_string()).unwrap_or_default();
-            format!("Delete: \"{}\"  y=confirm  any=cancel", preview)
+            // Single-task-via-selection: show count (D-07 wording update)
+            "Delete 1 task?  y=confirm  any=cancel".to_string()
         } else {
-            // Cursor-task delete (selection empty): existing behavior
-            let preview = match self.active_canonical_selected() {
-                Some(idx) => tasks.get(idx).map(|t| t.to_raw().to_string()).unwrap_or_default(),
-                None => String::new(),
-            };
-            format!("Delete: \"{}\"  y=confirm  any=cancel", preview)
+            // Cursor-task delete (selection empty): show "Delete task?"
+            "Delete task?  y=confirm  any=cancel".to_string()
         };
 
         frame.render_widget(Paragraph::new(Line::from(Span::raw(text))), area);
@@ -3355,6 +3388,34 @@ impl App {
 
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+
+    /// Render the bulk append count confirmation banner (D-06, Phase 34, Plan 03).
+    fn render_append_text_confirm(&self, frame: &mut Frame, footer_area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, Paragraph};
+
+        let n = self.append_confirm_count;
+        if n == 0 { return; }
+
+        let text = format!("Appending to {} tasks — Enter to continue, Esc to cancel", n);
+        let popup_width = (text.len() as u16 + 4).min(frame.area().width);
+        if footer_area.y < 3 { return; }
+
+        let popup_area = Rect {
+            x: footer_area.x,
+            y: footer_area.y.saturating_sub(3),
+            width: popup_width,
+            height: 3,
+        };
+
+        let paragraph = Paragraph::new(text)
+            .block(Block::default().borders(Borders::ALL).title(" Bulk Append "))
+            .style(Style::default().add_modifier(Modifier::BOLD));
+
+        frame.render_widget(ratatui::widgets::Clear, popup_area);
+        frame.render_widget(paragraph, popup_area);
     }
 
     /// Render the F-key preset definition panel (D-06, D-07, Plan 16-03).
