@@ -630,7 +630,11 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
         let display_count = self.display_indices.len();
-        let row_count = self.display_rows.len();
+        let row_count = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            self.panes[self.active_pane].display_rows.len()
+        } else {
+            self.display_rows.len()
+        };
         match key.code {
             // ── Ctrl+C quit (not overridable) ────────────────────────────────
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -661,15 +665,7 @@ impl App {
                 if key.modifiers.contains(KeyModifiers::SHIFT) && row_count > 0 =>
             {
                 self.ensure_anchor();
-                let mut next = self.selected + 1;
-                while next < row_count
-                    && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
-                {
-                    next += 1;
-                }
-                if next < row_count {
-                    self.selected = next;
-                }
+                self.pane_move_down();
                 self.apply_range_selection();
             }
             // Shift+k or Shift+Up: extend contiguous range selection upward (D-09, D-11).
@@ -678,17 +674,7 @@ impl App {
                 if key.modifiers.contains(KeyModifiers::SHIFT) && row_count > 0 =>
             {
                 self.ensure_anchor();
-                if self.selected > 0 {
-                    let mut prev = self.selected.saturating_sub(1);
-                    while prev > 0
-                        && matches!(self.display_rows[prev], DisplayRow::GroupHeader(_))
-                    {
-                        prev -= 1;
-                    }
-                    if matches!(self.display_rows[prev], DisplayRow::Task(_)) {
-                        self.selected = prev;
-                    }
-                }
+                self.pane_move_up();
                 self.apply_range_selection();
             }
             KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
@@ -2168,6 +2154,12 @@ impl App {
             }
             KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && (ch.is_ascii_digit() || ch == '-') => {
                 if let Some(ref mut dp) = self.date_picker {
+                    // First typed character starts direct date entry from scratch.
+                    // This keeps arrow navigation for day picking, while allowing YYYY-MM-DD typing.
+                    if !dp.focused && dp.day_input.is_empty() {
+                        dp.month_year.clear();
+                    }
+
                     if ch == '-' {
                         if dp.month_year.len() == 4 && !dp.month_year.contains('-') {
                             dp.month_year.push('-');
@@ -2600,7 +2592,7 @@ impl App {
     /// for the entire duration of a shift-range operation.
     fn ensure_anchor(&mut self) {
         if self.selection_anchor.is_none() {
-            self.selection_anchor = self.canonical_selected();
+            self.selection_anchor = self.active_canonical_selected();
         }
     }
 
@@ -2613,17 +2605,28 @@ impl App {
             Some(a) => a,
             None => return,
         };
-        let cursor_canon = match self.canonical_selected() {
+
+        let (rows, selected_row) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            let pane = &self.panes[self.active_pane];
+            (&pane.display_rows, pane.selected)
+        } else {
+            (&self.display_rows, self.selected)
+        };
+
+        let cursor_canon = match rows.get(selected_row) {
+            Some(DisplayRow::Task(idx)) => Some(*idx),
+            _ => None,
+        };
+        let cursor_canon = match cursor_canon {
             Some(c) => c,
             None => return,
         };
+
         // Locate display-row positions for anchor and cursor canonical indices.
-        let anchor_row = self
-            .display_rows
+        let anchor_row = rows
             .iter()
             .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == anchor_canon));
-        let cursor_row = self
-            .display_rows
+        let cursor_row = rows
             .iter()
             .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == cursor_canon));
         let (anchor_row, cursor_row) = match (anchor_row, cursor_row) {
@@ -2638,7 +2641,7 @@ impl App {
         // Replace selection with only the tasks inside the [lo, hi] display range.
         self.selected_tasks.clear();
         for row in lo..=hi {
-            if let DisplayRow::Task(idx) = self.display_rows[row] {
+            if let DisplayRow::Task(idx) = rows[row] {
                 self.selected_tasks.insert(idx);
             }
         }
@@ -2740,7 +2743,13 @@ impl App {
     /// Move selection down in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_down(&mut self) {
         self.reconcile_active_pane();
+        let use_global_cursor = self.should_show_single_pane() || self.panes_hidden;
+        let global_selected = self.selected;
         let pane = self.active_pane_mut();
+
+        if use_global_cursor {
+            pane.selected = global_selected.min(pane.display_rows.len().saturating_sub(1));
+        }
 
         if pane.label_selected {
             pane.label_selected = false;
@@ -2753,42 +2762,53 @@ impl App {
             if pane.selected >= pane.display_rows.len() {
                 pane.selected = 0;
             }
-            return;
+        } else {
+            let row_count = pane.display_rows.len();
+            if row_count > 0 {
+                let mut next = pane.selected + 1;
+                while next < row_count
+                    && matches!(pane.display_rows[next], DisplayRow::GroupHeader(_))
+                {
+                    next += 1;
+                }
+                if next < row_count {
+                    pane.selected = next;
+                }
+            }
         }
 
-        let row_count = pane.display_rows.len();
-        if row_count > 0 {
-            let mut next = pane.selected + 1;
-            while next < row_count
-                && matches!(pane.display_rows[next], DisplayRow::GroupHeader(_))
-            {
-                next += 1;
-            }
-            if next < row_count {
-                pane.selected = next;
-            }
+        if use_global_cursor {
+            self.selected = pane.selected;
         }
     }
 
     /// Move selection up in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_up(&mut self) {
         self.reconcile_active_pane();
+        let use_global_cursor = self.should_show_single_pane() || self.panes_hidden;
+        let global_selected = self.selected;
         let pane = self.active_pane_mut();
-        if pane.label_selected {
-            return;
+        if use_global_cursor {
+            pane.selected = global_selected.min(pane.display_rows.len().saturating_sub(1));
         }
-        if pane.selected == 0 {
-            pane.label_selected = true;
-            return;
+        if !pane.label_selected {
+            if pane.selected == 0 {
+                pane.label_selected = true;
+            } else {
+                let mut prev = pane.selected.saturating_sub(1);
+                while prev > 0 && matches!(pane.display_rows[prev], DisplayRow::GroupHeader(_)) {
+                    prev -= 1;
+                }
+                if matches!(pane.display_rows.get(prev), Some(DisplayRow::Task(_))) {
+                    pane.selected = prev;
+                } else {
+                    pane.label_selected = true;
+                }
+            }
         }
-        let mut prev = pane.selected.saturating_sub(1);
-        while prev > 0 && matches!(pane.display_rows[prev], DisplayRow::GroupHeader(_)) {
-            prev -= 1;
-        }
-        if matches!(pane.display_rows.get(prev), Some(DisplayRow::Task(_))) {
-            pane.selected = prev;
-        } else {
-            pane.label_selected = true;
+
+        if use_global_cursor {
+            self.selected = pane.selected;
         }
     }
 
@@ -3574,9 +3594,9 @@ impl App {
             });
 
         let title = if dp.day_input.is_empty() {
-            format!(" Set due date: {} ", dp.month_year)
+            format!(" Set due date: {} (type YYYY-MM-DD or use arrows) ", dp.month_year)
         } else {
-            format!(" Set due date: {}-{} ", dp.month_year, dp.day_input)
+            format!(" Set due date: {}-{} (type YYYY-MM-DD or use arrows) ", dp.month_year, dp.day_input)
         };
         let popup_list = List::new(items)
             .block(Block::default().borders(Borders::ALL).title(title))
@@ -4176,6 +4196,22 @@ mod tests {
     }
 
     #[test]
+    fn date_picker_allows_direct_full_date_typing_without_backspacing_default() {
+        let mut app = make_app_with_tasks(&["Task one"]);
+        app.mode = AppMode::DatePicker;
+        app.date_picker = Some(DatePickerState::new("2026-04"));
+
+        // First typed key starts from scratch (YYYY-MM-DD).
+        for ch in ['2', '0', '3', '1', '-', '1', '2', '2', '5'] {
+            app.handle_date_picker_key(key_no_mod(KeyCode::Char(ch))).unwrap();
+        }
+
+        let dp = app.date_picker.as_ref().unwrap();
+        assert_eq!(dp.month_year, "2031-12");
+        assert_eq!(dp.day_input, "25");
+    }
+
+    #[test]
     fn space_no_op_when_not_in_disjoint_mode() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
         // disjoint_select is false by default
@@ -4371,12 +4407,48 @@ mod tests {
         ];
         app.display_indices = vec![0, 1, 2];
         app.selected = 0;
+        app.panes[0].display_rows = app.display_rows.clone();
+        app.panes[0].selected = 0;
         press_shift_key(&mut app, KeyCode::Char('j'));
         // shift-j should skip GroupHeader at row 1 and land on Task(1) at row 2
         assert_eq!(app.selected, 2, "shift-j should skip GroupHeader rows (D-08)");
         assert!(app.selected_tasks.contains(&0), "Task 0 (anchor) should be selected");
         assert!(app.selected_tasks.contains(&1), "Task 1 (at row 2) should be selected");
         assert!(!app.selected_tasks.is_empty());
+    }
+
+    #[test]
+    fn shift_range_in_multi_pane_uses_active_pane_rows_not_global_rows() {
+        let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
+        app.pane_add();
+
+        // Force multi-pane mode path and provide active pane rows with a header gap.
+        app.panes_hidden = false;
+        app.active_pane = 1;
+        app.panes[1].display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::GroupHeader("H".to_string()),
+            DisplayRow::Task(2),
+            DisplayRow::Task(3),
+        ];
+        app.panes[1].selected = 0;
+
+        // Keep global rows different to catch accidental global-row usage.
+        app.display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+            DisplayRow::Task(2),
+            DisplayRow::Task(3),
+        ];
+        app.selected = 0;
+
+        press_shift_key(&mut app, KeyCode::Down);
+
+        // Should skip header and land on canonical 2 from pane row 2.
+        assert_eq!(app.panes[1].selected, 2);
+        assert!(app.selected_tasks.contains(&0));
+        assert!(app.selected_tasks.contains(&2));
+        assert!(!app.selected_tasks.contains(&1), "must not accidentally select global-row task 1");
     }
 
     // ── Task 1 (19-03): Selection persistence through rebuild ─────────────────
