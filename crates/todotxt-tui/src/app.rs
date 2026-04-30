@@ -3864,7 +3864,10 @@ fn group_key_for(task: &Task, sort: &SortOrder) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::NamedTempFile;
+
+    static CLIPBOARD_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn make_app_with_tasks(task_lines: &[&str]) -> App {
         let mut file = NamedTempFile::new().expect("failed to create temp file");
@@ -3944,6 +3947,16 @@ mod tests {
         KeyEvent {
             code,
             modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
+    fn key_ctrl(code: crossterm::event::KeyCode) -> crossterm::event::KeyEvent {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
             kind: KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         }
@@ -4233,6 +4246,130 @@ mod tests {
         let dp = app.date_picker.as_ref().unwrap();
         assert_eq!(dp.month_year, "2031-12");
         assert_eq!(dp.day_input, "25");
+    }
+
+    #[test]
+    fn y_copies_active_task_to_clipboard() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["copy me"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard.set_text("seed".to_string()).is_err() {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        press_key(&mut app, KeyCode::Char('y'));
+
+        let copied = app
+            .clipboard
+            .as_mut()
+            .and_then(|cb| cb.get_text().ok());
+        assert_eq!(copied.as_deref(), Some("copy me"));
+    }
+
+    #[test]
+    fn y_copies_selected_tasks_in_descending_canonical_order() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard.set_text("seed".to_string()).is_err() {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(2);
+        press_key(&mut app, KeyCode::Char('y'));
+
+        let copied = app
+            .clipboard
+            .as_mut()
+            .and_then(|cb| cb.get_text().ok());
+        assert_eq!(copied.as_deref(), Some("task C\ntask A"));
+    }
+
+    #[test]
+    fn cut_composes_copy_then_delete_for_single_selected_task() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard.set_text("seed".to_string()).is_err() {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        app.disjoint_select = true;
+        app.selected = 1;
+        app.active_pane_mut().selected = 1;
+        press_key(&mut app, KeyCode::Char(' '));
+        press_key(&mut app, KeyCode::Char('y'));
+        press_key(&mut app, KeyCode::Char('d'));
+
+        assert_eq!(app.task_list.len(), 1);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+    }
+
+    #[test]
+    fn p_pastes_each_non_empty_clipboard_line_as_task() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["existing"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard
+            .set_text("first pasted\n\nsecond pasted\n".to_string())
+            .is_err()
+        {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        app.paste_from_clipboard().unwrap();
+
+        let tasks = app.task_list.tasks();
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[1].to_raw(), "first pasted");
+        assert_eq!(tasks[2].to_raw(), "second pasted");
+    }
+
+    #[test]
+    fn ctrl_v_in_adding_mode_pastes_first_clipboard_line_only() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["existing"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard
+            .set_text("first line\nsecond line".to_string())
+            .is_err()
+        {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        press_key(&mut app, KeyCode::Char('n'));
+        assert_eq!(app.mode, AppMode::Adding);
+
+        app.handle_editor_key(key_ctrl(KeyCode::Char('v'))).unwrap();
+
+        let content = app.editor.lines().join("\n");
+        assert_eq!(content, "first line");
     }
 
     #[test]
