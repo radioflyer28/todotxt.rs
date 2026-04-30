@@ -18,6 +18,7 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
 - One fast capture flow with predictable keybindings and minimal mode switching
 - Quick context/project setters from normal mode (`@` and `+`) for active/selected tasks
 - Autocomplete pickers for `@`/`+` tokens with match list, arrow navigation, and tab completion
+- Date autocomplete for partial `due:`/`t:` tokens with month-valid day suggestions and weekday labels
 - Safe bulk actions with affected-count preview and explicit cancel behavior
 - Basic clipboard workflow: cut/copy selected tasks and paste to create new tasks
 - New-task entry supports paste to enable fast duplicate-and-tweak workflows
@@ -32,7 +33,8 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
   - Add due-date and priority pickers with overwrite semantics for active or selected tasks
   - Add quick context/project setters triggered by `@` and `+` in normal mode
   - Add autocomplete match list with arrow-key navigation and tab-to-complete for context/project setters
-  - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, TAG-01, TAG-02, TAG-04, TAG-05
+  - Add date autocomplete for partial `due:`/`t:` inputs, including valid day options and weekday labels, and align `s` picker suggestions
+  - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, TAG-01, TAG-02, TAG-04, TAG-05, DATE-01, DATE-02, DATE-03, DATE-04
   - **Plans:** 2 plans
 
 - [ ] **Phase 34: Bulk Action Safety + Metadata Preservation**

@@ -19,6 +19,7 @@ Goal: minimize friction in task capture/edit workflows while improving safety an
 Target features:
 
 - `s` due-date picker and `i` priority picker with overwrite semantics
+- Date autocomplete for `due:` and `t:` partial inputs with month-valid day options and weekday labels
 - `@` quick context setter and `+` quick project setter for active/selected tasks
 - Autocomplete match list for `@`/`+` setters with arrow-key selection and tab completion
 - Fast add/edit task flows with predictable key behavior and minimal mode switching
@@ -86,6 +87,7 @@ Shipped:
 ### Active (v1.5)
 
 - CAP-01 through CAP-05 (fast capture/edit and property picker workflows)
+- DATE-01 through DATE-04 (month-aware date autocomplete and weekday-labeled suggestions)
 - TAG-01 through TAG-05 (quick context/project setters, autocomplete, and token safety)
 - BULK-01 through BULK-03 (high-impact bulk action safety)
 - CLIP-01 through CLIP-04 (basic clipboard cut/copy/paste workflows)

@@ -21,6 +21,13 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 - [ ] TAG-04: Context/project setters show autocomplete matches while typing, including potentially redundant near-matches.
 - [ ] TAG-05: Autocomplete supports arrow-key selection and tab-to-complete for fast token entry.
 
+### Date Autocomplete and Picker Guidance
+
+- [ ] DATE-01: Typing partial due tokens such as `due:2026-` or `t:2026-07-` shows valid numeric day suggestions for the target month.
+- [ ] DATE-02: Date suggestions display weekday labels next to each suggested day.
+- [ ] DATE-03: Date autocomplete supports arrow-key selection and tab-to-complete in date entry flows.
+- [ ] DATE-04: The `s` due-date setter uses the same month-aware day options and weekday labels as typed date autocomplete.
+
 ### Safe Bulk Actions
 
 - [ ] BULK-01: High-impact bulk actions (overwrite, cut, delete) display affected-count preview before execution.
@@ -79,6 +86,10 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | TAG-03 | Phase 34 | Pending |
 | TAG-04 | Phase 33 | Pending |
 | TAG-05 | Phase 33 | Pending |
+| DATE-01 | Phase 33 | Pending |
+| DATE-02 | Phase 33 | Pending |
+| DATE-03 | Phase 33 | Pending |
+| DATE-04 | Phase 33 | Pending |
 | BULK-01 | Phase 34 | Pending |
 | BULK-02 | Phase 34 | Pending |
 | BULK-03 | Phase 34 | Pending |
@@ -95,8 +106,8 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 Coverage:
 
-- v1 requirements: 23 total
-- Mapped to phases: 23
+- v1 requirements: 27 total
+- Mapped to phases: 27
 - Unmapped: 0
 
 ---
