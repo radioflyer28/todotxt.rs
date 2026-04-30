@@ -19,7 +19,7 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
-use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts, get_existing_projects};
+use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts, get_existing_projects, rank_matches};
 use crate::components::PaneList;
 
 
@@ -1067,12 +1067,193 @@ impl App {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
-        if key.code == KeyCode::Esc {
-            self.autocomplete = None;
-            self.mode = AppMode::Normal;
+        let trigger = match self.mode {
+            AppMode::QuickSetter(trigger) => trigger,
+            _ => return Ok(()),
+        };
+
+        match key.code {
+            KeyCode::Esc => {
+                self.autocomplete = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Down => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.focused = true;
+                    ac.selected = (ac.selected + 1).min(ac.items.len().saturating_sub(1));
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.focused = true;
+                    ac.selected = ac.selected.saturating_sub(1);
+                }
+            }
+            KeyCode::Backspace => {
+                let mut next_prefix = None;
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.prefix.pop();
+                    next_prefix = Some(ac.prefix.clone());
+                }
+                if let Some(prefix) = next_prefix {
+                    let ranked = self.quick_setter_candidates(trigger, &prefix);
+                    if let Some(ref mut ac) = self.autocomplete {
+                        ac.items = ranked;
+                        ac.selected = 0;
+                        ac.focused = false;
+                    }
+                }
+            }
+            KeyCode::Tab | KeyCode::Enter => {
+                let chosen = self.autocomplete.as_ref().and_then(|ac| {
+                    ac.items.get(ac.selected).cloned().or_else(|| {
+                        if Self::is_valid_quick_setter_token(&ac.prefix) {
+                            Some(ac.prefix.clone())
+                        } else {
+                            None
+                        }
+                    })
+                });
+
+                if let Some(token) = chosen {
+                    let targets = self.quick_setter_targets();
+                    let added = self.apply_token_to_tasks(trigger, &token, targets)?;
+                    if added == 0 {
+                        self.push_runtime_warning(format!("{}{} already present on target task(s)", trigger, token));
+                    }
+                }
+
+                self.autocomplete = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Char(c) if Self::is_valid_quick_setter_char(c) => {
+                let mut next_prefix = None;
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.prefix.push(c);
+                    next_prefix = Some(ac.prefix.clone());
+                }
+                if let Some(prefix) = next_prefix {
+                    let ranked = self.quick_setter_candidates(trigger, &prefix);
+                    if let Some(ref mut ac) = self.autocomplete {
+                        ac.items = ranked;
+                        ac.selected = 0;
+                        ac.focused = false;
+                    }
+                }
+            }
+            _ => {
+                self.autocomplete = None;
+                self.mode = AppMode::Normal;
+                self.handle_normal_key(key)?;
+            }
         }
 
         Ok(())
+    }
+
+    fn is_valid_quick_setter_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '-' || c == '/'
+    }
+
+    fn is_valid_quick_setter_token(token: &str) -> bool {
+        !token.trim().is_empty() && token.chars().all(Self::is_valid_quick_setter_char)
+    }
+
+    fn quick_setter_candidates(&self, trigger: char, prefix: &str) -> Vec<String> {
+        let mut all: Vec<String> = match trigger {
+            '@' => get_existing_contexts(&self.task_list).into_iter().collect(),
+            '+' => get_existing_projects(&self.task_list).into_iter().collect(),
+            _ => Vec::new(),
+        };
+
+        if Self::is_valid_quick_setter_token(prefix)
+            && !all.iter().any(|item| item.eq_ignore_ascii_case(prefix))
+        {
+            all.push(prefix.to_string());
+        }
+
+        all.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()).then_with(|| a.cmp(b)));
+        all.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        rank_matches(prefix, all)
+    }
+
+    fn quick_setter_targets(&self) -> Vec<usize> {
+        if !self.selected_tasks.is_empty() {
+            let mut indices: Vec<usize> = self
+                .selected_tasks
+                .iter()
+                .copied()
+                .filter(|&idx| idx < self.task_list.len())
+                .collect();
+            indices.sort_unstable_by(|a, b| b.cmp(a));
+            indices.dedup();
+            return indices;
+        }
+
+        self.active_canonical_selected().into_iter().collect()
+    }
+
+    fn apply_token_to_tasks(
+        &mut self,
+        trigger: char,
+        token: &str,
+        mut targets: Vec<usize>,
+    ) -> color_eyre::Result<usize> {
+        let normalized_token = token.trim();
+        if !Self::is_valid_quick_setter_token(normalized_token) {
+            return Ok(0);
+        }
+
+        targets.sort_unstable_by(|a, b| b.cmp(a));
+        targets.dedup();
+
+        let tasks = self.task_list.tasks();
+        let mut replacements: Vec<(usize, Task)> = Vec::new();
+        let mut added = 0usize;
+
+        for idx in targets {
+            if let Some(task) = tasks.get(idx) {
+                let already_exists = match trigger {
+                    '@' => task
+                        .contexts
+                        .iter()
+                        .any(|ctx| ctx.eq_ignore_ascii_case(normalized_token)),
+                    '+' => task
+                        .projects
+                        .iter()
+                        .any(|proj| proj.eq_ignore_ascii_case(normalized_token)),
+                    _ => true,
+                };
+
+                if already_exists {
+                    continue;
+                }
+
+                let new_line = format!(
+                    "{} {}{}",
+                    task.to_raw().trim_end(),
+                    trigger,
+                    normalized_token
+                );
+                replacements.push((idx, normalize_line(&new_line)));
+                added += 1;
+            }
+        }
+
+        if !replacements.is_empty() {
+            self.task_list
+                .batch_update(replacements)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to apply quick token: {}", e))?;
+            self.rebuild_all_panes();
+            self.rebuild_and_reanchor();
+            self.push_runtime_warning(format!("added {}{}", trigger, normalized_token));
+        }
+
+        self.selected_tasks.clear();
+        self.selection_anchor = None;
+        self.disjoint_select = false;
+
+        Ok(added)
     }
 
     /// Handle key events in the KeymapErrors read-only overlay (D-09, Phase 22).
