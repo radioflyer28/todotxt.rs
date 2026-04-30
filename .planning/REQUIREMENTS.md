@@ -1,44 +1,52 @@
-# Requirements: v1.5 Task Properties + Workspace Quick Picker
+# Requirements: v1.5 Capture Flow + Bulk Safety + Clipboard + Undo
 
 Defined: 2026-04-29
 Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
 
 ## v1 Requirements
 
-### Task Property Helpers
+### Capture Friction and Fast Entry
 
-- [ ] PROP-01: Pressing `s` opens a due-date picker that can set or overwrite `due:` on the active task.
-- [ ] PROP-02: Pressing `i` opens a priority picker that can set or overwrite priority `(A-Z)` on the active task.
-- [ ] PROP-03: Due-date and priority pickers apply to all selected tasks when multi-selection is active.
-- [ ] PROP-04: Bulk property edits preserve non-target metadata (`@context`, `+project`, creation/completion fields).
+- [ ] CAP-01: Add-task flow remains instant with minimal mode switching and predictable keybindings.
+- [ ] CAP-02: Edit-task flow remains fast and consistent with add-task key behavior.
+- [ ] CAP-03: Pressing `s` opens a due-date picker that can set or overwrite `due:` on active or selected tasks.
+- [ ] CAP-04: Pressing `i` opens a priority picker that can set or overwrite priority `(A-Z)` on active or selected tasks.
+- [ ] CAP-05: Property edits preserve non-target metadata (`@context`, `+project`, creation/completion fields).
 
-### Workspace File Picker
+### Safe Bulk Actions
 
-- [ ] WS-01: `config.toml` can define an array of workspace entries with `label`, `todo_path`, and `done_path`.
-- [ ] WS-02: A quick file picker lets users switch the active workspace by label.
-- [ ] WS-03: Switching workspace reloads task data from the selected todo/done paths without app restart.
-- [ ] WS-04: Workspace picker clearly shows current workspace and target workspace before switching.
+- [ ] BULK-01: High-impact bulk actions (overwrite, cut, delete) display affected-count preview before execution.
+- [ ] BULK-02: Bulk actions provide a clear cancel path and leave data unchanged on cancel.
+- [ ] BULK-03: Bulk action targeting remains stable for multi-selection and grouped/pane views.
 
-### Clipboard Workflows Across Workspaces
+### Basic Clipboard Workflows
 
 - [ ] CLIP-01: Copy action copies selected task line text in todo.txt-compatible raw form.
-- [ ] CLIP-02: Cut action copies selected task line text, then removes those tasks from source list after confirmation rules are applied.
-- [ ] CLIP-03: Paste action creates new task entries from clipboard lines in the current workspace.
-- [ ] CLIP-04: Clipboard behavior works across workspace switches (for example, copy in Work, paste in Home).
+- [ ] CLIP-02: Cut action copies selected task line text, then removes selected tasks after confirmation rules are applied.
+- [ ] CLIP-03: Paste action creates new task entries from one or more clipboard lines.
+- [ ] CLIP-04: Pasting is supported during new-task entry (`n`) to quickly duplicate and tweak tasks.
+
+### Recovery Path
+
+- [ ] UNDO-01: Short-horizon undo is available for recent destructive/high-impact actions.
+- [ ] UNDO-02: Undo restores both task content and selection state for the reverted action where feasible.
+- [ ] UNDO-03: Undo feedback is clear (what was reverted) and safe (no-op message when history is empty).
 
 ### Metadata Flexibility and Views
 
 - [ ] META-01: Context and project metadata remain plain todo.txt tokens (`@context`, `+project`) with no new custom schema.
 - [ ] META-02: Hierarchical tag conventions like `@email/waiting` and `+client/acme` are accepted as ordinary tokens and remain queryable.
-- [ ] VIEW-03: Existing filter/sort/group views continue to work consistently after workspace switching and property bulk edits.
+- [ ] VIEW-03: Existing filter/sort/group views continue to work consistently after capture, bulk, clipboard, and undo flows.
 
 ## v2 Requirements
 
 ### Optional Expansion (Defer Unless Needed)
 
 - META-03: Saved metadata templates/snippets for fast task entry.
-- WS-05: Optional workspace-specific default filters/views.
-- CLIP-05: Explicit "move to workspace" shortcut (beyond cut + switch + paste workflow).
+- WS-01: `config.toml` workspace entries (`label`, `todo_path`, `done_path`) for fast switching.
+- WS-02: Workspace quick picker UI and runtime source switching.
+- WS-03: Optional workspace-specific default filters/views.
+- CLIP-05: Explicit "move to workspace" shortcut.
 
 ## Out of Scope
 
@@ -47,32 +55,35 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | Task dependency graph (task A blocks task B) | High complexity and not aligned with low-friction todo.txt workflows. |
 | Custom metadata schema beyond todo.txt conventions | Would reduce interoperability and increase parsing complexity. |
 | Rich clipboard/object payloads with hidden metadata | Raw text copy/cut/paste keeps behavior transparent and predictable. |
-| Automatic cross-workspace conflict resolution | Not required for current single-user/local-file workflow. |
+| Workspace switching in v1.5 | Deferred to a later milestone to keep current scope focused and shippable. |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 | ----------- | ----- | ------ |
-| PROP-01 | Phase 33 | Pending |
-| PROP-02 | Phase 33 | Pending |
-| PROP-03 | Phase 34 | Pending |
-| PROP-04 | Phase 34 | Pending |
-| WS-01 | Phase 35 | Pending |
-| WS-02 | Phase 35 | Pending |
-| WS-03 | Phase 35 | Pending |
-| WS-04 | Phase 35 | Pending |
-| CLIP-01 | Phase 36 | Pending |
-| CLIP-02 | Phase 36 | Pending |
-| CLIP-03 | Phase 36 | Pending |
-| CLIP-04 | Phase 36 | Pending |
+| CAP-01 | Phase 33 | Pending |
+| CAP-02 | Phase 33 | Pending |
+| CAP-03 | Phase 33 | Pending |
+| CAP-04 | Phase 33 | Pending |
+| CAP-05 | Phase 34 | Pending |
+| BULK-01 | Phase 34 | Pending |
+| BULK-02 | Phase 34 | Pending |
+| BULK-03 | Phase 34 | Pending |
+| CLIP-01 | Phase 35 | Pending |
+| CLIP-02 | Phase 35 | Pending |
+| CLIP-03 | Phase 35 | Pending |
+| CLIP-04 | Phase 35 | Pending |
+| UNDO-01 | Phase 36 | Pending |
+| UNDO-02 | Phase 36 | Pending |
+| UNDO-03 | Phase 36 | Pending |
 | META-01 | Phase 37 | Pending |
 | META-02 | Phase 37 | Pending |
 | VIEW-03 | Phase 37 | Pending |
 
 Coverage:
 
-- v1 requirements: 15 total
-- Mapped to phases: 15
+- v1 requirements: 18 total
+- Mapped to phases: 18
 - Unmapped: 0
 
 ---

@@ -12,23 +12,25 @@ Milestone archives:
 - .planning/milestones/v1.3-ROADMAP.md
 - .planning/milestones/v1.4-ROADMAP.md
 
-## Current Milestone: v1.5 Task Properties + Workspace Quick Picker
+## Current Milestone: v1.5 Capture Flow + Bulk Safety + Clipboard + Undo
 
-Goal: reduce friction when editing task metadata and moving work between labeled todo.txt workspaces.
+Goal: minimize friction in task capture/edit workflows while improving safety and recovery for high-impact actions.
 
 Target features:
 
 - `s` due-date picker and `i` priority picker with overwrite semantics
-- Multi-select-safe property edits for due/priority
-- Config-defined workspace quick picker with labeled todo/done file pairs
-- Clipboard-friendly copy/cut/paste workflows across workspace files
+- Fast add/edit task flows with predictable key behavior and minimal mode switching
+- Safe bulk operations with affected-count preview and explicit cancel path
+- Basic clipboard workflows: cut/copy selected tasks and paste to create new tasks
+- Paste support inside new-task entry (`n`) for duplicate-and-tweak workflows
+- Short-horizon undo for destructive/high-impact actions
 - Hierarchical metadata token conventions (for example `@email/waiting`) without breaking todo.txt compatibility
-- Preserve flexible view behavior (filter/sort/group) across workspace switching and metadata edits
+- Preserve flexible view behavior (filter/sort/group) across capture/bulk/clipboard/undo flows
 
 ## Next Milestone Goals
 
-- Ship low-friction property editing and workspace switching for high-frequency task maintenance workflows
-- Strengthen cross-workspace flow using minimal clipboard primitives rather than complex migration tooling
+- Ship low-friction task capture and metadata editing for high-frequency maintenance workflows
+- Strengthen user trust with safer bulk workflows and lightweight recovery
 - Preserve discoverability and predictable view behavior from v1.4 while extending metadata ergonomics
 
 ---
@@ -81,11 +83,12 @@ Shipped:
 
 ### Active (v1.5)
 
-- PROP-01 through PROP-04 (task property pickers and bulk overwrite safety)
-- WS-01 through WS-04 (workspace config schema and quick file switching)
-- CLIP-01 through CLIP-04 (basic clipboard transfer across workspace files)
+- CAP-01 through CAP-05 (fast capture/edit and property picker workflows)
+- BULK-01 through BULK-03 (high-impact bulk action safety)
+- CLIP-01 through CLIP-04 (basic clipboard cut/copy/paste workflows)
+- UNDO-01 through UNDO-03 (short-horizon recovery path)
 - META-01 through META-02 (todo.txt-native metadata with hierarchical token conventions)
-- VIEW-03 (view consistency across workspace and metadata flows)
+- VIEW-03 (view consistency across capture and mutation flows)
 
 ### Planned (future milestone)
 

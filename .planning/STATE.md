@@ -1,7 +1,7 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.5
-milestone_name: Task Properties + Workspace Quick Picker
+milestone_name: Capture Flow + Bulk Safety + Clipboard + Undo
 current_phase: 33
 current_plan: none
 status: requirements_and_roadmap_defined
@@ -25,7 +25,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** v1.5 kickoff — task property helpers and workspace quick picker
+**Current focus:** v1.5 kickoff — capture friction, bulk safety, clipboard, and undo
 
 ## Current Position
 
@@ -36,7 +36,7 @@ Last activity: 2026-04-29 — milestone v1.5 created from user-approved scope
 
 ## Next Step
 
-Run /gsd-plan-phase 33 to begin implementation for property picker foundations (`s` due picker, `i` priority picker).
+Run /gsd-plan-phase 33 to begin implementation for fast capture flow and property pickers (`s` due picker, `i` priority picker).
 
 ## Deferred Items
 
