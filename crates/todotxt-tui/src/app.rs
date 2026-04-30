@@ -21,6 +21,7 @@ use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
 use crate::state::{Pane, DisplayRow, AutocompleteState, AutocompleteMode, FilteringState, FilterDefiningState, DatePickerState, PriorityPickerState, get_existing_contexts, get_existing_projects, rank_matches};
 use crate::components::PaneList;
+use arboard::Clipboard;
 
 
 
@@ -136,6 +137,9 @@ pub struct App {
     /// When true, all panes are hidden and rendering falls back to single-pane view (D-13, Phase 26).
     /// This flag is session-only (not persisted across restarts). All pane state is preserved.
     pub panes_hidden: bool,
+    /// Clipboard instance, lazily initialized on first copy/paste operation (Phase 35, CLIP-01).
+    /// Kept as `None` until first use to avoid startup errors in headless environments.
+    pub clipboard: Option<Clipboard>,
 }
 
 impl App {
@@ -217,6 +221,7 @@ impl App {
             active_pane: 0,
             pane_counter,
             panes_hidden: false,
+            clipboard: None,
         };
         // Hydrate every pane immediately so non-active panes are populated on first render.
         app.rebuild_all_panes();
@@ -1052,6 +1057,11 @@ impl App {
             }
 
 
+            // 'y' copies selected or active task(s) to system clipboard (Phase 35, Plan 01, CLIP-01)
+            KeyCode::Char('y') if key.modifiers == KeyModifiers::NONE => {
+                self.copy_selected_to_clipboard()?;
+            }
+
             // '@' opens quick context setter from Normal mode (Phase 33, Plan 02)
             _ if self.key_is_action(key, "quick_context") => {
                 if !self.has_quick_setter_targets() {
@@ -1223,6 +1233,72 @@ impl App {
         }
 
         self.active_canonical_selected().into_iter().collect()
+    }
+
+    /// Copy selected or active task text to the system clipboard (Phase 35, Plan 01, CLIP-01).
+    /// Targets selected_tasks (if non-empty) or the active cursor task.
+    /// Multi-task copy joins lines with newlines in descending-canonical-index order (D-08, D-17).
+    fn copy_selected_to_clipboard(&mut self) -> color_eyre::Result<()> {
+        // 1. Determine targets: selected tasks or active task (D-03)
+        let mut targets: Vec<usize> = if !self.selected_tasks.is_empty() {
+            self.selected_tasks
+                .iter()
+                .copied()
+                .filter(|&idx| idx < self.task_list.len())
+                .collect()
+        } else if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected) {
+            vec![*idx]
+        } else {
+            vec![]
+        };
+
+        // Abort silently if no task targeted (D-10: skip header rows)
+        if targets.is_empty() {
+            self.push_runtime_warning("No task selected");
+            return Ok(());
+        }
+
+        // 2. Sort in descending-canonical-index order (D-08, D-17)
+        targets.sort_unstable_by(|a, b| b.cmp(a));
+
+        // 3. Collect raw text from each target
+        let tasks = self.task_list.tasks();
+        let clipboard_text: Vec<String> = targets
+            .iter()
+            .filter_map(|&idx| tasks.get(idx))
+            .map(|t| t.to_raw().to_string())
+            .collect();
+        let text_to_copy = clipboard_text.join("\n");
+
+        // 4. Lazy-initialize arboard (D-02: avoid startup errors in headless environments)
+        if self.clipboard.is_none() {
+            match Clipboard::new() {
+                Ok(cb) => self.clipboard = Some(cb),
+                Err(_) => {
+                    self.push_runtime_warning("Clipboard unavailable");
+                    return Ok(());
+                }
+            }
+        }
+
+        // 5. Write to clipboard and show status feedback (D-09)
+        if let Some(ref mut cb) = self.clipboard {
+            match cb.set_text(text_to_copy) {
+                Ok(_) => {
+                    let msg = if targets.len() == 1 {
+                        "copied 1 task".to_string()
+                    } else {
+                        format!("copied {} tasks", targets.len())
+                    };
+                    self.push_runtime_warning(msg);
+                }
+                Err(_) => {
+                    self.push_runtime_warning("Failed to copy to clipboard");
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn apply_token_to_tasks(
