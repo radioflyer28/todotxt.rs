@@ -268,7 +268,6 @@ impl App {
 
     /// Capture a snapshot of the current task list and cursor as an undo entry (Phase 36, D-04/D-05).
     /// Overwrites any previous entry (depth-1 semantics, D-02).
-    #[allow(dead_code)]
     fn push_undo_entry(&mut self) {
         self.undo_entry = Some(crate::state::UndoEntry {
             tasks: self.task_list.tasks().to_vec(),
@@ -1366,6 +1365,7 @@ impl App {
         }
 
         let count = lines.len();
+        self.push_undo_entry();
 
         // Parse each line as a Task and add to task_list (D-12: raw text, no transformation)
         for line in lines {
@@ -1469,6 +1469,7 @@ impl App {
         }
 
         if !replacements.is_empty() {
+            self.push_undo_entry();
             self.task_list
                 .batch_update(replacements)
                 .map_err(|e| color_eyre::eyre::eyre!("Failed to apply quick token: {}", e))?;
@@ -1997,6 +1998,7 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
         if key.code == KeyCode::Char('y') {
+            self.push_undo_entry();
             if self.selected_tasks.is_empty() {
                 // Existing single-task path (D-01 fallback: d with empty selection)
                 if let Some(idx) = self.active_canonical_selected() {
@@ -2111,6 +2113,7 @@ impl App {
                         })
                         .collect();
 
+                    self.push_undo_entry();
                     self.task_list
                         .batch_update(replacements)
                         .map_err(|e| color_eyre::eyre::eyre!("Failed to bulk append: {}", e))?;
@@ -2276,6 +2279,7 @@ impl App {
                         }
 
                         if !replacements.is_empty() {
+                            self.push_undo_entry();
                             let _ = self.task_list.batch_update(replacements);
                             self.rebuild_and_reanchor();
                         }
@@ -2344,6 +2348,7 @@ impl App {
                             .collect();
 
                         if !replacements.is_empty() {
+                            self.push_undo_entry();
                             self.task_list
                                 .batch_update(replacements)
                                 .map_err(|e| color_eyre::eyre::eyre!("Failed to set priority: {}", e))?;
@@ -2380,6 +2385,7 @@ impl App {
                 // T-21-07: Adding always uses Task::parse — normalize_edit does not apply here.
                 // User is creating a new task from scratch; there is no "original" to merge into.
                 let task = Task::parse(&text);
+                self.push_undo_entry();
                 self.task_list
                     .add(task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to add task: {}", e))?;
@@ -2403,6 +2409,7 @@ impl App {
                 } else {
                     Task::parse(&text)
                 };
+                self.push_undo_entry();
                 self.task_list
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
@@ -2699,6 +2706,7 @@ impl App {
         let task = self.task_list.tasks()[idx].clone();
         let was_completed = task.completed;
         let toggled = task.with_completed(!was_completed);
+        self.push_undo_entry();
         // update() calls save() internally — single atomic disk write (temp rename).
         if let Err(e) = self.task_list.update(idx, toggled) {
             // Non-fatal: write to stderr (terminal restore guard is active).
@@ -2734,6 +2742,7 @@ impl App {
         let task = self.task_list.tasks()[idx].clone();
         let was_completed = task.completed;
         let toggled = task.with_completed(!was_completed);
+        self.push_undo_entry();
         if let Err(e) = self.task_list.update(idx, toggled) {
             eprintln!("toggle_done error: {e}");
         }
@@ -2753,6 +2762,7 @@ impl App {
         };
 
         if let Some(idx) = idx {
+            self.push_undo_entry();
             self.task_list
                 .delete(idx)
                 .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
@@ -5322,6 +5332,60 @@ mod tests {
         // Simulate Ctrl+Z
         press_ctrl_key(&mut app, KeyCode::Char('z'));
         assert_eq!(app.task_list.tasks().len(), 2, "Ctrl+Z must restore the task list");
+    }
+
+    // ── Phase 36 Plan 02: end-to-end undo round-trip integration tests ───────
+
+    #[test]
+    fn delete_undo_round_trip() {
+        // delete_active_task now calls push_undo_entry() internally
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 1; // select "task B"
+        app.rebuild_display_indices();
+
+        // Trigger delete via 'd' key which routes to delete_active_task in confirm-skip path
+        // Use delete_active_task directly to test the wired site
+        app.delete_active_task().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 2, "task B should be deleted");
+
+        // Undo via Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks().len(), 3, "task list should have 3 tasks after undo");
+    }
+
+    #[test]
+    fn add_undo_round_trip() {
+        // save_and_exit (AppMode::Adding) now calls push_undo_entry() before task_list.add()
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        let original_count = app.task_list.tasks().len();
+
+        // Simulate adding via save_and_exit
+        app.mode = AppMode::Adding;
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("new task");
+            ta
+        };
+        app.save_and_exit().unwrap();
+        assert_eq!(app.task_list.tasks().len(), original_count + 1, "task should be added");
+
+        // Undo via Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks().len(), original_count, "Ctrl+Z should remove the added task");
+    }
+
+    #[test]
+    fn toggle_undo_round_trip() {
+        // pane_toggle_done now calls push_undo_entry() before task_list.update()
+        let mut app = make_app_with_tasks(&["task A"]);
+        let was_completed = app.task_list.tasks()[0].completed;
+
+        app.pane_toggle_done();
+        assert_ne!(app.task_list.tasks()[0].completed, was_completed, "completion state should have changed");
+
+        // Undo via Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks()[0].completed, was_completed, "Ctrl+Z should restore original completion state");
     }
 }
 
