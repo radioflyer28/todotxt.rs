@@ -36,6 +36,8 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
   - Add date autocomplete for partial `due:`/`t:` inputs, including valid day options and weekday labels, and align `s` picker suggestions
   - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, TAG-01, TAG-02, TAG-04, TAG-05, DATE-01, DATE-02, DATE-03, DATE-04
   - **Plans:** 2 plans
+    - [ ] 33-01-PLAN.md — Date autocomplete and due-date picker
+    - [ ] 33-02-PLAN.md — Quick context/project setters with autocomplete
 
 - [ ] **Phase 34: Bulk Action Safety + Metadata Preservation**
   - Add affected-count preview and cancel path for high-impact actions
