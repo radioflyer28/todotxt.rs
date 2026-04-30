@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use chrono::Local;
+use chrono::{Local, Datelike};
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append, normalize_line};
@@ -999,6 +999,23 @@ impl App {
             _ if self.key_is_action(key, "pane_hide_toggle") => {
                 self.pane_hide_toggle();
                 self.rebuild_and_reanchor();
+            }
+
+            // 's' opens the date picker for setting due dates (Phase 33, Plan 01)
+            KeyCode::Char('s') if display_count > 0 && key.modifiers == KeyModifiers::NONE => {
+                // Check if active row is a task (not a group header)
+                if let Some(DisplayRow::Task(_)) = self.display_rows.get(self.selected) {
+                    // Use current month from system clock
+                    let now = chrono::Local::now();
+                    let month_year = format!("{:04}-{:02}", now.year(), now.month());
+                    
+                    if let Ok(dp) = crate::state::generate_date_suggestions(&month_year) {
+                        if !dp.is_empty() {
+                            self.date_picker = Some(DatePickerState::new(&month_year));
+                            self.mode = AppMode::DatePicker;
+                        }
+                    }
+                }
             }
 
             _ => {}
