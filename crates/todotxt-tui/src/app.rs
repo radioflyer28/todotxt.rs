@@ -19,7 +19,7 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
-use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState};
+use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState, DatePickerState};
 use crate::components::PaneList;
 
 
@@ -41,6 +41,9 @@ pub enum AppMode {
     KeymapErrors,
     /// Read-only overlay showing all keybindings (D-10, Phase 22 parity).
     Help,
+    /// Date picker overlay for setting due dates (Phase 33, Plan 01).
+    #[allow(dead_code)]
+    DatePicker,
 }
 
 /// Top-level application state.
@@ -63,6 +66,8 @@ pub struct App {
     pub pending_reload: bool,
     /// Active autocomplete popup state, or `None` when not shown.
     pub autocomplete: Option<AutocompleteState>,
+    /// Active date picker state, or `None` when not shown (Phase 33, Plan 01).
+    pub date_picker: Option<DatePickerState>,
     /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
     pub display_indices: Vec<usize>,
     /// Toggle grouped rendering with non-selectable header rows.
@@ -174,6 +179,7 @@ impl App {
             editor: TextArea::default(),
             pending_reload: false,
             autocomplete: None,
+            date_picker: None,
             display_indices: Vec::new(),
             grouping: false,
             display_rows: Vec::new(),
@@ -568,6 +574,7 @@ impl App {
                     AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
                     AppMode::KeymapErrors => self.handle_keymap_errors_key(key)?,
                     AppMode::Help => self.handle_help_key(key)?,
+                    AppMode::DatePicker => self.handle_date_picker_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -798,7 +805,7 @@ impl App {
                     || (key.code == KeyCode::Char('u')
                         && key.modifiers == KeyModifiers::NONE)) =>
             {
-                if let Some(canonical) = self.canonical_selected() {
+                if let Some(canonical) = self.active_canonical_selected() {
                     let raw = self.task_list.tasks()[canonical].to_raw().to_string();
                     let mut ed = TextArea::default();
                     ed.insert_str(&raw);
@@ -807,12 +814,26 @@ impl App {
                 }
             }
 
-            _ if !self.selected_tasks.is_empty() && display_count > 0 && self.key_is_action(key, "bulk_delete") => {
-                self.mode = AppMode::DeleteConfirm;
+            _ if display_count > 0 && self.key_is_action(key, "bulk_delete") => {
+                if self.selected_tasks.len() > 1 {
+                    self.mode = AppMode::DeleteConfirm;
+                } else {
+                    self.delete_active_task()?;
+                }
             }
 
-            _ if display_count > 0 && self.key_is_action(key, "delete") => {
-                self.mode = AppMode::DeleteConfirm;
+            _ if display_count > 0
+                && (self.key_is_action(key, "delete")
+                    || (key.code == KeyCode::Delete
+                        && key.modifiers == KeyModifiers::NONE)
+                    || (key.code == KeyCode::Backspace
+                        && key.modifiers == KeyModifiers::NONE)) =>
+            {
+                if self.selected_tasks.len() > 1 {
+                    self.mode = AppMode::DeleteConfirm;
+                } else {
+                    self.delete_active_task()?;
+                }
             }
 
             _ if self.key_is_action(key, "sort_cycle") => {
@@ -1314,11 +1335,7 @@ impl App {
                     .to_string();
 
                 if let Some(pane) = self.panes.get_mut(pane_idx) {
-                    pane.label = if new_label.is_empty() {
-                        format!("Pane {}", pane.id + 1)
-                    } else {
-                        new_label
-                    };
+                    pane.label = new_label;
                 }
 
                 self.editor = TextArea::default();
@@ -1413,10 +1430,12 @@ impl App {
         if key.code == KeyCode::Char('y') {
             if self.selected_tasks.is_empty() {
                 // Existing single-task path (D-01 fallback: d with empty selection)
-                if let Some(idx) = self.canonical_selected() {
+                if let Some(idx) = self.active_canonical_selected() {
                     self.task_list
                         .delete(idx)
                         .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
+                    // Keep all panes' canonical rows in sync after mutation.
+                    self.rebuild_all_panes();
                     self.rebuild_and_reanchor();
                 }
             } else {
@@ -1428,6 +1447,8 @@ impl App {
                         .delete(idx)
                         .map_err(|e| color_eyre::eyre::eyre!("Failed to bulk delete task {}: {}", idx, e))?;
                 }
+                // Keep all panes' canonical rows in sync after mutation.
+                self.rebuild_all_panes();
                 self.rebuild_and_reanchor();
                 // D-04: clear selection and exit disjoint mode after bulk delete
                 self.selected_tasks.clear();
@@ -1516,6 +1537,86 @@ impl App {
                 // Forward all other keys to the editor widget
                 self.editor.input(key);
             }
+        }
+        Ok(())
+    }
+
+    // ── Date picker key handler ───────────────────────────────────────────────
+
+    fn handle_date_picker_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                // Cancel — no tasks mutated
+                self.date_picker = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Down => {
+                if let Some(ref mut dp) = self.date_picker {
+                    dp.focused = true;
+                    dp.select_next();
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut dp) = self.date_picker {
+                    dp.focused = true;
+                    dp.select_prev();
+                }
+            }
+            KeyCode::Tab | KeyCode::Enter => {
+                // Accept selected day and mutate task(s)
+                if let Some(dp) = self.date_picker.take() {
+                    if let Some(selected_day) = dp.selected_day {
+                        let date_str = format!("{}-{:02}", dp.month_year, selected_day);
+                        let new_due_token = format!("due:{}", date_str);
+                        
+                        // Determine targets: selected tasks or active task
+                        let targets: Vec<usize> = if !self.selected_tasks.is_empty() {
+                            let mut indices: Vec<usize> = self.selected_tasks.iter().copied().collect();
+                            indices.sort_unstable_by(|a, b| b.cmp(a)); // Descending
+                            indices
+                        } else {
+                            // Get canonical index of active task
+                            if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected) {
+                                vec![*idx]
+                            } else {
+                                vec![]
+                            }
+                        };
+
+                        // Update each task
+                        let tasks = self.task_list.tasks();
+                        let mut replacements: Vec<(usize, Task)> = Vec::new();
+                        
+                        for &idx in &targets {
+                            if let Some(task) = tasks.get(idx) {
+                                // Reconstruct task line without old due: token
+                                let raw_without_due = task.to_raw()
+                                    .split_whitespace()
+                                    .filter(|token| !token.starts_with("due:"))
+                                    .collect::<Vec<_>>()
+                                    .join(" ");
+                                
+                                // Append new due token and re-parse to normalize
+                                let new_line = format!("{} {}", raw_without_due.trim_end(), new_due_token);
+                                let normalized = normalize_line(&new_line);
+                                replacements.push((idx, normalized));
+                            }
+                        }
+
+                        if !replacements.is_empty() {
+                            let _ = self.task_list.batch_update(replacements);
+                            self.rebuild_and_reanchor();
+                        }
+                    }
+                }
+                self.selected_tasks.clear();
+                self.selection_anchor = None;
+                self.mode = AppMode::Normal;
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -1745,6 +1846,21 @@ impl App {
         }
     }
 
+    /// Resolve selected canonical index from the current interaction scope.
+    ///
+    /// In multi-pane mode, uses the active pane cursor; otherwise uses global/single-pane cursor.
+    fn active_canonical_selected(&self) -> Option<usize> {
+        let selected = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            self.pane_canonical_selected()
+        } else {
+            self.canonical_selected()
+        };
+
+        // Guard against stale display mappings (e.g., after reload/race) so caller paths
+        // never index tasks out-of-bounds.
+        selected.filter(|&idx| idx < self.task_list.len())
+    }
+
     /// Toggle the cursor row's canonical index in `selected_tasks`.
     ///
     /// No-op when the cursor is on a `GroupHeader` row (D-08).
@@ -1872,6 +1988,31 @@ impl App {
         self.rebuild_all_panes();
     }
 
+    /// Delete either the single selected task or the active cursor task immediately.
+    fn delete_active_task(&mut self) -> color_eyre::Result<()> {
+        let idx = if self.selected_tasks.len() == 1 {
+            self.selected_tasks
+                .iter()
+                .next()
+                .copied()
+                .filter(|&idx| idx < self.task_list.len())
+        } else {
+            self.active_canonical_selected()
+        };
+
+        if let Some(idx) = idx {
+            self.task_list
+                .delete(idx)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
+            self.rebuild_all_panes();
+            self.rebuild_and_reanchor();
+        }
+
+        self.clear_selection();
+        self.mode = AppMode::Normal;
+        Ok(())
+    }
+
     /// Toggle the cursor row's canonical index in `selected_tasks` for the active pane (Phase 24-02).
     fn pane_toggle_task_selection(&mut self) {
         self.reconcile_active_pane();
@@ -1935,6 +2076,8 @@ impl App {
         }
         if matches!(pane.display_rows.get(prev), Some(DisplayRow::Task(_))) {
             pane.selected = prev;
+        } else {
+            pane.label_selected = true;
         }
     }
 
@@ -2029,6 +2172,13 @@ impl App {
                 self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
                 self.render_help_overlay(frame, frame.area());
+            }
+            AppMode::DatePicker => {
+                // Task list visible behind; date picker overlay floats above (Phase 33, Plan 01).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_date_picker_overlay(frame, chunks[1]);
             }
         }
     }
@@ -2246,7 +2396,7 @@ impl App {
             middle.push_str(" [+deferred]");
         }
 
-        let right = "  q quit | n add | u edit | d del | D bulk del | T bulk app | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
+        let right = "  q quit | n add | u edit | d/Del/Bksp del | D bulk del (confirm) | T bulk app | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -2527,8 +2677,8 @@ impl App {
             format!("Delete: \"{}\"  y=confirm  any=cancel", preview)
         } else {
             // Cursor-task delete (selection empty): existing behavior
-            let preview = match self.canonical_selected() {
-                Some(idx) => tasks[idx].to_raw().to_string(),
+            let preview = match self.active_canonical_selected() {
+                Some(idx) => tasks.get(idx).map(|t| t.to_raw().to_string()).unwrap_or_default(),
                 None => String::new(),
             };
             format!("Delete: \"{}\"  y=confirm  any=cancel", preview)
@@ -2612,6 +2762,66 @@ impl App {
             .highlight_style(highlight_style);
 
         let mut list_state = ListState::default().with_selected(Some(ac.selected));
+
+        frame.render_widget(ratatui::widgets::Clear, popup_area);
+        frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+
+    /// Render the date picker overlay (Phase 33, Plan 01).
+    /// Displays month/year and a list of day suggestions with weekday labels.
+    fn render_date_picker_overlay(&self, frame: &mut Frame, footer_area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+
+        let dp = match &self.date_picker {
+            Some(dp) if !dp.suggestions.is_empty() => dp,
+            _ => return,
+        };
+
+        let popup_height = (dp.suggestions.len() as u16).min(10).min(footer_area.y);
+        if popup_height == 0 { return; }
+
+        let popup_width = dp.suggestions.iter()
+            .map(|s| s.len() + 4)
+            .max()
+            .unwrap_or(20)
+            .min(40) as u16;
+        let popup_width = popup_width.min(frame.area().width);
+
+        let popup_area = Rect {
+            x: footer_area.x,
+            y: footer_area.y.saturating_sub(popup_height),
+            width: popup_width,
+            height: popup_height,
+        };
+
+        let items: Vec<ListItem> = dp.suggestions.iter()
+            .map(|day_str| ListItem::new(day_str.clone()))
+            .collect();
+
+        let highlight_style = if dp.focused {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+
+        let selected_idx = dp.selected_day
+            .and_then(|day| {
+                dp.suggestions.iter().position(|s| {
+                    s.split_whitespace().next()
+                        .and_then(|d| d.parse::<u32>().ok())
+                        .map(|d| d == day)
+                        .unwrap_or(false)
+                })
+            });
+
+        let title = format!(" Set due date: {} ", dp.month_year);
+        let popup_list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(title))
+            .highlight_style(highlight_style);
+
+        let mut list_state = ListState::default().with_selected(selected_idx);
 
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
@@ -2878,6 +3088,159 @@ mod tests {
 
         press_ctrl_key(&mut app, KeyCode::Char('p'));
         assert!(!app.panes_hidden, "Ctrl+P should toggle panes back on");
+    }
+
+    #[test]
+    fn edit_targets_selected_row_in_active_pane() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.pane_add();
+        app.rebuild_all_panes();
+        assert!(!app.should_show_single_pane(), "must be in multi-pane mode");
+
+        app.active_pane_mut().selected = 1;
+        press_key(&mut app, KeyCode::Char('u'));
+
+        match app.mode {
+            AppMode::Editing { original_idx } => {
+                assert_eq!(original_idx, 1, "edit should target selected row, not first row");
+            }
+            _ => panic!("expected Editing mode after edit key"),
+        }
+    }
+
+    #[test]
+    fn delete_targets_selected_row_in_active_pane() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.pane_add();
+        app.rebuild_all_panes();
+        assert!(!app.should_show_single_pane(), "must be in multi-pane mode");
+
+        app.active_pane_mut().selected = 1;
+
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.task_list.len(), 2);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task C");
+        assert_eq!(app.mode, AppMode::Normal, "single delete should not enter confirmation mode");
+    }
+
+    #[test]
+    fn active_canonical_selected_filters_stale_global_index() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.display_rows = vec![DisplayRow::Task(999)];
+        app.selected = 0;
+
+        assert_eq!(app.active_canonical_selected(), None);
+    }
+
+    #[test]
+    fn delete_confirm_y_with_stale_index_is_noop_not_panic() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.display_rows = vec![DisplayRow::Task(999)];
+        app.selected = 0;
+        app.mode = AppMode::DeleteConfirm;
+
+        let confirm_key = KeyEvent {
+            code: KeyCode::Char('y'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+
+        app.handle_delete_confirm_key(confirm_key).unwrap();
+
+        assert_eq!(app.task_list.len(), 2, "stale index should not delete any task");
+        assert_eq!(app.mode, AppMode::Normal, "mode should return to normal");
+    }
+
+    #[test]
+    fn single_delete_with_duplicate_content_targets_cursor_row() {
+        let mut app = make_app_with_tasks(&["n", "n", "n", "n", "n"]);
+        app.selected = 3;
+
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.task_list.len(), 4);
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn single_selected_task_delete_with_duplicate_content_no_panic() {
+        let mut app = make_app_with_tasks(&["n", "n", "n", "n", "n"]);
+
+        // Simulate one task selected in disjoint mode and delete via 'd'.
+        app.disjoint_select = true;
+        app.selected = 2;
+        press_key(&mut app, KeyCode::Char(' ')); // select one task
+        assert_eq!(app.selected_tasks.len(), 1);
+
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.task_list.len(), 4, "single selected delete should remove one task");
+        assert!(app.selected_tasks.is_empty(), "selection should clear after delete path");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn backspace_alias_deletes_single_task_immediately() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 1;
+
+        press_key(&mut app, KeyCode::Backspace);
+
+        assert_eq!(app.task_list.len(), 2);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task C");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn delete_key_alias_deletes_single_task_immediately() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 1;
+
+        press_key(&mut app, KeyCode::Delete);
+
+        assert_eq!(app.task_list.len(), 2);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task C");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn delete_with_multiple_selected_tasks_still_prompts_confirmation() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.disjoint_select = true;
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(2);
+        assert_eq!(app.selected_tasks.len(), 2);
+
+        press_key(&mut app, KeyCode::Char('d'));
+
+        assert_eq!(app.mode, AppMode::DeleteConfirm, "multi-delete should still require confirmation");
+        assert_eq!(app.task_list.len(), 3, "tasks should remain until confirmation");
+    }
+
+    #[test]
+    fn delete_rebuilds_inactive_panes_to_prevent_stale_indices() {
+        let mut app = make_app_with_tasks(&["n", "n", "n"]);
+        app.pane_add();
+        app.rebuild_all_panes();
+        assert_eq!(app.panes.len(), 2);
+
+        // Delete from pane 1; pane 0 must also be rebuilt to avoid stale canonical indices.
+        app.active_pane = 1;
+        app.active_pane_mut().selected = 1;
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.mode, AppMode::Normal);
+
+        for pane in &app.panes {
+            for row in &pane.display_rows {
+                if let DisplayRow::Task(idx) = row {
+                    assert!(*idx < app.task_list.len(), "pane contains stale canonical index after delete");
+                }
+            }
+        }
     }
 
     #[test]
@@ -3568,6 +3931,35 @@ mod tests {
     }
 
     #[test]
+    fn pane_label_edit_save_allows_empty_label() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].label_selected = true;
+        assert_eq!(app.panes[1].label, "Work");
+
+        press_key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, AppMode::PaneLabelEditing { pane_idx: 1 });
+
+        app.editor = TextArea::default();
+
+        app.handle_pane_label_edit_key(
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            },
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(app.panes[1].label, "");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
     fn pane_label_edit_escape_cancels_changes() {
         use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
 
@@ -3594,6 +3986,24 @@ mod tests {
 
         assert_eq!(app.panes[1].label, original);
         assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn pane_label_can_be_selected_with_up_when_group_header_is_above_first_task() {
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].display_rows = vec![
+            DisplayRow::GroupHeader("Group".to_string()),
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+        ];
+        app.panes[1].selected = 1;
+        app.panes[1].label_selected = false;
+
+        app.pane_move_up();
+
+        assert!(app.panes[1].label_selected, "Up from first task after group header should select pane header");
+        assert_eq!(app.panes[1].selected, 1, "header selection should not move cursor to a different task row");
     }
 
     // ── Phase 28: Per-pane FilterDefining FAIL-1 fix ──────────────────────────
