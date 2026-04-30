@@ -3,7 +3,7 @@
 use todotxt_core::{SortOrder, TaskList};
 use chrono::NaiveDate;
 use chrono::Datelike;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayRow {
@@ -281,7 +281,9 @@ pub fn rank_matches(typed_prefix: &str, candidates: Vec<String>) -> Vec<String> 
             exact_matches.push(candidate);
         } else if candidate_lower.starts_with(&typed_lower) {
             prefix_matches.push(candidate);
-        } else if candidate_lower.contains(&typed_lower) {
+        } else if candidate_lower.contains(&typed_lower)
+            || is_fuzzy_subsequence(&typed_lower, &candidate_lower)
+        {
             near_matches.push(candidate);
         }
     }
@@ -292,16 +294,50 @@ pub fn rank_matches(typed_prefix: &str, candidates: Vec<String>) -> Vec<String> 
     exact_matches
 }
 
+fn is_fuzzy_subsequence(needle: &str, haystack: &str) -> bool {
+    let mut needle_chars = needle.chars();
+    let mut current = needle_chars.next();
+
+    for ch in haystack.chars() {
+        if Some(ch) == current {
+            current = needle_chars.next();
+            if current.is_none() {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Extract all @context tokens from task list, deduplicated and sorted.
 #[allow(dead_code)]
 pub fn get_existing_contexts(task_list: &TaskList) -> HashSet<String> {
-    task_list.tasks().iter().flat_map(|t| t.contexts.clone()).collect()
+    dedupe_tokens(task_list.tasks().iter().flat_map(|t| t.contexts.clone()))
 }
 
 /// Extract all +project tokens from task list, deduplicated and sorted.
 #[allow(dead_code)]
 pub fn get_existing_projects(task_list: &TaskList) -> HashSet<String> {
-    task_list.tasks().iter().flat_map(|t| t.projects.clone()).collect()
+    dedupe_tokens(task_list.tasks().iter().flat_map(|t| t.projects.clone()))
+}
+
+fn dedupe_tokens(tokens: impl Iterator<Item = String>) -> HashSet<String> {
+    let mut canonical: HashMap<String, String> = HashMap::new();
+
+    for token in tokens {
+        let trimmed = token.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let lower = trimmed.to_lowercase();
+        canonical
+            .entry(lower)
+            .or_insert_with(|| trimmed.to_string());
+    }
+
+    canonical.into_values().collect()
 }
 
 /// State for the filter panel input and preset list (Phase 12, Plan 02).
