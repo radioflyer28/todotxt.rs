@@ -1062,6 +1062,11 @@ impl App {
                 self.copy_selected_to_clipboard()?;
             }
 
+            // 'p' pastes clipboard content as new tasks (Phase 35, Plan 02, CLIP-03, D-05)
+            KeyCode::Char('p') if key.modifiers == KeyModifiers::NONE => {
+                self.paste_from_clipboard()?;
+            }
+
             // '@' opens quick context setter from Normal mode (Phase 33, Plan 02)
             _ if self.key_is_action(key, "quick_context") => {
                 if !self.has_quick_setter_targets() {
@@ -1296,6 +1301,103 @@ impl App {
                     self.push_runtime_warning("Failed to copy to clipboard");
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    /// Paste clipboard content as new task entries in Normal mode (`p` key, Phase 35, Plan 02, CLIP-03).
+    /// Reads clipboard, splits on newlines, parses each non-empty line as a Task, appends all to task_list.
+    /// All lines pasted in a single operation (D-05, D-11). Rebuilds view and reanchors after paste.
+    fn paste_from_clipboard(&mut self) -> color_eyre::Result<()> {
+        // Lazy-initialize arboard (D-02)
+        if self.clipboard.is_none() {
+            match Clipboard::new() {
+                Ok(cb) => self.clipboard = Some(cb),
+                Err(_) => {
+                    self.push_runtime_warning("clipboard is empty");
+                    return Ok(());
+                }
+            }
+        }
+
+        // Read clipboard text
+        let clipboard_text = if let Some(ref mut cb) = self.clipboard {
+            match cb.get_text() {
+                Ok(text) => text,
+                Err(_) => {
+                    self.push_runtime_warning("clipboard is empty");
+                    return Ok(());
+                }
+            }
+        } else {
+            self.push_runtime_warning("clipboard is empty");
+            return Ok(());
+        };
+
+        // Split and filter empty lines (D-11, D-12)
+        let lines: Vec<String> = clipboard_text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.to_string())
+            .collect();
+
+        if lines.is_empty() {
+            self.push_runtime_warning("clipboard is empty");
+            return Ok(());
+        }
+
+        let count = lines.len();
+
+        // Parse each line as a Task and add to task_list (D-12: raw text, no transformation)
+        for line in lines {
+            let task = Task::parse(&line);
+            self.task_list
+                .add(task)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to paste task: {}", e))?;
+        }
+
+        // Rebuild views and reanchor (D-14)
+        self.rebuild_all_panes();
+        self.rebuild_and_reanchor();
+
+        let msg = if count == 1 {
+            "pasted 1 task".to_string()
+        } else {
+            format!("pasted {} tasks", count)
+        };
+        self.push_runtime_warning(msg);
+
+        Ok(())
+    }
+
+    /// Paste first clipboard line into the Adding-mode editor (Ctrl+V, Phase 35, Plan 02, CLIP-04, D-15).
+    /// Single-line editor: only the first clipboard line is inserted. Empty clipboard is a silent no-op.
+    fn paste_in_editor(&mut self) -> color_eyre::Result<()> {
+        // Lazy-initialize arboard (D-02)
+        if self.clipboard.is_none() {
+            match Clipboard::new() {
+                Ok(cb) => self.clipboard = Some(cb),
+                Err(_) => {
+                    return Ok(()); // Silent no-op on init failure (D-15)
+                }
+            }
+        }
+
+        // Read clipboard text
+        let clipboard_text = if let Some(ref mut cb) = self.clipboard {
+            match cb.get_text() {
+                Ok(text) => text,
+                Err(_) => return Ok(()), // Silent no-op if empty (D-15)
+            }
+        } else {
+            return Ok(());
+        };
+
+        // Extract first line only (single-line editor, D-15)
+        let first_line = clipboard_text.lines().next().unwrap_or("").to_string();
+        if !first_line.is_empty() {
+            self.editor.insert_str(&first_line);
         }
 
         Ok(())
@@ -1609,6 +1711,11 @@ impl App {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
+        // Intercept Ctrl+V before default passthrough — paste from clipboard into editor (Phase 35, Plan 02, CLIP-04, D-15)
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('v') {
+            return self.paste_in_editor();
+        }
+
         match key.code {
             KeyCode::Esc => {
                 if self.autocomplete.is_some() {
