@@ -218,6 +218,61 @@ impl DatePickerState {
     }
 }
 
+/// State for the priority picker modal (Phase 34).
+/// Lists A–Z priorities plus a "clear" option.
+#[derive(Debug, Clone)]
+pub struct PriorityPickerState {
+    /// Items: "A", "B", ..., "Z", "— (no priority)"
+    pub items: Vec<String>,
+    /// Index of the currently highlighted item.
+    pub selected_idx: usize,
+    /// Last typed letter (for type-to-jump); case-normalized to uppercase.
+    pub type_char: Option<char>,
+    /// True when navigation has focused the picker (mirrors DatePickerState.focused).
+    pub focused: bool,
+}
+
+impl PriorityPickerState {
+    pub fn new() -> Self {
+        let mut items: Vec<String> = ('A'..='Z').map(|c| c.to_string()).collect();
+        items.push("— (no priority)".to_string());
+        PriorityPickerState {
+            items,
+            selected_idx: 0,
+            type_char: None,
+            focused: false,
+        }
+    }
+
+    pub fn select_next(&mut self) {
+        if self.selected_idx < self.items.len().saturating_sub(1) {
+            self.selected_idx += 1;
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.selected_idx > 0 {
+            self.selected_idx -= 1;
+        }
+    }
+
+    /// Jump to the item starting with `ch` (A–Z, case-insensitive).
+    pub fn jump_to(&mut self, ch: char) {
+        let target = ch.to_ascii_uppercase().to_string();
+        if let Some(idx) = self.items.iter().position(|item| item == &target) {
+            self.selected_idx = idx;
+            self.type_char = Some(ch.to_ascii_uppercase());
+        }
+    }
+
+    /// Returns the chosen priority: `Some(char)` for A–Z, `None` for "no priority" item.
+    pub fn selected_priority(&self) -> Option<char> {
+        self.items.get(self.selected_idx)
+            .and_then(|s| s.chars().next())
+            .filter(|c| c.is_ascii_uppercase())
+    }
+}
+
 /// Generate date suggestions for a given month.
 /// Returns a Vec of formatted strings: "01 Mon", "02 Tue", etc.
 /// Returns empty Vec for invalid month format or out-of-range months.

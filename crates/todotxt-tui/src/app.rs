@@ -19,7 +19,7 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
-use crate::state::{Pane, DisplayRow, AutocompleteState, AutocompleteMode, FilteringState, FilterDefiningState, DatePickerState, get_existing_contexts, get_existing_projects, rank_matches};
+use crate::state::{Pane, DisplayRow, AutocompleteState, AutocompleteMode, FilteringState, FilterDefiningState, DatePickerState, PriorityPickerState, get_existing_contexts, get_existing_projects, rank_matches};
 use crate::components::PaneList;
 
 
@@ -45,6 +45,8 @@ pub enum AppMode {
     /// Date picker overlay for setting due dates (Phase 33, Plan 01).
     #[allow(dead_code)]
     DatePicker,
+    /// Priority picker overlay for setting priority on active/selected tasks (Phase 34, Plan 01).
+    PriorityPicker,
 }
 
 /// Top-level application state.
@@ -69,6 +71,8 @@ pub struct App {
     pub autocomplete: Option<AutocompleteState>,
     /// Active date picker state, or `None` when not shown (Phase 33, Plan 01).
     pub date_picker: Option<DatePickerState>,
+    /// Active priority picker state, or `None` when not shown (Phase 34, Plan 01).
+    pub priority_picker: Option<PriorityPickerState>,
     /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
     pub display_indices: Vec<usize>,
     /// Toggle grouped rendering with non-selectable header rows.
@@ -181,6 +185,7 @@ impl App {
             pending_reload: false,
             autocomplete: None,
             date_picker: None,
+            priority_picker: None,
             display_indices: Vec::new(),
             grouping: false,
             display_rows: Vec::new(),
@@ -577,6 +582,7 @@ impl App {
                     AppMode::KeymapErrors => self.handle_keymap_errors_key(key)?,
                     AppMode::Help => self.handle_help_key(key)?,
                     AppMode::DatePicker => self.handle_date_picker_key(key)?,
+                    AppMode::PriorityPicker => self.handle_priority_picker_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -1019,6 +1025,18 @@ impl App {
                     }
                 }
             }
+
+            // 'i' opens the priority picker overlay (Phase 34, Plan 01 — CAP-04 gap)
+            KeyCode::Char('i') if display_count > 0 && key.modifiers == KeyModifiers::NONE => {
+                // Require an active task or selection (mirrors date picker guard)
+                if self.has_quick_setter_targets() {
+                    self.priority_picker = Some(PriorityPickerState::new());
+                    self.mode = AppMode::PriorityPicker;
+                } else {
+                    self.push_runtime_warning("priority picker requires an active task or selection");
+                }
+            }
+
 
             // '@' opens quick context setter from Normal mode (Phase 33, Plan 02)
             _ if self.key_is_action(key, "quick_context") => {
@@ -1957,6 +1975,84 @@ impl App {
         Ok(())
     }
 
+    // ── Priority picker key handler ───────────────────────────────────────────
+
+    fn handle_priority_picker_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                // Cancel — no tasks mutated, selection preserved (D-03)
+                self.priority_picker = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Down => {
+                if let Some(ref mut pp) = self.priority_picker {
+                    pp.focused = true;
+                    pp.select_next();
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut pp) = self.priority_picker {
+                    pp.focused = true;
+                    pp.select_prev();
+                }
+            }
+            KeyCode::Char(ch) if ch.is_alphabetic() => {
+                // Type-to-jump: jump to that priority letter
+                if let Some(ref mut pp) = self.priority_picker {
+                    pp.focused = true;
+                    pp.jump_to(ch);
+                }
+            }
+            KeyCode::Tab | KeyCode::Enter => {
+                // Accept and apply priority to target tasks
+                if let Some(pp) = self.priority_picker.take() {
+                    let chosen_priority = pp.selected_priority(); // None = "clear priority"
+
+                    // Determine targets: selected tasks (descending, D-17) or active task
+                    let targets: Vec<usize> = if !self.selected_tasks.is_empty() {
+                        let mut indices: Vec<usize> = self.selected_tasks.iter().copied().collect();
+                        indices.sort_unstable_by(|a, b| b.cmp(a)); // descending
+                        indices
+                    } else if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected) {
+                        vec![*idx]
+                    } else {
+                        vec![]
+                    };
+
+                    if !targets.is_empty() {
+                        let tasks = self.task_list.tasks();
+                        let replacements: Vec<(usize, Task)> = targets
+                            .iter()
+                            .filter_map(|&idx| {
+                                tasks.get(idx).map(|t| {
+                                    // D-13: structured mutation via with_priority builder
+                                    (idx, t.clone().with_priority(chosen_priority))
+                                })
+                            })
+                            .collect();
+
+                        if !replacements.is_empty() {
+                            self.task_list
+                                .batch_update(replacements)
+                                .map_err(|e| color_eyre::eyre::eyre!("Failed to set priority: {}", e))?;
+                            self.rebuild_and_reanchor();
+                        }
+                    }
+                }
+                // Clear selection after accept (consistent with date picker accept behavior)
+                self.selected_tasks.clear();
+                self.selection_anchor = None;
+                self.mode = AppMode::Normal;
+                self.apply_pending_reload()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     // ── Edit mode helpers ─────────────────────────────────────────────────────
 
     /// Discard changes and return to Normal mode, applying any queued reload (D-10).
@@ -2523,6 +2619,13 @@ impl App {
                 self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
                 self.render_date_picker_overlay(frame, chunks[1]);
+            }
+            AppMode::PriorityPicker => {
+                // Task list visible behind; priority picker overlay floats above (Phase 34, Plan 01).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_priority_picker_overlay(frame, chunks[1]);
             }
         }
     }
@@ -3197,6 +3300,58 @@ impl App {
             .highlight_style(highlight_style);
 
         let mut list_state = ListState::default().with_selected(selected_idx);
+
+        frame.render_widget(ratatui::widgets::Clear, popup_area);
+        frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+
+    /// Render the priority picker overlay (Phase 34, Plan 01).
+    /// Displays A–Z priorities plus "— (no priority)" in a scrollable list.
+    fn render_priority_picker_overlay(&self, frame: &mut Frame, footer_area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+
+        let pp = match &self.priority_picker {
+            Some(pp) if !pp.items.is_empty() => pp,
+            _ => return,
+        };
+
+        let popup_height = (pp.items.len() as u16).min(10).min(footer_area.y);
+        if popup_height == 0 { return; }
+
+        let popup_width = 28u16.min(frame.area().width);
+
+        let popup_area = Rect {
+            x: footer_area.x,
+            y: footer_area.y.saturating_sub(popup_height),
+            width: popup_width,
+            height: popup_height,
+        };
+
+        let items: Vec<ListItem> = pp.items.iter()
+            .map(|s| ListItem::new(s.clone()))
+            .collect();
+
+        let highlight_style = if pp.focused {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+
+        // Count targets for header
+        let n = if !self.selected_tasks.is_empty() { self.selected_tasks.len() } else { 1 };
+        let title = if n > 1 {
+            format!(" Setting priority — {} tasks ", n)
+        } else {
+            " Set priority ".to_string()
+        };
+
+        let popup_list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(title))
+            .highlight_style(highlight_style);
+
+        let mut list_state = ListState::default().with_selected(Some(pp.selected_idx));
 
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
