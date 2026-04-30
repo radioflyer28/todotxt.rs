@@ -16,6 +16,7 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
 ## v1.5 Scope
 
 - One fast capture flow with predictable keybindings and minimal mode switching
+- Quick context/project setters from normal mode (`@` and `+`) for active/selected tasks
 - Safe bulk actions with affected-count preview and explicit cancel behavior
 - Basic clipboard workflow: cut/copy selected tasks and paste to create new tasks
 - New-task entry supports paste to enable fast duplicate-and-tweak workflows
@@ -28,13 +29,14 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
 - [ ] **Phase 33: Fast Capture + Property Pickers (`s` due, `i` priority)**
   - Keep add/edit flows fast with predictable key behavior and minimal mode switching
   - Add due-date and priority pickers with overwrite semantics for active or selected tasks
-  - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04
+  - Add quick context/project setters triggered by `@` and `+` in normal mode
+  - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, TAG-01, TAG-02
   - **Plans:** 2 plans
 
 - [ ] **Phase 34: Bulk Action Safety + Metadata Preservation**
   - Add affected-count preview and cancel path for high-impact actions
-  - Preserve non-target metadata and stable selection targeting in bulk operations
-  - **Requirements:** CAP-05, BULK-01, BULK-02, BULK-03
+  - Preserve non-target metadata, avoid duplicate tag tokens, and keep stable selection targeting in bulk operations
+  - **Requirements:** CAP-05, TAG-03, BULK-01, BULK-02, BULK-03
   - **Plans:** 2 plans
 
 - [ ] **Phase 35: Basic Clipboard Workflows**

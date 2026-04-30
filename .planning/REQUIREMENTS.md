@@ -13,6 +13,12 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 - [ ] CAP-04: Pressing `i` opens a priority picker that can set or overwrite priority `(A-Z)` on active or selected tasks.
 - [ ] CAP-05: Property edits preserve non-target metadata (`@context`, `+project`, creation/completion fields).
 
+### Quick Context and Project Setters
+
+- [ ] TAG-01: Pressing `@` in normal mode opens a quick context setter for active or selected tasks.
+- [ ] TAG-02: Pressing `+` in normal mode opens a quick project setter for active or selected tasks.
+- [ ] TAG-03: Quick tag setters avoid duplicate tokens and preserve all non-target metadata.
+
 ### Safe Bulk Actions
 
 - [ ] BULK-01: High-impact bulk actions (overwrite, cut, delete) display affected-count preview before execution.
@@ -66,6 +72,9 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | CAP-03 | Phase 33 | Pending |
 | CAP-04 | Phase 33 | Pending |
 | CAP-05 | Phase 34 | Pending |
+| TAG-01 | Phase 33 | Pending |
+| TAG-02 | Phase 33 | Pending |
+| TAG-03 | Phase 34 | Pending |
 | BULK-01 | Phase 34 | Pending |
 | BULK-02 | Phase 34 | Pending |
 | BULK-03 | Phase 34 | Pending |
@@ -82,8 +91,8 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 Coverage:
 
-- v1 requirements: 18 total
-- Mapped to phases: 18
+- v1 requirements: 21 total
+- Mapped to phases: 21
 - Unmapped: 0
 
 ---
