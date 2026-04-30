@@ -151,6 +151,7 @@ impl AutocompleteState {
 pub struct DatePickerState {
     pub month_year: String,   // e.g., "2026-07"
     pub selected_day: Option<u32>, // currently highlighted day
+    pub day_input: String,    // optional typed day input (e.g., "14")
     pub suggestions: Vec<String>, // formatted as "01 Mon", "02 Tue", etc.
     pub focused: bool,        // true when navigation has focused the picker (like autocomplete)
 }
@@ -168,6 +169,7 @@ impl DatePickerState {
         DatePickerState {
             month_year: month_year.to_string(),
             selected_day,
+            day_input: String::new(),
             suggestions,
             focused: false,
         }

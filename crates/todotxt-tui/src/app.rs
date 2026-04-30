@@ -1029,24 +1029,20 @@ impl App {
             }
 
             // 's' opens the date picker for setting due dates (Phase 33, Plan 01)
-            KeyCode::Char('s') if display_count > 0 && key.modifiers == KeyModifiers::NONE => {
-                // Check if active row is a task (not a group header)
-                if let Some(DisplayRow::Task(_)) = self.display_rows.get(self.selected) {
-                    // Use current month from system clock
+            KeyCode::Char('s') if key.modifiers == KeyModifiers::NONE => {
+                if self.has_quick_setter_targets() {
+                    // Start from current month; user can edit month/year inline in picker.
                     let now = chrono::Local::now();
                     let month_year = format!("{:04}-{:02}", now.year(), now.month());
-                    
-                    if let Ok(dp) = crate::state::generate_date_suggestions(&month_year) {
-                        if !dp.is_empty() {
-                            self.date_picker = Some(DatePickerState::new(&month_year));
-                            self.mode = AppMode::DatePicker;
-                        }
-                    }
+                    self.date_picker = Some(DatePickerState::new(&month_year));
+                    self.mode = AppMode::DatePicker;
+                } else {
+                    self.push_runtime_warning("date picker requires an active task or selection");
                 }
             }
 
             // 'i' opens the priority picker overlay (Phase 34, Plan 01 — CAP-04 gap)
-            KeyCode::Char('i') if display_count > 0 && key.modifiers == KeyModifiers::NONE => {
+            KeyCode::Char('i') if key.modifiers == KeyModifiers::NONE => {
                 // Require an active task or selection (mirrors date picker guard)
                 if self.has_quick_setter_targets() {
                     self.priority_picker = Some(PriorityPickerState::new());
@@ -2138,12 +2134,95 @@ impl App {
                 if let Some(ref mut dp) = self.date_picker {
                     dp.focused = true;
                     dp.select_prev();
+                    dp.day_input.clear();
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(ref mut dp) = self.date_picker {
+                    if !dp.day_input.is_empty() {
+                        dp.day_input.pop();
+                    } else {
+                        dp.month_year.pop();
+                    }
+
+                    dp.suggestions = crate::state::generate_date_suggestions(&dp.month_year)
+                        .unwrap_or_default();
+                    if let Some(day) = dp.selected_day {
+                        let still_valid = dp.suggestions.iter().any(|s| {
+                            s.split_whitespace()
+                                .next()
+                                .and_then(|d| d.parse::<u32>().ok())
+                                .map(|d| d == day)
+                                .unwrap_or(false)
+                        });
+                        if !still_valid {
+                            dp.selected_day = dp
+                                .suggestions
+                                .first()
+                                .and_then(|s| s.split_whitespace().next())
+                                .and_then(|d| d.parse::<u32>().ok());
+                        }
+                    }
+                    dp.focused = true;
+                }
+            }
+            KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && (ch.is_ascii_digit() || ch == '-') => {
+                if let Some(ref mut dp) = self.date_picker {
+                    if ch == '-' {
+                        if dp.month_year.len() == 4 && !dp.month_year.contains('-') {
+                            dp.month_year.push('-');
+                            dp.day_input.clear();
+                        }
+                    } else if dp.month_year.len() < 7 {
+                        if dp.month_year.len() == 4 && !dp.month_year.contains('-') {
+                            dp.month_year.push('-');
+                        }
+                        if dp.month_year.len() < 7 {
+                            dp.month_year.push(ch);
+                        }
+                        dp.day_input.clear();
+                    } else if dp.day_input.len() < 2 {
+                        dp.day_input.push(ch);
+                    }
+
+                    dp.suggestions = crate::state::generate_date_suggestions(&dp.month_year)
+                        .unwrap_or_default();
+
+                    // If user typed day digits, try to select that day in the suggestion list.
+                    if !dp.day_input.is_empty() {
+                        if let Ok(day) = dp.day_input.parse::<u32>() {
+                            let matches_month = dp.suggestions.iter().any(|s| {
+                                s.split_whitespace()
+                                    .next()
+                                    .and_then(|d| d.parse::<u32>().ok())
+                                    .map(|d| d == day)
+                                    .unwrap_or(false)
+                            });
+                            if matches_month {
+                                dp.selected_day = Some(day);
+                            }
+                        }
+                    } else if dp.selected_day.is_none() {
+                        dp.selected_day = dp
+                            .suggestions
+                            .first()
+                            .and_then(|s| s.split_whitespace().next())
+                            .and_then(|d| d.parse::<u32>().ok());
+                    }
+
+                    dp.focused = true;
                 }
             }
             KeyCode::Tab | KeyCode::Enter => {
                 // Accept selected day and mutate task(s)
                 if let Some(dp) = self.date_picker.take() {
-                    if let Some(selected_day) = dp.selected_day {
+                    let chosen_day = if !dp.day_input.is_empty() {
+                        dp.day_input.parse::<u32>().ok()
+                    } else {
+                        dp.selected_day
+                    };
+
+                    if let Some(selected_day) = chosen_day {
                         // D-13: parse date for structured mutation via with_due_date()
                         use chrono::NaiveDate;
                         let new_date = NaiveDate::parse_from_str(
@@ -2151,19 +2230,8 @@ impl App {
                             "%Y-%m-%d",
                         ).map_err(|e| color_eyre::eyre::eyre!("Invalid date: {}", e))?;
 
-                        // Determine targets: selected tasks or active task
-                        let targets: Vec<usize> = if !self.selected_tasks.is_empty() {
-                            let mut indices: Vec<usize> = self.selected_tasks.iter().copied().collect();
-                            indices.sort_unstable_by(|a, b| b.cmp(a)); // Descending
-                            indices
-                        } else {
-                            // Get canonical index of active task
-                            if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected) {
-                                vec![*idx]
-                            } else {
-                                vec![]
-                            }
-                        };
+                        // Determine targets from the shared quick-setter targeting semantics.
+                        let targets = self.quick_setter_targets();
 
                         // Update each task via structured mutation (D-13)
                         let tasks = self.task_list.tasks();
@@ -2181,6 +2249,8 @@ impl App {
                             let _ = self.task_list.batch_update(replacements);
                             self.rebuild_and_reanchor();
                         }
+                    } else {
+                        self.push_runtime_warning("invalid day for selected month");
                     }
                 }
                 self.selected_tasks.clear();
@@ -2228,16 +2298,8 @@ impl App {
                 if let Some(pp) = self.priority_picker.take() {
                     let chosen_priority = pp.selected_priority(); // None = "clear priority"
 
-                    // Determine targets: selected tasks (descending, D-17) or active task
-                    let targets: Vec<usize> = if !self.selected_tasks.is_empty() {
-                        let mut indices: Vec<usize> = self.selected_tasks.iter().copied().collect();
-                        indices.sort_unstable_by(|a, b| b.cmp(a)); // descending
-                        indices
-                    } else if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected) {
-                        vec![*idx]
-                    } else {
-                        vec![]
-                    };
+                    // Determine targets via shared quick-setter semantics (selected or active).
+                    let targets = self.quick_setter_targets();
 
                     if !targets.is_empty() {
                         let tasks = self.task_list.tasks();
@@ -2975,6 +3037,7 @@ impl App {
                 pane,
                 is_active,
                 is_active && pane.label_selected,
+                &self.selected_tasks,
                 &self.styles,
                 &self.task_list,
                 self.show_deferred,
@@ -3510,7 +3573,11 @@ impl App {
                 })
             });
 
-        let title = format!(" Set due date: {} ", dp.month_year);
+        let title = if dp.day_input.is_empty() {
+            format!(" Set due date: {} ", dp.month_year)
+        } else {
+            format!(" Set due date: {}-{} ", dp.month_year, dp.day_input)
+        };
         let popup_list = List::new(items)
             .block(Block::default().borders(Borders::ALL).title(title))
             .highlight_style(highlight_style);
@@ -3828,6 +3895,16 @@ mod tests {
         }).unwrap();
     }
 
+    fn key_no_mod(code: crossterm::event::KeyCode) -> crossterm::event::KeyEvent {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
     #[test]
     fn ctrl_n_triggers_pane_add_not_add_mode() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
@@ -4039,6 +4116,63 @@ mod tests {
         app.disjoint_select = true;
         press_key(&mut app, KeyCode::Char(' '));
         assert!(app.selected_tasks.contains(&0), "Space should add cursor task to selected_tasks in disjoint mode");
+    }
+
+    #[test]
+    fn s_opens_date_picker_when_selected_tasks_exist_even_on_group_header_cursor() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.selected_tasks.insert(1);
+        app.display_rows = vec![
+            DisplayRow::GroupHeader("Header".to_string()),
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+        ];
+        app.selected = 0;
+
+        press_key(&mut app, KeyCode::Char('s'));
+
+        assert_eq!(app.mode, AppMode::DatePicker, "'s' should open date picker when selection exists");
+        assert!(app.date_picker.is_some());
+    }
+
+    #[test]
+    fn date_picker_enter_applies_due_date_to_selected_tasks() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.mode = AppMode::DatePicker;
+        app.date_picker = Some(DatePickerState::new("2032-02"));
+        if let Some(ref mut dp) = app.date_picker {
+            dp.selected_day = Some(29);
+        }
+
+        app.handle_date_picker_key(key_no_mod(KeyCode::Enter)).unwrap();
+
+        assert_eq!(app.task_list.tasks()[0].due_date.map(|d| d.to_string()), Some("2032-02-29".to_string()));
+        assert_eq!(app.task_list.tasks()[1].due_date.map(|d| d.to_string()), Some("2032-02-29".to_string()));
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn date_picker_supports_typing_month_then_day() {
+        let mut app = make_app_with_tasks(&["Task one"]);
+        app.mode = AppMode::DatePicker;
+        app.date_picker = Some(DatePickerState {
+            month_year: String::new(),
+            selected_day: None,
+            day_input: String::new(),
+            suggestions: vec![],
+            focused: false,
+        });
+
+        for ch in ['2', '0', '3', '2', '-', '0', '2', '2', '9'] {
+            app.handle_date_picker_key(key_no_mod(KeyCode::Char(ch))).unwrap();
+        }
+
+        let dp = app.date_picker.as_ref().unwrap();
+        assert_eq!(dp.month_year, "2032-02");
+        assert_eq!(dp.day_input, "29");
+        assert_eq!(dp.selected_day, Some(29));
     }
 
     #[test]

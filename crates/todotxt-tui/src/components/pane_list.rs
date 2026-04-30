@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState},
     Frame,
 };
+use std::collections::HashSet;
 use crate::state::{Pane, DisplayRow};
 use crate::theme::StyleSheet;
 use todotxt_core::DueStatus;
@@ -49,6 +50,7 @@ impl PaneList {
         pane: &Pane,
         is_active: bool,
         label_selected: bool,
+        selected_tasks: &HashSet<usize>,
         stylesheet: &StyleSheet,
         task_list: &todotxt_core::TaskList,
         show_deferred: bool,
@@ -129,7 +131,7 @@ impl PaneList {
             pane.display_rows
                 .iter()
                 .enumerate()
-                .map(|(_row_idx, row)| {
+                .map(|(row_idx, row)| {
                     match row {
                         DisplayRow::GroupHeader(label) => {
                             let truncated = if usable_width > 0 {
@@ -142,11 +144,15 @@ impl PaneList {
                         }
                         DisplayRow::Task(ci) => {
                             let t = &tasks[*ci];
+                            let is_selected = selected_tasks.contains(ci);
+                            let is_cursor = row_idx == pane.selected;
+                            let prefix = if is_selected && !is_cursor { "> " } else { "" };
                             let full_content = t.to_raw();
+                            let prefixed = format!("{}{}", prefix, full_content);
                             let content = if usable_width > 0 {
-                                Self::truncate_for_width(&full_content, usable_width)
+                                Self::truncate_for_width(&prefixed, usable_width)
                             } else {
-                                full_content.to_string()
+                                prefixed
                             };
 
                             // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
@@ -169,6 +175,12 @@ impl PaneList {
                                 Style::default()
                             };
 
+                            let style = if is_selected && !is_cursor {
+                                style.add_modifier(Modifier::BOLD)
+                            } else {
+                                style
+                            };
+
                             ListItem::new(content).style(style)
                         }
                     }
@@ -176,9 +188,20 @@ impl PaneList {
                 .collect()
         };
 
+        let cursor_is_selected = pane
+            .display_rows
+            .get(pane.selected)
+            .map(|r| matches!(r, DisplayRow::Task(ci) if selected_tasks.contains(ci)))
+            .unwrap_or(false);
+        let highlight_modifier = if cursor_is_selected {
+            Modifier::REVERSED | Modifier::BOLD
+        } else {
+            Modifier::REVERSED
+        };
+
         let list = List::new(items)
             .block(block)
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            .highlight_style(Style::default().add_modifier(highlight_modifier));
 
         let mut list_state = ListState::default();
         if !label_selected && !pane.display_rows.is_empty() {
