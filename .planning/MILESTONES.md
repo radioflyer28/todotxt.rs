@@ -1,5 +1,24 @@
 # Milestones
 
+## v1.5 Capture Flow + Bulk Safety + Clipboard + Undo (Shipped: 2026-05-01)
+
+**Phases:** 6 (Phases 33-38) | **Plans:** 14 | **Requirements:** 27/27 complete (5 adjusted)
+
+**Key accomplishments:**
+
+1. Delivered fast capture/edit flows with due and priority pickers plus quick context/project setters.
+2. Added month-aware date autocomplete with weekday labels and keyboard navigation parity.
+3. Added safer bulk-action confirmation UX and metadata-preserving mutation paths.
+4. Added clipboard copy/paste workflows including Adding-mode paste support.
+5. Added short-horizon undo infrastructure and mutation-site wiring across high-impact operations.
+6. Backfilled verification artifacts for phases 33/34/37 and resolved META-01 orphan evidence.
+
+**Known deferred items at close:** 5 requirement-level debt notes (CLIP-01..04 runtime human checks, UNDO-03 override) and Nyquist coverage gaps for phases 33/36/37/38.
+
+**Archive:** .planning/milestones/v1.5-ROADMAP.md | .planning/milestones/v1.5-REQUIREMENTS.md | .planning/v1.5-MILESTONE-AUDIT.md
+
+---
+
 ## v1.1 TUI Interface (Shipped: 2026-04-23)
 
 **Phases:** 5 (Phases 9–13) | **Plans:** 14 | **Requirements:** 25/25 complete

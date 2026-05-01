@@ -3,35 +3,35 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Scope
 status: completed
-last_updated: "2026-05-01T04:31:05.144Z"
-last_activity: 2026-05-19 -- Phase 37 execution complete
+last_updated: "2026-05-01T12:00:00.000Z"
+last_activity: 2026-05-01 -- v1.5 milestone archived and tagged
 progress:
   total_phases: 30
-  completed_phases: 28
+  completed_phases: 30
   total_plans: 79
-  completed_plans: 76
-  percent: 96
+  completed_plans: 79
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-29)
+See: .planning/PROJECT.md (updated 2026-05-01)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 36 — recovery-path-short-horizon-undo
+**Current focus:** milestone transition (v1.5 complete, preparing v1.6)
 
 ## Current Position
 
 Phase: 38
-Plan: 2 of 2
-Status: Phase 37 complete — all v1.5 phases finished
-Last activity: 2026-05-19 -- Phase 37 execution complete
+Plan: complete
+Status: v1.5 archived and shipped
+Last activity: 2026-05-01 -- v1.5 completion commit and tag
 
 ## Next Step
 
-v1.5 milestone is now feature-complete. Next: run `/gsd-complete-milestone` to finalize v1.5 and prepare v1.6.
+v1.5 is complete and archived. Next: run /gsd-new-milestone to define v1.6 scope and generate new requirements.
 
 ## Deferred Items
 
