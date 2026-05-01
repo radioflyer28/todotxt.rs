@@ -73,6 +73,8 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
   - Validate filter/sort/group behavior remains predictable across capture/bulk/clipboard/undo flows
   - **Requirements:** META-01, META-02, VIEW-03
   - **Plans:** 2 plans
+    - [ ] 37-01-PLAN.md — Hierarchical tag filter support (ContextPrefix/ProjectPrefix FilterTerm variants, TDD)
+    - [ ] 37-02-PLAN.md — View continuity regression tests (7 flows + undo raw-text restoration)
 
 ## Backlog
 
