@@ -76,23 +76,23 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 | Requirement | Phase | Status |
 | ----------- | ----- | ------ |
-| CAP-01 | Phase 33 | Pending |
-| CAP-02 | Phase 33 | Pending |
-| CAP-03 | Phase 33 | Pending |
-| CAP-04 | Phase 33 | Pending |
-| CAP-05 | Phase 34 | Pending |
-| TAG-01 | Phase 33 | Pending |
-| TAG-02 | Phase 33 | Pending |
-| TAG-03 | Phase 34 | Pending |
-| TAG-04 | Phase 33 | Pending |
-| TAG-05 | Phase 33 | Pending |
-| DATE-01 | Phase 33 | Pending |
-| DATE-02 | Phase 33 | Pending |
-| DATE-03 | Phase 33 | Pending |
-| DATE-04 | Phase 33 | Pending |
-| BULK-01 | Phase 34 | Pending |
-| BULK-02 | Phase 34 | Pending |
-| BULK-03 | Phase 34 | Pending |
+| CAP-01 | Phase 38 | Pending |
+| CAP-02 | Phase 38 | Pending |
+| CAP-03 | Phase 38 | Pending |
+| CAP-04 | Phase 38 | Pending |
+| CAP-05 | Phase 38 | Pending |
+| TAG-01 | Phase 38 | Pending |
+| TAG-02 | Phase 38 | Pending |
+| TAG-03 | Phase 38 | Pending |
+| TAG-04 | Phase 38 | Pending |
+| TAG-05 | Phase 38 | Pending |
+| DATE-01 | Phase 38 | Pending |
+| DATE-02 | Phase 38 | Pending |
+| DATE-03 | Phase 38 | Pending |
+| DATE-04 | Phase 38 | Pending |
+| BULK-01 | Phase 38 | Pending |
+| BULK-02 | Phase 38 | Pending |
+| BULK-03 | Phase 38 | Pending |
 | CLIP-01 | Phase 35 | Pending |
 | CLIP-02 | Phase 35 | Pending |
 | CLIP-03 | Phase 35 | Pending |
@@ -100,9 +100,9 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | UNDO-01 | Phase 36 | Pending |
 | UNDO-02 | Phase 36 | Pending |
 | UNDO-03 | Phase 36 | Pending |
-| META-01 | Phase 37 | Pending |
-| META-02 | Phase 37 | Pending |
-| VIEW-03 | Phase 37 | Pending |
+| META-01 | Phase 38 | Pending |
+| META-02 | Phase 38 | Pending |
+| VIEW-03 | Phase 38 | Pending |
 
 Coverage:
 
@@ -112,4 +112,4 @@ Coverage:
 
 ---
 Requirements defined: 2026-04-29
-Last updated: 2026-04-29 after v1.5 milestone initialization
+Last updated: 2026-04-30 after milestone gap-closure phase planning

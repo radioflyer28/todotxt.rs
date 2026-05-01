@@ -76,6 +76,13 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
     - [x] 37-01-PLAN.md — Hierarchical tag filter support (ContextPrefix/ProjectPrefix FilterTerm variants, TDD)
     - [x] 37-02-PLAN.md — View continuity regression tests (7 flows + undo raw-text restoration)
 
+- [ ] **Phase 38: Verification Evidence Backfill (v1.5 blockers)**
+  - Backfill missing `VERIFICATION.md` artifacts for phases 33, 34, and 37
+  - Add explicit requirement-level evidence for all v1.5 blocker/partial requirements
+  - Resolve META-01 orphan evidence gap in phase 37 verification
+  - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, CAP-05, TAG-01, TAG-02, TAG-03, TAG-04, TAG-05, DATE-01, DATE-02, DATE-03, DATE-04, BULK-01, BULK-02, BULK-03, META-01, META-02, VIEW-03
+  - **Gap Closure:** Closes milestone-audit blocker gaps from `v1.5-MILESTONE-AUDIT.md`
+
 ## Backlog
 
 - GUI interface (native desktop)
