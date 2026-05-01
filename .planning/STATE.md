@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Scope
 status: executing
-last_updated: "2026-04-30T17:48:09.607Z"
-last_activity: 2026-04-30 -- Phase 36 execution complete
+last_updated: "2026-05-19T23:59:59.999Z"
+last_activity: 2026-05-19 -- Phase 37 execution complete
 progress:
   total_phases: 27
-  completed_phases: 26
+  completed_phases: 27
   total_plans: 72
-  completed_plans: 71
-  percent: 99
+  completed_plans: 72
+  percent: 100
 ---
 
 # Project State
@@ -24,15 +24,14 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 
 ## Current Position
 
-Phase: 36 (recovery-path-short-horizon-undo) — COMPLETE
+Phase: 37 (metadata-flexibility-view-continuity) — COMPLETE
 Plan: 2 of 2
-Status: Phase 36 complete
-Last activity: 2026-04-30 -- Phase 36 execution complete
+Status: Phase 37 complete — all v1.5 phases finished
+Last activity: 2026-05-19 -- Phase 37 execution complete
 
 ## Next Step
 
-Run `/gsd-discuss-phase 34` to gather context for Bulk Action Safety + Metadata Preservation.
-Or skip discussion with `/gsd-plan-phase 34`.
+v1.5 milestone is now feature-complete. Next: run `/gsd-complete-milestone` to finalize v1.5 and prepare v1.6.
 
 ## Deferred Items
 

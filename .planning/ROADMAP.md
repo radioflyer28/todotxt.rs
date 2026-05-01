@@ -68,13 +68,13 @@ v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
     - [x] 36-01-PLAN.md — UndoEntry type + push_undo_entry/apply_undo core logic + Ctrl+Z dispatch (TDD)
     - [x] 36-02-PLAN.md — Wire push_undo_entry into all 10 mutation sites + integration tests
 
-- [ ] **Phase 37: Metadata Flexibility + View Continuity**
+- [x] **Phase 37: Metadata Flexibility + View Continuity** (completed 2026-05-19)
   - Keep metadata todo.txt-native while supporting hierarchical tag conventions
   - Validate filter/sort/group behavior remains predictable across capture/bulk/clipboard/undo flows
   - **Requirements:** META-01, META-02, VIEW-03
   - **Plans:** 2 plans
-    - [ ] 37-01-PLAN.md — Hierarchical tag filter support (ContextPrefix/ProjectPrefix FilterTerm variants, TDD)
-    - [ ] 37-02-PLAN.md — View continuity regression tests (7 flows + undo raw-text restoration)
+    - [x] 37-01-PLAN.md — Hierarchical tag filter support (ContextPrefix/ProjectPrefix FilterTerm variants, TDD)
+    - [x] 37-02-PLAN.md — View continuity regression tests (7 flows + undo raw-text restoration)
 
 ## Backlog
 
