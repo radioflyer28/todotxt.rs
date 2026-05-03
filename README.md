@@ -31,8 +31,9 @@ Built in Rust. Ships as a single static binary with no runtime dependencies.
 5. [Configuration](#5-configuration)
 6. [Startup flags](#6-startup-flags)
 7. [CLI companion](#7-cli-companion-todotxt)
-8. [todo.txt format primer](#8-todotxt-format-primer)
-9. [Building from source](#9-building-from-source)
+8. [Shell aliases](#8-shell-aliases)
+9. [todo.txt format primer](#9-todotxt-format-primer)
+10. [Building from source](#10-building-from-source)
 
 ---
 
@@ -363,7 +364,71 @@ Full spec: [github.com/todotxt/todo.txt](https://github.com/todotxt/todo.txt)
 
 ---
 
-## 9. Building from source
+## 8. Shell aliases
+
+Typing `todotxt-tui` and `todotxt` every time gets old fast. These two aliases cover 95%
+of daily use without colliding with built-in commands on Windows, macOS, or Linux:
+
+| Alias | Binary | Use it for |
+|-------|--------|------------|
+| `todo` | `todotxt-tui` | Launch the TUI |
+| `td` | `todotxt` | CLI one-liners and scripts |
+
+**Bash / Zsh** — add to `~/.bashrc` or `~/.zshrc`:
+
+```sh
+alias todo='todotxt-tui'
+alias td='todotxt'
+```
+
+**Fish** — add to `~/.config/fish/config.fish`:
+
+```fish
+alias todo 'todotxt-tui'
+alias td 'todotxt'
+```
+
+**PowerShell** — add to your `$PROFILE`:
+
+```powershell
+Set-Alias todo todotxt-tui
+Set-Alias td   todotxt
+```
+
+After adding aliases:
+
+```sh
+todo                          # open the TUI
+td add "Fix the thing +api"
+td list @work
+td do 3
+```
+
+---
+
+## 9. todo.txt format primer
+
+Each line in `todo.txt` is one task:
+
+```
+(PRIORITY) CREATION-DATE task text +project @context key:value
+```
+
+| Token | Meaning | Example |
+|-------|---------|---------|
+| `(A)` – `(Z)` | Priority; `(A)` is highest | `(A) Fix the bug` |
+| `YYYY-MM-DD` at start | Creation date | `2026-01-15 Write tests` |
+| `+word` | Project tag | `+api` |
+| `@word` | Context tag | `@backend` |
+| `due:YYYY-MM-DD` | Due date | `due:2026-05-10` |
+| `t:YYYY-MM-DD` | Threshold (deferred) date — hidden until this date | `t:2026-05-08` |
+| `x ` prefix | Completed task | `x 2026-05-01 Buy milk` |
+
+Full spec: [github.com/todotxt/todo.txt](https://github.com/todotxt/todo.txt)
+
+---
+
+## 10. Building from source
 
 Requires Rust ≥ 1.75.
 
