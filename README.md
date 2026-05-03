@@ -25,13 +25,13 @@ Built in Rust. Ships as a single static binary with no runtime dependencies.
 ## Table of Contents
 
 1. [Install](#1-install)
-2. [First run](#2-first-run)
-3. [Quick start walkthrough](#3-quick-start-walkthrough)
-4. [All keybindings](#4-all-keybindings)
-5. [Configuration](#5-configuration)
-6. [Startup flags](#6-startup-flags)
-7. [CLI companion](#7-cli-companion-todotxt)
-8. [Shell aliases](#8-shell-aliases)
+2. [Shell aliases](#2-shell-aliases)
+3. [First run](#3-first-run)
+4. [Quick start walkthrough](#4-quick-start-walkthrough)
+5. [All keybindings](#5-all-keybindings)
+6. [Configuration](#6-configuration)
+7. [Startup flags](#7-startup-flags)
+8. [CLI companion](#8-cli-companion-todotxt)
 9. [todo.txt format primer](#9-todotxt-format-primer)
 10. [Building from source](#10-building-from-source)
 
@@ -39,37 +39,76 @@ Built in Rust. Ships as a single static binary with no runtime dependencies.
 
 ## 1. Install
 
-### Download a binary (no Rust required)
+### Download binaries (no Rust required)
 
-Go to the [Releases](../../releases) page and grab the file for your platform:
+Go to the [Releases](../../releases) page and grab the files for your platform.
+Each release ships two binaries: **`todotxt-tui`** (the TUI) and **`todotxt`** (the CLI companion).
 
-| Platform | File | Notes |
-|----------|------|-------|
-| Linux x86_64 | `todotxt-tui-linux-x86_64` | Fully static (musl); no libc dependency |
-| macOS (Apple Silicon + Intel) | `todotxt-tui-macos-universal` | Universal binary; runs natively on arm64 and x86_64 |
-| Windows x86_64 | `todotxt-tui-windows-x86_64.exe` | Static CRT; no VC++ redistributable required |
+| Platform | TUI binary | CLI binary |
+|----------|-----------|-----------|
+| Linux x86_64 | `todotxt-tui-linux-x86_64` | `todotxt-linux-x86_64` |
+| macOS (Apple Silicon + Intel) | `todotxt-tui-macos-universal` | `todotxt-macos-universal` |
+| Windows x86_64 | `todotxt-tui-windows-x86_64.exe` | `todotxt-windows-x86_64.exe` |
 
-**Linux / macOS** — make it executable and put it on your PATH:
+All binaries are fully static — no libc dependency on Linux, no VC++ redistributable on Windows.
+
+**Linux / macOS** — make them executable and put them on your PATH:
 
 ```sh
-chmod +x todotxt-tui-linux-x86_64
+chmod +x todotxt-tui-linux-x86_64 todotxt-linux-x86_64
 sudo mv todotxt-tui-linux-x86_64 /usr/local/bin/todotxt-tui
+sudo mv todotxt-linux-x86_64 /usr/local/bin/todotxt
 ```
 
-**Windows** — move the `.exe` somewhere on your `PATH`, e.g.:
+**Windows** — move the `.exe` files somewhere on your `PATH`, e.g.:
 
 ```powershell
 Move-Item todotxt-tui-windows-x86_64.exe "$env:USERPROFILE\bin\todotxt-tui.exe"
+Move-Item todotxt-windows-x86_64.exe    "$env:USERPROFILE\bin\todotxt.exe"
 ```
 
 ---
 
-## 2. First run
+## 2. Shell aliases
+
+Typing `todotxt-tui` and `todotxt` every time is tedious. Set these up right after installing:
+
+| Alias | Binary | Use it for |
+|-------|--------|------------|
+| `todo` | `todotxt-tui` | Launch the TUI |
+| `td` | `todotxt` | CLI one-liners and scripts |
+
+**Bash / Zsh** — add to `~/.bashrc` or `~/.zshrc`:
+
+```sh
+alias todo='todotxt-tui'
+alias td='todotxt'
+```
+
+**Fish** — add to `~/.config/fish/config.fish`:
+
+```fish
+alias todo 'todotxt-tui'
+alias td 'todotxt'
+```
+
+**PowerShell** — add to your `$PROFILE`:
+
+```powershell
+Set-Alias todo todotxt-tui
+Set-Alias td   todotxt
+```
+
+The rest of this document uses `todo` and `td` in examples.
+
+---
+
+## 3. First run
 
 Just launch it:
 
 ```sh
-todotxt-tui
+todo
 ```
 
 On the very first run the TUI:
@@ -104,7 +143,7 @@ Useful for USB drives or shared machines.
 
 ---
 
-## 3. Quick start walkthrough
+## 4. Quick start walkthrough
 
 ### Step 1 — Add your first tasks
 
@@ -149,7 +188,7 @@ Press **`Ctrl+F`** (or **`/`**) to open the filter panel. Type any text, or use 
 | `due:today` | Tasks due today |
 
 Press **`0`** to clear the active filter.
-Press **`F1`**–**`F9`** to jump to a saved filter preset (configured in `config.toml`).
+Press **`1`**–**`9`** to jump to a saved filter preset (configured in `config.toml`).
 
 ### Step 4 — Set priorities and due dates
 
@@ -161,10 +200,10 @@ Press **`F1`**–**`F9`** to jump to a saved filter preset (configured in `confi
 
 ### Step 5 — Archive completed tasks
 
-When your done list piles up, run the companion CLI:
+When your done list piles up, run the CLI companion:
 
 ```sh
-todotxt archive
+td archive
 ```
 
 This moves completed tasks from `todo.txt` into `done.txt`. Press **`.`** in the TUI
@@ -172,7 +211,7 @@ afterward to reload from disk.
 
 ---
 
-## 4. All keybindings
+## 5. All keybindings
 
 ### Navigation
 
@@ -211,7 +250,7 @@ afterward to reload from disk.
 |-----|--------|
 | `Ctrl+F` / `/` | Open filter panel |
 | `0` | Clear active filter |
-| `F1`–`F9` | Apply saved filter preset |
+| `1`–`9` | Apply saved filter preset (F-key presets from config) |
 | `g` | Toggle task grouping |
 | `s` | Cycle sort order |
 | `h` | Toggle deferred task visibility |
@@ -228,51 +267,46 @@ All bindings can be overridden in `config.toml` — see [Customizing keybindings
 
 ---
 
-## 5. Configuration
+## 6. Configuration
 
 Config file location: see [Where your files live](#where-your-files-live) above.
 
-### Minimal config
+### Minimal config (what auto-create produces)
 
 ```toml
-[paths]
-todo_file = "~/.todotxt.rs/todo.txt"
+todo_file = "/home/you/.todotxt.rs/todo.txt"
 ```
 
 ### Full config reference
 
 ```toml
-[paths]
-todo_file = "~/.todotxt.rs/todo.txt"   # required
+# Top-level path and behaviour settings
+todo_file = "~/.todotxt.rs/todo.txt"
 done_file = "~/.todotxt.rs/done.txt"   # optional; defaults to done.txt beside todo.txt
-
-[display]
-color = true            # set false to disable ANSI colors
-preset = "default"      # default | minimal | compact
-
-[behavior]
-auto_creation_date = false   # prepend today's date to every new task
+auto_creation_date = false              # prepend today's date to every new task
 
 [tui]
-theme = "default"       # "default" or "light"
-```
+theme = "default"   # "default" (dark) or "light"
 
-### Saved filter presets
+# Filter presets — press 1–9 in the TUI to activate.
+# Keys must be "f1" through "f9".
+[presets.f1]
+filter = "@work"
 
-Assign filters to **`F1`**–**`F9`** for instant view switching:
+[presets.f2]
+filter = "due:today"
 
-```toml
-[filters]
-f1 = "@work"
-f2 = "due:today"
-f3 = "+personal"
-```
+[presets.f3]
+filter = "+personal"
 
-### Dual-pane layout
+[keymap]
+# Override any TUI action. Supported formats: letter keys, ctrl+<letter>,
+# named keys: backspace, enter, space, f1–f12, up, down, left, right, esc, tab.
+quit       = "ctrl+q"
+filter     = "/"
+move_down  = "ctrl+n"
+move_up    = "ctrl+p"
 
-Define named panes shown side-by-side with independent filters and sort orders:
-
-```toml
 [[panes]]
 label = "Work"
 filter = "+work"
@@ -286,13 +320,21 @@ sort = "due_date"
 group = false
 ```
 
+### Dual-pane layout
+
+Each `[[panes]]` entry creates a named pane shown side-by-side with its own filter and sort.
 Switch between panes with **`Tab`**.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `label` | string | `""` | Display name for the pane |
+| `filter` | string | `""` | Initial filter query |
+| `sort` | string | `file_order` | `file_order`, `priority`, `due_date`, or `alphabetical` |
+| `group` | bool | `false` | Enable grouped rendering |
 
 ### Customizing keybindings
 
-Override any binding in `[keymap]`. Supported formats: single letters (`a`),
-`ctrl+<letter>`, named keys (`backspace`, `enter`, `space`, `f1`–`f12`, `up`, `down`,
-`left`, `right`, `esc`, `tab`).
+The TUI reports conflicts at startup if two actions share the same key.
 
 ```toml
 [keymap]
@@ -302,14 +344,12 @@ move_down  = "ctrl+n"
 move_up    = "ctrl+p"
 ```
 
-The TUI reports conflicts at startup if two actions share the same key.
-
 ---
 
-## 6. Startup flags
+## 7. Startup flags
 
 ```
-todotxt-tui [OPTIONS]
+todo [OPTIONS]
 
 Options:
   --todo <PATH>      Override the todo file for this run
@@ -324,85 +364,21 @@ same directory as the selected todo file.
 
 ---
 
-## 7. CLI companion (`todotxt`)
+## 8. CLI companion (`todotxt`)
 
-The `todotxt` binary ships alongside the TUI and covers scripting, shell pipelines,
-and quick one-off operations. Both tools read the same `config.toml` and `todo.txt`.
+The `td` alias runs `todotxt`, a full-featured CLI that reads the same `config.toml` and
+`todo.txt` as the TUI. Useful for scripting, shell pipelines, and quick one-off operations.
 
 ```sh
-todotxt add "Review PR #42 +api @backend"
-todotxt list @backend
-todotxt do 3
-todotxt archive
-todotxt stats
+td add "Review PR #42 +api @backend"
+td list @backend
+td do 3
+td archive
+td stats
 ```
 
 For the full CLI command reference, JSON output format, and shell completion setup,
 see [README.cli.md](README.cli.md).
-
----
-
-## 8. todo.txt format primer
-
-Each line in `todo.txt` is one task:
-
-```
-(PRIORITY) CREATION-DATE task text +project @context key:value
-```
-
-| Token | Meaning | Example |
-|-------|---------|---------|
-| `(A)` – `(Z)` | Priority; `(A)` is highest | `(A) Fix the bug` |
-| `YYYY-MM-DD` at start | Creation date | `2026-01-15 Write tests` |
-| `+word` | Project tag | `+api` |
-| `@word` | Context tag | `@backend` |
-| `due:YYYY-MM-DD` | Due date | `due:2026-05-10` |
-| `t:YYYY-MM-DD` | Threshold (deferred) date — hidden until this date | `t:2026-05-08` |
-| `x ` prefix | Completed task | `x 2026-05-01 Buy milk` |
-
-Full spec: [github.com/todotxt/todo.txt](https://github.com/todotxt/todo.txt)
-
----
-
-## 8. Shell aliases
-
-Typing `todotxt-tui` and `todotxt` every time gets old fast. These two aliases cover 95%
-of daily use without colliding with built-in commands on Windows, macOS, or Linux:
-
-| Alias | Binary | Use it for |
-|-------|--------|------------|
-| `todo` | `todotxt-tui` | Launch the TUI |
-| `td` | `todotxt` | CLI one-liners and scripts |
-
-**Bash / Zsh** — add to `~/.bashrc` or `~/.zshrc`:
-
-```sh
-alias todo='todotxt-tui'
-alias td='todotxt'
-```
-
-**Fish** — add to `~/.config/fish/config.fish`:
-
-```fish
-alias todo 'todotxt-tui'
-alias td 'todotxt'
-```
-
-**PowerShell** — add to your `$PROFILE`:
-
-```powershell
-Set-Alias todo todotxt-tui
-Set-Alias td   todotxt
-```
-
-After adding aliases:
-
-```sh
-todo                          # open the TUI
-td add "Fix the thing +api"
-td list @work
-td do 3
-```
 
 ---
 
@@ -435,11 +411,9 @@ Requires Rust ≥ 1.75.
 ```sh
 git clone https://github.com/radioflyer28/todotxt.rs
 cd todotxt.rs
-cargo build --release -p todotxt-tui    # TUI binary
-cargo build --release -p todotxt        # CLI binary
+cargo build --release -p todotxt-tui    # TUI binary → target/release/todotxt-tui
+cargo build --release -p todotxt        # CLI binary → target/release/todotxt
 ```
-
-Binaries land in `target/release/`.
 
 ---
 
