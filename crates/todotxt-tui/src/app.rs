@@ -7,13 +7,16 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use chrono::Local;
+use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList};
 use tui_textarea::TextArea;
 
+use crate::config::TuiConfig;
 use crate::event::AppEvent;
-use crate::theme::{StyleSheet, Theme};
+use crate::theme as theme_module;
+use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
 
 /// State for the @context / +project autocomplete popup (D-08, D-09 in 11-CONTEXT.md).
@@ -36,6 +39,21 @@ impl AutocompleteState {
 pub struct FilteringState {
     pub editor: TextArea<'static>,
     pub selected_preset: usize,
+    /// Snapshot of `filter_query` captured when the panel was opened (D-02).
+    /// Restored on Esc so no destructive clear occurs.
+    pub snapshot: String,
+}
+
+/// State for the F-key preset definition panel (D-01, D-06, D-07).
+pub struct FilterDefiningState {
+    /// Row 0: editable active filter with live preview (D-07).
+    pub active_editor: TextArea<'static>,
+    /// Preset names in sorted order (index 0 = preset #1).
+    pub preset_names: Vec<String>,
+    /// One editor per preset slot; index 0 corresponds to preset_names[0].
+    pub preset_editors: Vec<TextArea<'static>>,
+    /// Currently focused row: 0 = active filter row, 1–9 = preset row N.
+    pub selected_row: usize,
 }
 
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
@@ -46,6 +64,14 @@ pub enum AppMode {
     Editing { original_idx: usize },
     DeleteConfirm,
     Filtering,
+    /// F-key preset definition panel (D-01 in 16-CONTEXT.md).
+    FilterDefining,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum DisplayRow {
+    Task(usize),
+    GroupHeader(String),
 }
 
 /// Top-level application state.
@@ -53,8 +79,8 @@ pub struct App {
     pub should_quit: bool,
     pub task_list: TaskList,
     pub todo_path: PathBuf,
-    /// 0-based index into `display_indices` for the currently selected row.
-    /// Always clamped to `[0, display_indices.len() - 1]`.
+    /// 0-based index into `display_rows` for the currently selected row.
+    /// Always clamped to `[0, display_rows.len() - 1]`.
     pub selected: usize,
     /// Height of the list area in terminal rows. Kept in sync with `Resize` events.
     /// Used to compute half-page step for Ctrl+d / Ctrl+u (D-09).
@@ -70,22 +96,45 @@ pub struct App {
     pub autocomplete: Option<AutocompleteState>,
     /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
     pub display_indices: Vec<usize>,
+    /// Toggle grouped rendering with non-selectable header rows.
+    pub grouping: bool,
+    /// Rendered rows for list/navigation; includes group headers when grouping is enabled.
+    pub display_rows: Vec<DisplayRow>,
     /// Current display sort order (FileOrder = no sort applied).
     pub sort_order: SortOrder,
+    /// Toggle visibility of deferred tasks (`t:` in the future).
+    pub show_deferred: bool,
     /// Active filter query string (empty = no filter).
     pub filter_query: String,
+    /// Last non-empty filter captured when Ctrl+F toggles filtering off.
+    pub toggled_filter_query: Option<String>,
     /// Filter panel state, or `None` when panel is closed (Plan 02).
     pub filter_state: Option<FilteringState>,
     /// Named filter presets from `[presets]` in config (Plan 02).
     pub presets: Vec<(String, String)>,
+    /// Full TUI config (needed for preset definition panel save, D-04).
+    pub config: TuiConfig,
+    /// Config file path, used by TuiConfig::save() in the definition panel.
+    pub config_path: Option<PathBuf>,
+    /// State for the F-key preset definition panel, or None when closed.
+    pub filter_defining_state: Option<FilterDefiningState>,
     /// Pre-computed color styles for the active theme (D-08, D-09 in 13-CONTEXT.md).
     pub styles: StyleSheet,
-    /// Active theme selected at startup.
-    pub theme: Theme,
+    /// Currently active palette, used by `t` key theme cycling.
+    pub palette: Theme,
+    /// Whether NO_COLOR mode is active; preserves monochrome behavior while cycling themes.
+    pub no_color: bool,
 }
 
 impl App {
-    pub fn new(task_list: TaskList, todo_path: PathBuf, presets: Vec<(String, String)>, theme: Theme, no_color: bool) -> Self {
+    pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, palette: Theme, no_color: bool) -> Self {
+        // Build sorted presets vec from config for quick filter selection (Plan 02).
+        let mut presets: Vec<(String, String)> = config
+            .presets
+            .iter()
+            .filter_map(|(name, p)| p.filter.as_ref().map(|f| (name.clone(), f.clone())))
+            .collect();
+        presets.sort_by(|(a, _), (b, _)| a.cmp(b));
         let mut app = App {
             should_quit: false,
             task_list,
@@ -97,12 +146,20 @@ impl App {
             pending_reload: false,
             autocomplete: None,
             display_indices: Vec::new(),
+            grouping: false,
+            display_rows: Vec::new(),
             sort_order: SortOrder::FileOrder,
+            show_deferred: false,
             filter_query: String::new(),
+            toggled_filter_query: None,
             filter_state: None,
             presets,
-            styles: StyleSheet::from_theme(theme, no_color),
-            theme,
+            config,
+            config_path,
+            filter_defining_state: None,
+            styles: StyleSheet::from_theme(palette, no_color),
+            palette,
+            no_color,
         };
         app.rebuild_display_indices();
         app
@@ -153,6 +210,7 @@ impl App {
                     }
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
                     AppMode::Filtering => self.handle_filtering_key(key)?,
+                    AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -187,6 +245,7 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
         let display_count = self.display_indices.len();
+        let row_count = self.display_rows.len();
         match key.code {
             // ── Quit ────────────────────────────────────────────────────────
             KeyCode::Char('q') => {
@@ -197,17 +256,37 @@ impl App {
             }
 
             // ── Navigation ──────────────────────────────────────────────────
-            KeyCode::Char('j') | KeyCode::Down if display_count > 0 => {
-                self.selected = (self.selected + 1).min(display_count - 1);
+            KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
+                let mut next = self.selected + 1;
+                while next < row_count
+                    && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
+                {
+                    next += 1;
+                }
+                if next < row_count {
+                    self.selected = next;
+                }
             }
-            KeyCode::Char('k') | KeyCode::Up if display_count > 0 => {
-                self.selected = self.selected.saturating_sub(1);
+            KeyCode::Char('k') | KeyCode::Up if row_count > 0 => {
+                if self.selected == 0 {
+                    return Ok(());
+                }
+                let mut prev = self.selected.saturating_sub(1);
+                while prev > 0 && matches!(self.display_rows[prev], DisplayRow::GroupHeader(_)) {
+                    prev -= 1;
+                }
+                if matches!(self.display_rows[prev], DisplayRow::Task(_)) {
+                    self.selected = prev;
+                }
             }
             KeyCode::Char('g') if display_count > 0 => {
-                self.selected = 0;
+                self.grouping = !self.grouping;
+                self.rebuild_and_reanchor();
             }
-            KeyCode::Char('G') if display_count > 0 => {
-                self.selected = display_count - 1;
+            KeyCode::Char('h') if display_count > 0 => {
+                self.show_deferred = !self.show_deferred;
+                self.rebuild_display_indices();
+                self.clamp_selection();
             }
             // Ctrl+U half-page up — must come before plain 'u' (edit).
             KeyCode::Char('u')
@@ -215,13 +294,25 @@ impl App {
             {
                 let half = (self.list_height / 2).max(1) as usize;
                 self.selected = self.selected.saturating_sub(half);
+                while self.selected < row_count
+                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
+                {
+                    self.selected += 1;
+                }
+                self.clamp_selection();
             }
             // Ctrl+D half-page down — must come before plain 'd' (delete).
             KeyCode::Char('d')
                 if key.modifiers.contains(KeyModifiers::CONTROL) && display_count > 0 =>
             {
                 let half = (self.list_height / 2).max(1) as usize;
-                self.selected = (self.selected + half).min(display_count - 1);
+                self.selected = (self.selected + half).min(row_count.saturating_sub(1));
+                while self.selected < row_count
+                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
+                {
+                    self.selected += 1;
+                }
+                self.clamp_selection();
             }
 
             // ── Done toggle ──────────────────────────────────────────────────
@@ -257,15 +348,95 @@ impl App {
                 self.rebuild_and_reanchor();
             }
 
-            // ── Filter panel placeholder (Plan 02) ──────────────────────────
+            // ── Theme cycle ────────────────────────────────────────────────
+            KeyCode::Char('t') => {
+                self.palette = cycle_theme(self.palette);
+                self.styles = StyleSheet::from_theme(self.palette, self.no_color);
+                self.config.tui.theme = match self.palette {
+                    Theme::Default => "default".to_string(),
+                    Theme::Light => "light".to_string(),
+                };
+                if let Some(ref path) = self.config_path {
+                    if let Err(e) = self.config.save(path) {
+                        eprintln!("Warning: failed to save config: {e}");
+                    }
+                }
+            }
+
+            // ── Ctrl+F: toggle active filter on/off ─────────────────────────
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.filter_query.trim().is_empty() {
+                    if let Some(prev) = self.toggled_filter_query.take() {
+                        self.filter_query = prev;
+                    }
+                } else {
+                    self.toggled_filter_query = Some(self.filter_query.clone());
+                    self.filter_query.clear();
+                }
+                self.rebuild_and_reanchor();
+            }
+
+            // ── Filter panel (Plan 02) ──────────────────────────────────────
             KeyCode::Char('f') => {
                 let mut editor = TextArea::default();
                 editor.insert_str(&self.filter_query);
                 self.filter_state = Some(FilteringState {
                     editor,
                     selected_preset: 0,
+                    snapshot: self.filter_query.clone(), // per D-02
                 });
                 self.mode = AppMode::Filtering;
+            }
+
+            // ── Preset definition panel (Plan 16-03, D-01) ──────────────────
+            KeyCode::Char('F') => {
+                let mut active_editor = TextArea::default();
+                active_editor.insert_str(&self.filter_query);
+
+                // Build deterministic numbered slots (f1..fN) so slot positions never shift.
+                const MIN_PRESET_SLOTS: usize = 5;
+                const MAX_PRESET_SLOTS: usize = 9;
+                let highest_existing_slot = self
+                    .config
+                    .presets
+                    .keys()
+                    .filter_map(|name| parse_preset_slot(name))
+                    .max()
+                    .unwrap_or(0);
+                let slot_count = highest_existing_slot
+                    .clamp(MIN_PRESET_SLOTS, MAX_PRESET_SLOTS);
+
+                let sorted_presets: Vec<(String, String)> = (1..=slot_count)
+                    .map(|slot| {
+                        let name = format!("f{}", slot);
+                        let filter = self
+                            .config
+                            .presets
+                            .get(&name)
+                            .and_then(|p| p.filter.clone())
+                            .unwrap_or_default();
+                        (name, filter)
+                    })
+                    .collect();
+
+                if active_editor.cursor() == (0, 0) {
+                    active_editor.move_cursor(tui_textarea::CursorMove::End);
+                }
+
+                let preset_names: Vec<String> = sorted_presets.iter().map(|(n, _)| n.clone()).collect();
+                let preset_editors: Vec<TextArea<'static>> = sorted_presets.iter().map(|(_, f)| {
+                    let mut ta = TextArea::default();
+                    ta.insert_str(f);
+                    ta
+                }).collect();
+
+                self.filter_defining_state = Some(FilterDefiningState {
+                    active_editor,
+                    preset_names,
+                    preset_editors,
+                    selected_row: 0,
+                });
+                self.mode = AppMode::FilterDefining;
             }
 
             _ => {}
@@ -279,7 +450,9 @@ impl App {
     ) -> color_eyre::Result<()> {
         match key.code {
             KeyCode::Esc => {
-                self.filter_query = String::new();
+                // Restore prior filter (D-02) — do NOT clear
+                let snapshot = self.filter_state.as_ref().map(|s| s.snapshot.clone()).unwrap_or_default();
+                self.filter_query = snapshot;
                 self.filter_state = None;
                 self.mode = AppMode::Normal;
                 self.rebuild_and_reanchor();
@@ -288,6 +461,7 @@ impl App {
             KeyCode::Enter => {
                 self.filter_state = None;
                 self.mode = AppMode::Normal;
+                self.toggled_filter_query = None;
                 self.apply_pending_reload()?;
             }
             KeyCode::Down => {
@@ -331,7 +505,7 @@ impl App {
             }
             _ => {
                 if let Some(ref mut state) = self.filter_state {
-                    state.editor.input_without_shortcuts(Event::Key(key));
+                    state.editor.input(key);
                     self.filter_query = state
                         .editor
                         .lines()
@@ -340,6 +514,114 @@ impl App {
                         .unwrap_or_default();
                 }
                 self.rebuild_and_reanchor();
+            }
+        }
+        Ok(())
+    }
+
+    // ── Preset definition panel key handler (Plan 16-03, D-01) ────────────────
+
+    fn handle_filter_defining_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        use crossterm::event::KeyCode as KC;
+
+        let state = match self.filter_defining_state.as_mut() {
+            Some(s) => s,
+            None => {
+                self.mode = AppMode::Normal;
+                return Ok(());
+            }
+        };
+
+        match key.code {
+            // D-03: Esc = discard — nothing written to TOML.
+            KC::Esc => {
+                self.filter_defining_state = None;
+                self.mode = AppMode::Normal;
+            }
+
+            // D-04: Enter = save preset definitions to TOML, return to Normal.
+            KC::Enter => {
+                // Apply currently selected row on save: row 0 = active query, rows 1..N = selected preset.
+                self.filter_query = if state.selected_row == 0 {
+                    state.active_editor.lines().join("").trim().to_string()
+                } else {
+                    let idx = state.selected_row - 1;
+                    state
+                        .preset_editors
+                        .get(idx)
+                        .map(|e| e.lines().join("").trim().to_string())
+                        .unwrap_or_default()
+                };
+                    self.toggled_filter_query = None;
+
+                // Update config.presets from editors.
+                for (i, name) in state.preset_names.iter().enumerate() {
+                    let filter_str = state.preset_editors[i].lines().join("").trim().to_string();
+                    if filter_str.is_empty() {
+                        // Remove empty/cleared presets — do not write blank slots to config.
+                        self.config.presets.remove(name);
+                    } else {
+                        self.config.presets.entry(name.clone())
+                            .and_modify(|p| p.filter = Some(filter_str.clone()))
+                            .or_insert_with(|| crate::config::TuiPreset { filter: Some(filter_str) });
+                    }
+                }
+
+                // Rebuild presets vec from updated config (D-05: only preset strings persisted).
+                let mut updated: Vec<(String, String)> = self.config.presets.iter()
+                    .filter_map(|(k, v)| v.filter.as_ref().map(|f| (k.clone(), f.clone())))
+                    .collect();
+                updated.sort_by(|(a, _), (b, _)| a.cmp(b));
+                self.presets = updated;
+
+                // Persist to TOML atomically.
+                if let Some(ref path) = self.config_path.clone() {
+                    if let Err(e) = self.config.save(path) {
+                        eprintln!("Warning: failed to save config: {e}");
+                    }
+                }
+
+                self.filter_defining_state = None;
+                self.mode = AppMode::Normal;
+                self.rebuild_and_reanchor();
+            }
+
+            // Navigate rows (Up/Down).
+            KC::Up => {
+                if state.selected_row > 0 {
+                    state.selected_row -= 1;
+                }
+            }
+            KC::Down => {
+                let max_row = state.preset_editors.len();
+                if state.selected_row < max_row {
+                    state.selected_row += 1;
+                }
+            }
+
+            // All other keys: forward to the focused editor.
+            _ => {
+                let selected = state.selected_row;
+                if selected == 0 {
+                    state.active_editor.input(key);
+                    // D-07: live preview — update filter_query from active editor.
+                    self.filter_query = self
+                        .filter_defining_state
+                        .as_ref()
+                        .map(|s| s.active_editor.lines().join("").trim().to_string())
+                        .unwrap_or_default();
+                    self.rebuild_and_reanchor();
+                } else {
+                    let idx = selected - 1;
+                    if let Some(ref mut state) = self.filter_defining_state {
+                        if idx < state.preset_editors.len() {
+                            state.preset_editors[idx].input(key);
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -373,7 +655,7 @@ impl App {
                     ac.focused = true;
                     ac.selected = (ac.selected + 1).min(ac.items.len().saturating_sub(1));
                 } else {
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                 }
             }
             KeyCode::Up => {
@@ -381,10 +663,10 @@ impl App {
                     if ac.focused {
                         ac.selected = ac.selected.saturating_sub(1);
                     } else {
-                        self.editor.input_without_shortcuts(Event::Key(key));
+                        self.editor.input(key);
                     }
                 } else {
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                 }
             }
             KeyCode::Tab => {
@@ -392,7 +674,7 @@ impl App {
                     self.accept_completion();
                 } else {
                     // Tab without focused popup — pass to editor.
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                     self.update_autocomplete();
                 }
             }
@@ -400,16 +682,14 @@ impl App {
                 if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
                     self.accept_completion();
                     // Also insert the space after the token.
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                 } else {
-                    self.editor.input_without_shortcuts(Event::Key(key));
+                    self.editor.input(key);
                     self.update_autocomplete();
                 }
             }
             _ => {
-                // Route all other keys through tui-textarea without default shortcuts
-                // (PITFALLS: "Single-line editors inheriting multiline and shortcut behavior").
-                self.editor.input_without_shortcuts(Event::Key(key));
+                self.editor.input(key);
                 self.update_autocomplete();
             }
         }
@@ -530,14 +810,22 @@ impl App {
                 // Move selection to the newly added task (D-13).
                 let canonical = self.task_list.len().saturating_sub(1);
                 self.rebuild_display_indices();
-                self.selected = self.display_indices.iter().position(|&x| x == canonical).unwrap_or(0);
+                self.selected = self
+                    .display_rows
+                    .iter()
+                    .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == canonical))
+                    .unwrap_or(0);
             }
             AppMode::Editing { original_idx } => {
                 self.task_list
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
                 self.rebuild_display_indices();
-                self.selected = self.display_indices.iter().position(|&x| x == original_idx).unwrap_or(0);
+                self.selected = self
+                    .display_rows
+                    .iter()
+                    .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == original_idx))
+                    .unwrap_or(0);
             }
             _ => {}
         }
@@ -564,7 +852,7 @@ impl App {
 
     /// Clamp `selected` to `[0, display_count - 1]`, or 0 on empty display.
     fn clamp_selection(&mut self) {
-        let count = self.display_indices.len();
+        let count = self.display_rows.len();
         if count == 0 {
             self.selected = 0;
         } else {
@@ -582,7 +870,10 @@ impl App {
             let mut pairs: Vec<(usize, &Task)> = if query.is_empty() {
                 self.task_list.tasks().iter().enumerate().collect()
             } else {
-                let f = Filter::from_query(&query);
+                let mut f = Filter::from_query(&query);
+                if self.show_deferred {
+                    f.suppress_future_threshold = false;
+                }
                 self.task_list.filter(&f)
             };
             if sort_order != SortOrder::FileOrder {
@@ -591,6 +882,38 @@ impl App {
             pairs.into_iter().map(|(idx, _)| idx).collect()
         };
         self.display_indices = new_indices;
+
+        if self.grouping && !self.display_indices.is_empty() {
+            let tasks = self.task_list.tasks();
+            let sort_order = self.sort_order;
+            // Stable-sort by group key so same-key tasks are always adjacent.
+            // This fixes cases where the primary sort interleaves groups (e.g., Alphabetical
+            // sorts by raw string including priority prefix, but group_key_for uses body).
+            // stable_sort preserves primary sort order within each group.
+            self.display_indices.sort_by(|&a, &b| {
+                let ka = group_key_for(&tasks[a], &sort_order);
+                let kb = group_key_for(&tasks[b], &sort_order);
+                ka.cmp(&kb)
+            });
+            let mut rows: Vec<DisplayRow> = Vec::new();
+            let mut last_key: Option<String> = None;
+            for &idx in &self.display_indices {
+                let task = &tasks[idx];
+                let key = group_key_for(task, &self.sort_order);
+                if last_key.as_deref() != Some(&key) {
+                    rows.push(DisplayRow::GroupHeader(key.clone()));
+                    last_key = Some(key);
+                }
+                rows.push(DisplayRow::Task(idx));
+            }
+            self.display_rows = rows;
+        } else {
+            self.display_rows = self
+                .display_indices
+                .iter()
+                .map(|&i| DisplayRow::Task(i))
+                .collect();
+        }
     }
 
     /// Rebuild display indices while preserving the selected canonical task.
@@ -598,10 +921,14 @@ impl App {
     /// Saves the current canonical index, rebuilds, then restores the selection
     /// to the display row where that canonical index now appears (or row 0).
     fn rebuild_and_reanchor(&mut self) {
-        let old_canonical = self.display_indices.get(self.selected).copied();
+        let old_canonical = self.canonical_selected();
         self.rebuild_display_indices();
         self.selected = old_canonical
-            .and_then(|ci| self.display_indices.iter().position(|&x| x == ci))
+            .and_then(|ci| {
+                self.display_rows
+                    .iter()
+                    .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == ci))
+            })
             .unwrap_or(0);
         self.clamp_selection();
     }
@@ -609,7 +936,10 @@ impl App {
     /// Return the canonical task index for the currently selected display row, or `None`
     /// if the display list is empty.
     fn canonical_selected(&self) -> Option<usize> {
-        self.display_indices.get(self.selected).copied()
+        match self.display_rows.get(self.selected) {
+            Some(DisplayRow::Task(idx)) => Some(*idx),
+            _ => self.display_indices.first().copied(),
+        }
     }
 
     /// Toggle the completion state of the currently selected task and persist to disk.
@@ -674,6 +1004,19 @@ impl App {
                 self.render_filter_panel(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
+            AppMode::FilterDefining => {
+                let preset_rows = self.filter_defining_state.as_ref()
+                    .map(|s| s.preset_editors.len() as u16)
+                    .unwrap_or(0)
+                    .min(9);
+                // 2 (border + active-filter row) + separator + preset rows, min 4
+                let panel_height = (2_u16 + 1 + preset_rows).max(4);
+                let chunks =
+                    Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
+                self.render_task_list(frame, chunks[0]);
+                self.render_filter_defining_panel(frame, chunks[1]);
+                self.render_status_bar(frame, chunks[2]);
+            }
         }
     }
 
@@ -690,28 +1033,40 @@ impl App {
         } else if self.display_indices.is_empty() {
             vec![ListItem::new("(no matching tasks)")]
         } else {
-            self.display_indices.iter().map(|&ci| {
-                let t = &tasks[ci];
-                let content = format!("{}: {}", ci + 1, t.to_raw());
-                // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
-                // Style precedence: completed (DIM) > priority A/B/C > overdue > plain.
-                // Modifier::REVERSED for selection is applied by List::highlight_style — not here.
-                let style = if t.completed {
-                    // Completed tasks: DIM only, no color (D-01, D-06).
-                    Style::default().add_modifier(Modifier::DIM)
-                } else if t.priority == Some('A') {
-                    self.styles.priority_a
-                } else if t.priority == Some('B') {
-                    self.styles.priority_b
-                } else if t.priority == Some('C') {
-                    self.styles.priority_c
-                } else if t.due_status() == DueStatus::Overdue {
-                    self.styles.overdue
-                } else {
-                    Style::default()
-                };
-                ListItem::new(content).style(style)
-            }).collect()
+            self.display_rows
+                .iter()
+                .map(|row| match row {
+                    DisplayRow::GroupHeader(label) => ListItem::new(format!(" {}", label))
+                        .style(self.styles.group_header),
+                    DisplayRow::Task(ci) => {
+                        let t = &tasks[*ci];
+                        let indent = if self.grouping { "  " } else { "" };
+                        let content = format!("{}{}: {}", indent, ci + 1, t.to_raw());
+                        // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
+                        // Style precedence: completed (DIM) > deferred shown (DIM) > priority A/B/C > overdue > plain.
+                        // Modifier::REVERSED for selection is applied by List::highlight_style — not here.
+                        let style = if t.completed {
+                            // Completed tasks: DIM only, no color (D-01, D-06).
+                            Style::default().add_modifier(Modifier::DIM)
+                        } else if self.show_deferred
+                            && t.threshold_date.map_or(false, |d| d > Local::now().date_naive())
+                        {
+                            Style::default().add_modifier(Modifier::DIM)
+                        } else if t.priority == Some('A') {
+                            self.styles.priority_a
+                        } else if t.priority == Some('B') {
+                            self.styles.priority_b
+                        } else if t.priority == Some('C') {
+                            self.styles.priority_c
+                        } else if t.due_status() == DueStatus::Overdue {
+                            self.styles.overdue
+                        } else {
+                            Style::default()
+                        };
+                        ListItem::new(content).style(style)
+                    }
+                })
+                .collect()
         };
 
         let list = List::new(items)
@@ -762,12 +1117,6 @@ impl App {
         }
 
         let mut middle = String::new();
-        let theme_label = match self.theme {
-            Theme::Default => "default",
-            Theme::Light => "light",
-        };
-        middle.push_str(" | theme:");
-        middle.push_str(theme_label);
 
         let trimmed_filter = self.filter_query.trim();
         if !trimmed_filter.is_empty() {
@@ -778,8 +1127,14 @@ impl App {
             middle.push_str(" | sort: ");
             middle.push_str(sort_name(self.sort_order));
         }
+        if self.grouping {
+            middle.push_str(" | group: on");
+        }
+        if self.show_deferred {
+            middle.push_str(" [+deferred]");
+        }
 
-        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | o sort";
+        let right = "  q quit | n add | u edit | d del | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -915,6 +1270,65 @@ impl App {
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
     }
+
+    /// Render the F-key preset definition panel (D-06, D-07, Plan 16-03).
+    ///
+    /// Layout: bordered outer panel → active filter row (top) → preset list (below).
+    fn render_filter_defining_panel(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::layout::{Constraint, Direction, Layout};
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, List, ListItem};
+
+        let state = match self.filter_defining_state.as_mut() {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Outer bordered block.
+        let outer = Block::default()
+            .title(" Filter Definitions (F) — \u{2191}\u{2193}: navigate  Enter: save+apply row  Esc: discard ")
+            .borders(Borders::ALL);
+        let inner = outer.inner(area);
+        frame.render_widget(outer, area);
+
+        // Split inner: active filter row (height 1) + separator + preset list.
+        let row_constraints = [
+            Constraint::Length(1), // active filter row
+            Constraint::Min(0),    // preset list
+        ];
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(row_constraints)
+            .split(inner);
+
+        // --- Row 0: Active filter editor (D-07 live preview) ---
+        let active_focused = state.selected_row == 0;
+        let active_style = if active_focused {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        // Render TextArea widget directly into the single-line row area.
+        // tui-textarea doesn't support inline border here, so we skip it;
+        // the outer block title explains the panel purpose.
+        state.active_editor.set_style(active_style);
+        frame.render_widget(&state.active_editor, rows[0]);
+
+        // --- Rows 1–9: Preset list ---
+        let items: Vec<ListItem> = state.preset_names.iter().enumerate().map(|(i, name)| {
+            let filter_val = state.preset_editors[i].lines().join("");
+            let label = format!(" #{} {}  {}", i + 1, name, filter_val);
+            let style = if state.selected_row == i + 1 {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            ListItem::new(label).style(style)
+        }).collect();
+
+        let preset_list = List::new(items);
+        frame.render_widget(preset_list, rows[1]);
+    }
 }
 
 /// Advance to the next sort order in the fixed cycle.
@@ -932,6 +1346,25 @@ fn cycle_sort(current: SortOrder) -> SortOrder {
     }
 }
 
+/// Advance to the next theme in the fixed cycle.
+fn cycle_theme(current: Theme) -> Theme {
+    match current {
+        Theme::Default => Theme::Light,
+        Theme::Light => Theme::Default,
+    }
+}
+
+/// Parse numbered preset keys like `f1`..`f9`.
+fn parse_preset_slot(name: &str) -> Option<usize> {
+    let suffix = name.strip_prefix('f')?;
+    let slot = suffix.parse::<usize>().ok()?;
+    if (1..=9).contains(&slot) {
+        Some(slot)
+    } else {
+        None
+    }
+}
+
 /// Human-readable name for a sort order, shown in the status bar.
 fn sort_name(order: SortOrder) -> &'static str {
     match order {
@@ -944,6 +1377,45 @@ fn sort_name(order: SortOrder) -> &'static str {
         SortOrder::Priority      => "priority",
         SortOrder::Project       => "project",
         _                        => "?",
+    }
+}
+
+fn group_key_for(task: &Task, sort: &SortOrder) -> String {
+    match sort {
+        SortOrder::Priority => task
+            .priority
+            .map(|p| format!("({})", p))
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::Project => task
+            .projects
+            .first()
+            .map(|p| format!("+{}", p))
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::Context => task
+            .contexts
+            .first()
+            .map(|c| format!("@{}", c))
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::DueDate => task
+            .due_date
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "no due date".to_string()),
+        SortOrder::Alphabetical => task
+            .body
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        SortOrder::FileOrder => "all tasks".to_string(),
+        SortOrder::CompletedDate => task
+            .completion_date
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "no completion date".to_string()),
+        SortOrder::CreationDate => task
+            .creation_date
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "no creation date".to_string()),
+        _ => "unknown".to_string(),
     }
 }
 

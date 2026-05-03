@@ -5,7 +5,7 @@
 //! the CLI's `[presets]` table) are silently ignored by each side.
 
 use directories::ProjectDirs;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use todotxt_core::resolve_config_path;
@@ -14,7 +14,7 @@ use todotxt_core::resolve_config_path;
 ///
 /// A `[tui]` block is optional — `#[serde(default)]` on the field in `TuiConfig`
 /// means existing configs without `[tui]` continue to work unchanged.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct TuiSection {
     /// Theme name: `"default"` (dark) or `"light"`. Empty string → default theme.
     #[serde(default)]
@@ -22,19 +22,21 @@ pub struct TuiSection {
 }
 
 /// A named filter preset from the [presets] TOML section.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct TuiPreset {
     pub filter: Option<String>,
 }
 
 /// Phase 9 config fields. Mirrors the CLI's top-level TOML fields exactly.
 /// A `[tui]` subsection will be added in Phase 13.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[allow(dead_code)]
 pub struct TuiConfig {
     /// Path to the user's todo.txt file.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub todo_file: Option<PathBuf>,
     /// Path to the user's done.txt file.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub done_file: Option<PathBuf>,
     /// Automatically prepend today's date to new tasks.
     #[serde(default)]
@@ -96,5 +98,24 @@ impl TuiConfig {
         } else {
             Ok(TuiConfig::default())
         }
+    }
+
+    /// Serialize `self` to TOML and write it atomically to `path`.
+    ///
+    /// Uses a temp file + rename to prevent partial writes from corrupting
+    /// the config file if the process is interrupted (T-16-02-01).
+    ///
+    /// # Errors
+    /// Returns Err if serialization fails or the write/rename fails.
+    #[allow(dead_code)] // called by Plan 16-03 handle_filter_defining_key
+    pub fn save(&self, path: &Path) -> color_eyre::Result<()> {
+        let content = toml::to_string(self)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to serialize config: {e}"))?;
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &content)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to write config tmp {}: {e}", tmp_path.display()))?;
+        std::fs::rename(&tmp_path, path)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to rename config tmp to {}: {e}", path.display()))?;
+        Ok(())
     }
 }
