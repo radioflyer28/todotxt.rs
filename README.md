@@ -249,11 +249,24 @@ All commands accept a global `--json` flag. When set, output is a JSON envelope.
 
 ### Platform paths
 
-| OS | Default config location |
-|----|------------------------|
-| Linux | `~/.config/todotxt/config.toml` |
-| macOS | `~/.config/todotxt/config.toml` |
-| Windows | `%APPDATA%\todotxt\config.toml` |
+| OS | Config location |
+|----|----------------|
+| Linux | `~/.todotxt.rs/config.toml` |
+| macOS | `~/.todotxt.rs/config.toml` |
+| Windows | `%USERPROFILE%\.todotxt.rs\config.toml` |
+
+All three files live together in the same directory by default:
+
+```
+~/.todotxt.rs/
+  config.toml   ← settings
+  todo.txt      ← your tasks
+  done.txt      ← completed tasks (auto-created by archive)
+```
+
+On first run, both `todotxt` and `todotxt-tui` auto-create `~/.todotxt.rs/config.toml`
+with `todo_file` pre-set to `~/.todotxt.rs/todo.txt`. Create `todo.txt` there and you're
+ready to go.
 
 ### Portable mode
 
@@ -265,8 +278,8 @@ This makes the tool fully self-contained for USB/portable deployments.
 
 ```toml
 [paths]
-todo_file = "/home/user/todo.txt"   # Required: path to your todo.txt file
-done_file = "/home/user/done.txt"   # Optional: defaults to done.txt beside todo.txt
+todo_file = "~/.todotxt.rs/todo.txt"   # Default on first run
+done_file = "~/.todotxt.rs/done.txt"   # Optional: defaults to done.txt beside todo.txt
 
 [display]
 color = true           # Default: true. Set false to disable ANSI colors.

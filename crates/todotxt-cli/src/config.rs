@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -28,24 +27,13 @@ pub struct Config {
 }
 
 impl Config {
-    /// Returns the platform-appropriate config directory path.
+    /// Returns the unified config file path: `~/.todotxt.rs/config.toml` on all platforms.
     ///
-    /// - Linux:   ~/.config/todotxt/config.toml
-    /// - Windows: %APPDATA%\todotxt\config.toml
-    /// - macOS:   ~/Library/Application Support/todotxt/config.toml
+    /// All three files (`config.toml`, `todo.txt`, `done.txt`) live together in
+    /// `~/.todotxt.rs/` by default, making the setup self-contained and predictable
+    /// regardless of OS.
     pub fn default_path() -> Option<PathBuf> {
-        ProjectDirs::from("", "", "todotxt").map(|dirs| {
-            let config_dir = dirs.config_dir();
-            // Normalize Windows `%APPDATA%\todotxt\config` to `%APPDATA%\todotxt\config.toml`.
-            if config_dir.file_name().map(|n| n == "config").unwrap_or(false) {
-                config_dir
-                    .parent()
-                    .unwrap_or(config_dir)
-                    .join("config.toml")
-            } else {
-                config_dir.join("config.toml")
-            }
-        })
+        dirs_home().map(|home| home.join(".todotxt.rs").join("config.toml"))
     }
 
     /// Resolves the config path, applying portable mode:
@@ -74,8 +62,8 @@ impl Config {
             toml::from_str(&content)
                 .with_context(|| format!("parsing config: {}", path.display()))
         } else {
-            // Auto-create with default todo_file = ~/todo.txt (D-01, D-02)
-            let home_todo = dirs_home().map(|h| h.join("todo.txt"));
+            // Auto-create with default todo_file = ~/.todotxt.rs/todo.txt (D-01, D-02)
+            let home_todo = dirs_home().map(|h| h.join(".todotxt.rs").join("todo.txt"));
             let default = Config {
                 todo_file: home_todo,
                 auto_creation_date: false,

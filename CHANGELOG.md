@@ -8,6 +8,8 @@
 - **Pre-built release binaries** — `todotxt-tui` binaries are now published to [GitHub Releases](../../releases) on every version tag. Downloads available for Linux (static musl x86_64), macOS (universal arm64+x86_64), and Windows (static CRT x86_64). No Rust toolchain required to install.
 
 ### Changed
+- **Unified data directory** — All files now live in `~/.todotxt.rs/` on every platform (`config.toml`, `todo.txt`, `done.txt`). Previous locations (`%APPDATA%\todotxt\` on Windows, `~/.config/todotxt/` on Linux, `~/Library/Application Support/todotxt/` on macOS) are no longer used. Migrate by copying your files to `~/.todotxt.rs/` and updating any absolute paths in your config.
+- **First-run auto-create for TUI** — `todotxt-tui` now auto-creates `~/.todotxt.rs/config.toml` on first launch (matching CLI behavior), eliminating the `todo_file not set` error on fresh installs.
 - **Pinned dependency versions** — All external crate dependencies are now pinned to exact resolved versions to prevent silent breaking changes from `cargo update`.
 - **Release alignment for v1.5** — Workspace crates are versioned to `1.5.0` for milestone ship readiness.
 
