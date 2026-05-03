@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.3.0] - 2026-04-28
+
+### Added
+- **Multi-select + range selection** — Press `v` to enter selection mode; `Space` toggles tasks; `Shift+j/k` extends a contiguous range; `Shift+Ctrl+D/U` extends by half page. Selected tasks survive filter, sort, and reload.
+- **Bulk delete** — Press `D` (Shift+d) with tasks selected to enter a count-aware confirmation (`Delete N tasks?`). Deletion runs in descending index order to prevent corruption. After delete: selection cleared.
+- **Bulk append** — Press `T` (Shift+t) with tasks selected to open an append prompt. Text is appended to all selected tasks atomically via `batch_update`.
+- **Smart text normalization** — Append and edit flows normalize recognized todo.txt metadata: priority tokens moved to canonical prefix, +project and @context tags merged/deduplicated, `due:` and `t:` dates handled with field precedence, unknown metadata preserved verbatim. Normalization is done in `todotxt-core` and toggleable via `normalize_append` / `normalize_edit` config flags.
+- **Configurable keymap** — Add a `[keymap]` section to `config.toml` to override action bindings (e.g. `move_down = "j"`). Supports: letter keys, modifier combos (`ctrl+d`), named keys (`backspace`, `enter`, `SPACE`, `f1`–`f12`). All 19 implemented actions are overridable.
+- **Keymap conflict detection** — Invalid chords and conflicting bindings fall back to defaults. A warning indicator appears in the status bar; press `!` to see the full warning list.
+- **Help overlay** — Press `?` to open a keybindings reference showing all active bindings (including user overrides) in 5 sections: Tasks, Filter, View, Select, App. Press `Esc` or `q` to close.
+- **Parity hotkeys** — `0` clears the active filter, `1`–`9` apply filter presets, `.` reloads from disk. All aligned with todotxt.net defaults.
+- **Selection count indicator** — Status bar shows `| N selected` when tasks are selected and hints for bulk action keys.
+- **CLI `--normalize` flag** — `todotxt-cli` gains `--normalize` to apply smart normalization when adding or appending via the command line.
+
+### Notes
+- Deliberate deviations from todotxt.net WPF behavior are documented in `.planning/phases/22-keymap-help-parity/DEVIATION.md` (DEV-01 through DEV-07). Key differences: Shift+nav for range selection (todotxt.net uses mouse), no drag-and-drop priority setting, bulk append is text-only (no per-field batch edit).
+
 ## [1.2.0] - 2026-04-23
 
 ### Added

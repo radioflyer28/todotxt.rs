@@ -2,132 +2,75 @@
 
 ## Milestones
 
-- ✅ v1.0 Core Library + CLI — shipped 2026-04-16
-  Archive: .planning/milestones/v1.0-ROADMAP.md
-- ✅ v1.1 TUI Interface — shipped 2026-04-23
-  Archive: .planning/milestones/v1.1-ROADMAP.md
-- ✅ v1.2 Compatibility + UX Alignment — shipped 2026-04-24
-  Archive: .planning/milestones/v1.2-ROADMAP.md
-- 🚧 v1.3 Feature/Hotkey Parity with todotxt.net — active
+- ✅ v1.0 Core Library + CLI — shipped 2026-04-16 (archive: .planning/milestones/v1.0-ROADMAP.md)
+- ✅ v1.1 TUI Interface — shipped 2026-04-23 (archive: .planning/milestones/v1.1-ROADMAP.md)
+- ✅ v1.2 Compatibility + UX Alignment — shipped 2026-04-24 (archive: .planning/milestones/v1.2-ROADMAP.md)
+- ✅ v1.3 Feature/Hotkey Parity with todotxt.net — shipped 2026-04-28 (archive: .planning/milestones/v1.3-ROADMAP.md)
+- 🚧 v1.4 Kanban-Style Vertical Panes — active
 
-## v1.3 Scope
+## Active Milestone
 
-- TUI multi-selection parity: shift-range selection and keyboard-driven disjoint selection
-- Bulk delete and append actions over selected tasks
-- Todo.txt-aware normalization across append and edit flows
-- Configurable keymap overrides in `config.toml`
-- Help and hotkey parity grounded in todotxt.net docs and screenshots
+v1.4 Kanban-Style Vertical Panes
+
+## v1.4 Scope
+
+- Multi-pane Kanban-style vertical layout in the TUI
+- Per-pane sort/group/filter state and independent list view behavior
+- Pane lifecycle hotkeys for creation and deletion
+- One-key toggle to hide/show panes and restore default single-pane view
+- Config-defined panes in config.toml with per-pane defaults for sort/group/filter
+- CLI overrides for todo/archive/config file locations with deterministic fallback behavior
 
 ## Planned Phases
 
-- [ ] **Phase 19: Selection Model + Multi-Select Foundation**
-  - Add canonical task selection state that survives grouping, sorting, filtering, and reloads
-  - Support contiguous range selection and keyboard-driven disjoint selection
-  - Ensure non-task rows such as group headers are never selected
-  - **Requirements:** SEL-01, SEL-02, SEL-03, SEL-04
-  - **Plans:** 3 plans
-  - Plans:
-    - [ ] 19-01-PLAN.md — Canonical selection model + anchor tracking + grouped-row safety
-    - [ ] 19-02-PLAN.md — Shift-range selection + disjoint selection mode key handling and rendering
-    - [ ] 19-03-PLAN.md — Selection persistence across regroup, refilter, resort, and reload
+- [x] **Phase 24: Pane Model + Layout Foundation**
+	- Introduce pane data model and active-pane focus mechanics
+	- Render vertical pane containers with robust fallback to single-pane view
+	- **Requirements:** PANE-01, PANE-02, VIEW-01
+	- **Plans:** 3 plans
+	- Plans:
+		- [x] 24-01-PLAN.md — Pane state model and focus selection behavior
+		- [x] 24-02-PLAN.md — Vertical pane layout rendering in TUI task view
+		- [x] 24-03-PLAN.md — Single-pane fallback path and layout safety guards
 
-- [ ] **Phase 20: Bulk Actions + Selection UX**
-  - Turn multi-selection into safe bulk delete and bulk append flows
-  - Surface selection count and selection mode clearly in the TUI
-  - Preserve deterministic behavior when visible-row order differs from task order
-  - **Requirements:** BULK-01, BULK-02, BULK-03
-  - **Plans:** 3 plans
-  - Plans:
-    - [ ] 20-01-PLAN.md — Bulk delete confirmation and descending-index mutation safety
-    - [ ] 20-02-PLAN.md — Bulk append workflow over selected tasks
-    - [ ] 20-03-PLAN.md — Selection count/status/help UX polish for bulk actions
+- [ ] **Phase 25: Per-Pane Query Behavior (Sort/Group/Filter)**
+	- Track sort/group/filter independently for each pane
+	- Route existing query hotkeys to the active pane context
+	- **Requirements:** PANE-03, PANE-04
+	- **Plans:** 3 plans
+	- Plans:
+		- [ ] 25-01-PLAN.md — Pane-scoped filter query and preset application
+		- [ ] 25-02-PLAN.md — Pane-scoped sort/group state and rendering status
+		- [ ] 25-03-PLAN.md — Navigation and action safety across pane boundaries
 
-- [ ] **Phase 21: Smart Text Normalization**
-  - Normalize recognized todo.txt metadata during append and edit flows
-  - Preserve plain text and unknown metadata verbatim
-  - Centralize normalization rules in `todotxt-core`
-  - **Requirements:** NORM-01, NORM-02, NORM-03, NORM-04, NORM-05, NORM-06
-  - **Plans:** 3 plans
-  - Plans:
-    - [ ] 21-01-PLAN.md — Extend `todotxt-core` normalization/build helpers for recognized metadata
-    - [ ] 21-02-PLAN.md — Route TUI append flows through shared normalization helpers
-    - [ ] 21-03-PLAN.md — Route TUI edit/update flows through shared normalization helpers and preserve unknown text
+- [ ] **Phase 26: Pane Management + Quick Hide/Show**
+	- Add hotkeys for pane creation and deletion
+	- Add one-key global pane hide/show that restores default single-pane view
+	- **Requirements:** PANE-05, VIEW-02
+	- **Plans:** 3 plans
+	- Plans:
+		- [ ] 26-01-PLAN.md — Create/delete pane hotkeys and guardrails
+		- [ ] 26-02-PLAN.md — Global pane visibility toggle and restore semantics
+		- [ ] 26-03-PLAN.md — Help/status updates for pane controls and discoverability
 
-- [ ] **Phase 22: Keymap + Help Parity**
-  - Align implemented hotkeys with todotxt.net where practical
-  - Support configurable key overrides in `config.toml`
-  - Make active bindings and deliberate deviations discoverable in-app
-  - **Requirements:** PAR-01, PAR-02, PAR-03, KEY-01, KEY-02, KEY-03
-  - **Plans:** 3 plans
-  - Plans:
-    - [ ] 22-01-PLAN.md — Keymap schema in config and runtime binding resolution
-    - [ ] 22-02-PLAN.md — Safe fallback behavior for invalid or conflicting key overrides
-    - [ ] 22-03-PLAN.md — Help/status parity pass and deviation documentation
-
-- [ ] **Phase 23: Validation + Ship Readiness**
-  - Parity-focused UAT for selection, bulk actions, normalization, and keymap overrides
-  - Regression coverage, docs updates, milestone audit, and close-out
-  - **Plans:** 4 plans
-  - Plans:
-    - [ ] 23-01-PLAN.md — Write UAT checklist for parity workflows and confirm regression suite green
-    - [ ] 23-02-PLAN.md — Requirements close-out + help/README/CHANGELOG updates
-    - [ ] 23-03-PLAN.md — Human UAT checkpoint against todotxt.net parity expectations
-    - [ ] 23-04-PLAN.md — Milestone audit and close-out
-
-## Phase Detail Sections
-
-### Phase 19: Selection Model + Multi-Select Foundation
-
-Goal: add canonical multi-selection to the TUI without breaking grouped rendering or filtered/reloaded views.
-Status: planned
-Plans:
-
-- [ ] 19-01-PLAN.md — Canonical selection model + anchor tracking + grouped-row safety
-- [ ] 19-02-PLAN.md — Shift-range selection + disjoint selection mode key handling and rendering
-- [ ] 19-03-PLAN.md — Selection persistence across regroup, refilter, resort, and reload
-
-### Phase 20: Bulk Actions + Selection UX
-
-Goal: expose selected-task workflows that feel safe and obvious to todotxt.net users.
-Status: planned
-Plans:
-
-- [ ] 20-01-PLAN.md — Bulk delete confirmation and descending-index mutation safety
-- [ ] 20-02-PLAN.md — Bulk append workflow over selected tasks
-- [ ] 20-03-PLAN.md — Selection count/status/help UX polish for bulk actions
-
-### Phase 21: Smart Text Normalization
-
-Goal: make append/edit flows todo.txt-aware while preserving user text.
-Status: planned
-Plans:
-
-- [ ] 21-01-PLAN.md — Extend `todotxt-core` normalization/build helpers for recognized metadata
-- [ ] 21-02-PLAN.md — Route TUI append flows through shared normalization helpers
-- [ ] 21-03-PLAN.md — Route TUI edit/update flows through shared normalization helpers and preserve unknown text
-
-### Phase 22: Keymap + Help Parity
-
-Goal: make parity workflows discoverable by default and configurable when users need different bindings.
-Status: planned
-Plans:
-
-- [ ] 22-01-PLAN.md — Keymap schema in config and runtime binding resolution
-- [ ] 22-02-PLAN.md — Safe fallback behavior for invalid or conflicting key overrides
-- [ ] 22-03-PLAN.md — Help/status parity pass and deviation documentation
-
-### Phase 23: Validation + Ship Readiness
-
-Goal: verify v1.3 selection, bulk action, normalization, and keymap behavior before ship.
-Status: planned
-Plans:
-
-- [ ] 23-01-PLAN.md — Write UAT checklist for parity workflows and confirm regression suite green
-- [ ] 23-02-PLAN.md — Requirements close-out + help/README/CHANGELOG updates
-- [ ] 23-03-PLAN.md — Human UAT checkpoint against todotxt.net parity expectations
-- [ ] 23-04-PLAN.md — Milestone audit and close-out
+- [ ] **Phase 27: Config-Defined Panes + Validation + Ship Readiness**
+	- Load pane definitions from config.toml with per-pane sort/group/filter defaults
+	- Add CLI file-path override flags and archive path defaulting for alternate todo.txt paths
+	- Validate config/path fallback behavior and ship-readiness docs/tests
+	- **Requirements:** CFG-01, CFG-02, CFG-03, PATH-01, PATH-02, PATH-03
+	- **Plans:** 3 plans
+	- Plans:
+		- [ ] 27-01-PLAN.md — Config schema updates for panes and CLI path override inputs
+		- [ ] 27-02-PLAN.md — CLI override resolution rules (todo/archive/config) and fallback behavior
+		- [ ] 27-03-PLAN.md — Verification, validation, and milestone close-out
 
 ## Backlog
 
 - GUI interface (native desktop)
 - CI/CD release pipeline and package distribution
+
+
+
+
+
+

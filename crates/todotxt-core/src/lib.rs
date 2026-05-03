@@ -13,7 +13,7 @@ pub use error::TodoError;
 pub use filter::{Filter, FilterTerm};
 pub use portable::resolve_config_path;
 pub use sort::SortOrder;
-pub use task::{DueStatus, Task};
+pub use task::{normalize_append, normalize_line, DueStatus, Task};
 pub use task_list::{LineEnding, TaskList};
 #[cfg(feature = "watching")]
 pub use watcher::FileWatcher;

@@ -1,9 +1,9 @@
 use crate::{output::Renderer, CliError};
 use std::path::Path;
-use todotxt_core::{Task, TaskList};
+use todotxt_core::{normalize_append, Task, TaskList};
 
 /// Append text to the end of a task (`append` command).
-pub fn run(todo_path: &Path, id: usize, text: &str, renderer: &Renderer) -> Result<(), CliError> {
+pub fn run(todo_path: &Path, id: usize, text: &str, normalize: bool, renderer: &Renderer) -> Result<(), CliError> {
     let idx = validate_id(id)?;
     let mut list = TaskList::load(todo_path)?;
 
@@ -16,7 +16,13 @@ pub fn run(todo_path: &Path, id: usize, text: &str, renderer: &Renderer) -> Resu
     }
 
     let task = list.tasks()[idx].clone();
-    let updated = Task::parse(&format!("{} {}", task.to_raw(), text));
+    // D-09/D-10: --normalize flag calls shared normalize_append from todotxt-core.
+    // Without --normalize, raw concat behavior is unchanged (non-breaking).
+    let updated = if normalize {
+        normalize_append(&task, text)
+    } else {
+        Task::parse(&format!("{} {}", task.to_raw(), text))
+    };
     list.update(idx, updated.clone())?;
     renderer.print_write_result(&format!("Appended to task #{}.", id), idx, &updated);
 

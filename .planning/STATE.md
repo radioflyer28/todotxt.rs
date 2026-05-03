@@ -1,15 +1,18 @@
----
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Feature/Hotkey Parity with todotxt.net
-current_phase: 19
-status: Defining requirements
-last_updated: "2026-04-24T00:00:00.000Z"
-last_activity: 2026-04-24
+milestone: v1.4
+milestone_name: Kanban-Style Vertical Panes
+current_phase: not-started
+current_plan: none
+status: 🚧 MILESTONE v1.4 STARTED — defining requirements and roadmap
+milestone_status: in_progress
+milestone_version: v1.4
+next_action: /gsd-plan-phase 24
+last_updated: "2026-04-28T00:00:00.000Z"
+last_activity: 2026-04-28
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 12
   completed_plans: 0
   percent: 0
 ---
@@ -18,21 +21,21 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-24)
+See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone v1.3 — TUI feature and hotkey parity with todotxt.net.
+**Current focus:** Milestone v1.4 — Kanban-style vertical panes in TUI.
 
 ## Current Position
 
-Phase: 19
-Plan: 19-01 (next)
-Status: Milestone initialized — ready to plan Phase 19
-Last activity: 2026-04-24
+Phase: Not started (defining requirements)
+Plan: -
+Status: Defining requirements and roadmap for v1.4.
+Last activity: 2026-04-28
 
 ## Next Step
 
-Plan Phase 19 — Selection Model + Multi-Select Foundation.
+Run /gsd-plan-phase 24 to start executing the first v1.4 phase.
 
 ## Pending Decisions
 
@@ -57,6 +60,27 @@ None.
 - grouping/sorting parity alignment with todotxt.net behavior
 - filter definition layout alignment + TOML persistence
 - deferred-task parity investigation and implementation if confirmed
+
+## Decisions
+
+- D-01: D hotkey on non-empty selection enters DeleteConfirm mode (Phase 20-01)
+- D-02: Bulk confirmation shows count for >1 task, task preview for single/empty (Phase 20-01)
+- D-03: Deletion in descending canonical index order prevents index shifts (Phase 20-01)
+- D-04: Clear selected_tasks and reset disjoint_select after bulk delete (Phase 20-01)
+- D-12: `| N selected` appended to status bar left segment when tasks are selected (Phase 20-03)
+- D-14: No separate `[v]` prefix when disjoint_select=true — keeps status bar uncluttered (Phase 20-03)
+
+(Previous decisions from Phase 19: D-01–D-15 in State.md history)
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 19    | 01   | 35min    | 3     | 2     |
+| 19    | 02   | 20min    | 3     | 1     |
+| 20    | 01   | 1h       | 2     | 1     |
+| 20    | 02   | 45min    | 2     | 1     |
+| 20    | 03   | 8min     | 2     | 1     |
 
 **v1.3 kickoff scope:**
 

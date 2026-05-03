@@ -59,8 +59,8 @@ fn run(cli: &Cli) -> Result<(), CliError> {
         Commands::Undo { ids } => commands::complete::run_undo(&todo_path, ids, &renderer)?,
         Commands::Del { ids } => commands::del::run(&todo_path, ids, &renderer)?,
         Commands::Edit { id, text } => commands::edit::run(&todo_path, *id, text, &renderer)?,
-        Commands::Append { id, text } => {
-            commands::append::run(&todo_path, *id, text, &renderer)?
+        Commands::Append { id, text, normalize } => {
+            commands::append::run(&todo_path, *id, text, *normalize, &renderer)?
         }
         Commands::Prepend { id, text } => {
             commands::prepend::run(&todo_path, *id, text, &renderer)?

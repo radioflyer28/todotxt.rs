@@ -1,95 +1,78 @@
-# Requirements: v1.3 Feature/Hotkey Parity with todotxt.net
+# Requirements: v1.4 Kanban-Style Vertical Panes
 
-Defined: 2026-04-24
+Defined: 2026-04-28
 Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
 
 ## v1 Requirements
 
-### Selection
+### Pane Layout and Focus
 
-- [ ] SEL-01: User can extend the current selection to a contiguous task range with Shift plus navigation keys.
-- [ ] SEL-02: User can enter a selection mode that allows adding or removing non-contiguous task rows without using the mouse.
-- [ ] SEL-03: User's selected tasks remain selected when the list is regrouped, resorted, filtered, or reloaded from disk, as long as those tasks still exist.
-- [ ] SEL-04: Non-task rows such as group headers are never directly selected or mutated by multi-selection actions.
+- [ ] PANE-01: User can view multiple vertical panes in the TUI, each pane showing a task list.
+- [ ] PANE-02: User can switch active focus between panes using keyboard-only controls.
 
-### Bulk Editing
+### Pane-Scoped Query Behavior
 
-- [ ] BULK-01: User can bulk delete all currently selected tasks with a confirmation flow that clearly shows a multi-task action.
-- [ ] BULK-02: User can append text to all currently selected tasks from the TUI.
-- [ ] BULK-03: User can see how many tasks are currently selected from the TUI status or help surface before running a bulk action.
+- [ ] PANE-03: Each pane maintains its own filter query independent from other panes.
+- [ ] PANE-04: Each pane maintains its own sort and grouping state independent from other panes.
 
-### Text Normalization
+### Pane Lifecycle and Visibility
 
-- [ ] NORM-01: When appended or edited text contains a valid priority token, the saved task places the priority in canonical todo.txt prefix position.
-- [ ] NORM-02: When appended or edited text contains recognized +project metadata, the saved task places project tags after the task body in stable todo.txt form.
-- [ ] NORM-03: When appended or edited text contains recognized @context metadata, the saved task preserves valid contexts without requiring them to be moved out of inline body text.
-- [ ] NORM-04: When appended or edited text contains recognized due: or t: metadata, the saved task normalizes those fields consistently without discarding surrounding plain text.
-- [ ] NORM-05: When appended or edited text contains plain text or unrecognized metadata, that content is preserved in the saved task instead of being discarded.
-- [ ] NORM-06: Smart normalization uses shared parser or rebuild rules in todotxt-core, with any needed extensions made there rather than duplicating logic in the TUI.
+- [ ] PANE-05: User can create and delete panes using dedicated hotkeys.
+- [ ] VIEW-01: When panes are hidden, the UI reverts to the default single-pane task view.
+- [ ] VIEW-02: User can toggle all panes visible/hidden with one hotkey.
 
-### Parity and Discoverability
+### Config-Defined Panes
 
-- [ ] PAR-01: User can invoke implemented multi-selection and bulk-edit workflows with hotkeys aligned with todotxt.net where practical.
-- [ ] PAR-02: User can discover the implemented parity hotkeys and behaviors from in-app help or equivalent TUI guidance.
-- [ ] PAR-03: Deliberate deviations from todotxt.net behavior are documented in milestone artifacts so parity choices are explicit.
+- [ ] CFG-01: User can predefine panes in config.toml.
+- [ ] CFG-02: Each config-defined pane can set default sort, group, and filter behavior.
+- [ ] CFG-03: Invalid pane definitions fail safely with warnings and fallback behavior.
 
-### Keymap Configuration
+### CLI Path Overrides and File Resolution
 
-- [ ] KEY-01: User can override TUI hotkeys in config.toml for implemented actions without recompiling.
-- [ ] KEY-02: Invalid or conflicting key bindings fall back safely and surface a clear error or warning instead of breaking the TUI.
-- [ ] KEY-03: Default key bindings remain todotxt.net-oriented, even when keymap overrides are available.
+- [ ] PATH-01: User can pass a CLI flag to open an alternate todo.txt file instead of the path defined in config.toml.
+- [ ] PATH-02: When an alternate todo.txt path is used and no explicit archive path is provided, archive.txt defaults to the same directory as that todo.txt path.
+- [ ] PATH-03: User can pass dedicated CLI flags for alternate archive.txt and alternate config.toml paths.
 
 ## v2 Requirements
 
-### Broader Bulk Parity
+### Pane Workflow Expansion
 
-- BULK-04: User can bulk toggle completion across selected tasks.
-- BULK-05: User can bulk change priority or due or threshold dates across selected tasks with parity shortcuts.
-- BULK-06: User can copy all selected tasks to the clipboard or edit field from the TUI.
-
-### Extended Parity
-
-- PAR-04: User can access a fuller todotxt.net-style shortcut surface beyond the multi-selection workflows targeted in v1.3.
-- PAR-05: User can use parity shortcuts that also map to secondary keys like function keys where valuable.
+- PANE-06: User can reorder panes interactively.
+- PANE-07: User can pin pane layouts as named workspaces.
+- PANE-08: User can move tasks between panes with bulk actions.
 
 ## Out of Scope
 
 | Feature | Reason |
 | ------- | ------ |
-| GUI parity work | This milestone is TUI-only. |
-| CLI parity expansion unrelated to TUI interaction | The milestone goal is migration comfort in the Rust TUI. |
-| Automatic rewriting of unknown key:value metadata | Normalize only recognized todo.txt fields; preserve unknown metadata verbatim. |
+| Native GUI Kanban board | This milestone is TUI-only. |
+| Drag-and-drop pane interactions | Keyboard-first interactions remain the milestone focus. |
+| Network-synced collaborative pane state | Local-first behavior only for this milestone. |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 | ----------- | ----- | ------ |
-| SEL-01 | Phase 19 | Pending |
-| SEL-02 | Phase 19 | Pending |
-| SEL-03 | Phase 19 | Pending |
-| SEL-04 | Phase 19 | Pending |
-| BULK-01 | Phase 20 | Pending |
-| BULK-02 | Phase 20 | Pending |
-| BULK-03 | Phase 20 | Pending |
-| NORM-01 | Phase 21 | Pending |
-| NORM-02 | Phase 21 | Pending |
-| NORM-03 | Phase 21 | Pending |
-| NORM-04 | Phase 21 | Pending |
-| NORM-05 | Phase 21 | Pending |
-| NORM-06 | Phase 21 | Pending |
-| PAR-01 | Phase 22 | Pending |
-| PAR-02 | Phase 22 | Pending |
-| PAR-03 | Phase 22 | Pending |
-| KEY-01 | Phase 22 | Pending |
-| KEY-02 | Phase 22 | Pending |
-| KEY-03 | Phase 22 | Pending |
+| PANE-01 | Phase 24 | Pending |
+| PANE-02 | Phase 24 | Pending |
+| PANE-03 | Phase 25 | Pending |
+| PANE-04 | Phase 25 | Pending |
+| PANE-05 | Phase 26 | Pending |
+| VIEW-01 | Phase 24/26 | Pending |
+| VIEW-02 | Phase 26 | Pending |
+| CFG-01 | Phase 27 | Pending |
+| CFG-02 | Phase 27 | Pending |
+| CFG-03 | Phase 27 | Pending |
+| PATH-01 | Phase 27 | Pending |
+| PATH-02 | Phase 27 | Pending |
+| PATH-03 | Phase 27 | Pending |
 
 Coverage:
 
-- v1 requirements: 19 total
-- Mapped to phases: 19
+- v1 requirements: 13 total
+- Mapped to phases: 13
 - Unmapped: 0
 
 ---
-Requirements defined: 2026-04-24
-Last updated: 2026-04-24 after initial definition
+Requirements defined: 2026-04-28
+Last updated: 2026-04-28 after milestone v1.4 initialization

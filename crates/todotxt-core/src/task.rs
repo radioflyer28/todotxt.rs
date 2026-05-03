@@ -188,6 +188,139 @@ impl Task {
     }
 }
 
+// ── Normalization helpers for append and edit flows ──────────────────────────
+
+/// Parse `append_text` for recognized todo.txt tokens, merge into `task`'s fields,
+/// and return a new Task rebuilt via `rebuild_raw()`.
+///
+/// Merge rules (from 21-CONTEXT.md):
+/// - **Priority (D-03/D-04):** appended priority wins; if none in append_text, original kept.
+/// - **Projects/Contexts (NORM-02/03):** union — both original and appended; deduped via BTreeSet.
+/// - **due_date / threshold_date (NORM-04):** appended wins if Some; otherwise original kept.
+/// - **body (NORM-05):** appended body words concatenated after original body.
+///   Unrecognized tokens (`rec:+1w`, `foo:bar`) land in `appended.body` by default —
+///   they are preserved verbatim here.
+/// - **completed / creation_date / completion_date:** always taken from `task` (not changed by append).
+pub fn normalize_append(task: &Task, append_text: &str) -> Task {
+    // Parse append_text — extract tokens into structured fields using existing parse logic.
+    // Unknown tokens that extract_tags doesn't recognize land in appended.body (NORM-05/D-02).
+    // Note: If append_text is just "(A)" without trailing space, the parser won't recognize it as priority.
+    // We handle this by appending a space for parsing purposes.
+    let parse_text = if append_text.len() == 3 
+        && append_text.as_bytes()[0] == b'('
+        && append_text.as_bytes()[1].is_ascii_uppercase()
+        && append_text.as_bytes()[2] == b')'
+    {
+        // append_text is exactly "(X)" — add a space so the parser recognizes it as priority
+        format!("{} ", append_text)
+    } else {
+        append_text.to_string()
+    };
+    let appended = Task::parse(&parse_text);
+
+    // D-03/D-04: appended priority wins when present; else keep original.
+    let priority = if appended.priority.is_some() {
+        appended.priority
+    } else {
+        task.priority
+    };
+
+    // NORM-02: union of projects — BTreeSet for stable sort + dedup (mirrors parse behavior).
+    let mut projects: BTreeSet<String> = task.projects.iter().cloned().collect();
+    for p in &appended.projects {
+        projects.insert(p.clone());
+    }
+
+    // NORM-03: union of contexts — same pattern.
+    let mut contexts: BTreeSet<String> = task.contexts.iter().cloned().collect();
+    for c in &appended.contexts {
+        contexts.insert(c.clone());
+    }
+
+    // NORM-04: appended date wins if present; else keep original.
+    let due_date = appended.due_date.or(task.due_date);
+    let threshold_date = appended.threshold_date.or(task.threshold_date);
+
+    // NORM-05: body = original body + appended body words (plain text + unrecognized tokens).
+    let body = match (task.body.is_empty(), appended.body.is_empty()) {
+        (true, _)  => appended.body.clone(),
+        (_, true)  => task.body.clone(),
+        _           => format!("{} {}", task.body, appended.body),
+    };
+
+    // Build the merged Task. `raw` is a private field — we are in the same module (task.rs).
+    // rebuild_raw will set the canonical raw string; Task::parse re-syncs all fields.
+    let merged = Task {
+        raw: String::new(),
+        completed: task.completed,
+        priority,
+        creation_date: task.creation_date,
+        completion_date: task.completion_date,
+        due_date,
+        threshold_date,
+        projects: projects.into_iter().collect(),
+        contexts: contexts.into_iter().collect(),
+        body,
+    };
+
+    let raw = rebuild_raw(&merged);
+    Task::parse(&raw)
+}
+
+/// Normalize a complete task line: standard `Task::parse` plus inline priority detection.
+///
+/// `Task::parse` only recognizes priority when it appears as `(X) ` at the VERY START
+/// of the line (after optional completion marker and dates). When a user edits a task
+/// and types `"fix bug (A) +work"`, parse puts `(A)` in body.
+///
+/// `normalize_line` additionally scans `body` for the first `(X)` word (exactly 3 bytes:
+/// open paren, single ASCII uppercase letter, close paren) and lifts it to the `priority`
+/// field when no priority was found in the standard prefix position.
+///
+/// T-21-01: `((A))` is 5 bytes, `(AB)` is 4 bytes — neither matches the 3-byte check;
+/// both stay in body (no panic).
+pub fn normalize_line(text: &str) -> Task {
+    let task = Task::parse(text);
+    // If parse already found a priority in the standard position, nothing to lift.
+    if task.priority.is_some() {
+        return task;
+    }
+    // Scan body words for a stray "(X)" priority token.
+    let words: Vec<&str> = task.body.split_whitespace().collect();
+    let mut found_priority: Option<char> = None;
+    let mut remaining: Vec<&str> = Vec::new();
+    for word in &words {
+        if found_priority.is_none() {
+            let b = word.as_bytes();
+            // Exactly 3 bytes: '(' + single ASCII uppercase + ')' — T-21-01 safety.
+            if b.len() == 3 && b[0] == b'(' && b[2] == b')' && b[1].is_ascii_uppercase() {
+                found_priority = Some(b[1] as char);
+                continue; // skip — this word becomes the priority field
+            }
+        }
+        remaining.push(word);
+    }
+    if let Some(p) = found_priority {
+        // Re-build task with lifted priority and body without the priority token.
+        let updated = Task {
+            raw: String::new(),
+            completed: task.completed,
+            priority: Some(p),
+            creation_date: task.creation_date,
+            completion_date: task.completion_date,
+            due_date: task.due_date,
+            threshold_date: task.threshold_date,
+            projects: task.projects.clone(),
+            contexts: task.contexts.clone(),
+            body: remaining.join(" "),
+        };
+        let raw = rebuild_raw(&updated);
+        Task::parse(&raw)
+    } else {
+        task
+    }
+}
+
 impl fmt::Display for Task {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.raw)
