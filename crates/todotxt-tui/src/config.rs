@@ -247,11 +247,15 @@ impl TuiConfig {
 
             Ok(config)
         } else {
-            // Auto-create with default todo_file = ~/.todotxt.rs/todo.txt (first-run UX).
-            // Mirrors CLI's load_or_create so both tools work out-of-the-box without
-            // requiring the user to manually write a config file.
-            let home_todo = directories::BaseDirs::new()
-                .map(|b| b.home_dir().join(".todotxt.rs").join("todo.txt"));
+            // Auto-create with default todo_file beside config.toml (first-run UX).
+            // Using the config dir (not a hardcoded home path) means portable mode
+            // automatically co-locates todo.txt beside the config and binary.
+            let config_dir = path.parent().map(|p| p.to_path_buf());
+            let home_todo = config_dir
+                .as_ref()
+                .map(|d| d.join("todo.txt"))
+                .or_else(|| directories::BaseDirs::new()
+                    .map(|b| b.home_dir().join(".todotxt.rs").join("todo.txt")));
             let default = TuiConfig {
                 todo_file: home_todo,
                 ..TuiConfig::default()

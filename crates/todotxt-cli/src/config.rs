@@ -62,8 +62,14 @@ impl Config {
             toml::from_str(&content)
                 .with_context(|| format!("parsing config: {}", path.display()))
         } else {
-            // Auto-create with default todo_file = ~/.todotxt.rs/todo.txt (D-01, D-02)
-            let home_todo = dirs_home().map(|h| h.join(".todotxt.rs").join("todo.txt"));
+            // Auto-create with default todo_file beside config.toml (D-01, D-02).
+            // Using the config dir (not a hardcoded home path) means portable mode
+            // automatically co-locates todo.txt beside the config and binary.
+            let config_dir = path.parent().map(|p| p.to_path_buf());
+            let home_todo = config_dir
+                .as_ref()
+                .map(|d| d.join("todo.txt"))
+                .or_else(|| dirs_home().map(|h| h.join(".todotxt.rs").join("todo.txt")));
             let default = Config {
                 todo_file: home_todo,
                 auto_creation_date: false,
