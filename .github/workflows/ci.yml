@@ -2,19 +2,17 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [dev, master]
   pull_request:
-    branches: [main]
+    branches: [dev, master]
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
-    # Multi-OS matrix — uncomment for SEED-004:
-    # strategy:
-    #   matrix:
-    #     os: [ubuntu-latest, macos-latest, windows-latest]
-    # runs-on: ${{ matrix.os }}
+    name: Test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -22,27 +20,45 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux system deps (arboard)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev
+
       - name: Run tests
         run: cargo test --workspace
 
-  # clippy — uncomment for SEED-004:
-  # clippy:
-  #   name: Clippy
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: dtolnay/rust-toolchain@stable
-  #       with:
-  #         components: clippy
-  #     - name: Run Clippy
-  #       run: cargo clippy --workspace -- -D warnings
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install Linux system deps (arboard)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev
+      - name: Run Clippy
+        run: cargo clippy --workspace -- -D warnings
 
-  # doc — uncomment for SEED-004:
-  # doc:
-  #   name: Doc
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - name: Build docs
-  #       run: cargo doc --workspace --no-deps
+  doc:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build docs
+        run: cargo doc --workspace --no-deps
