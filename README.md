@@ -431,4 +431,9 @@ cargo build --release -p todotxt        # CLI binary → target/release/todotxt
 
 ## License
 
-BSD — see [BSD_LICENSE.txt](BSD_LICENSE.txt).
+The Rust source code (`crates/`) is licensed under the
+[Apache License 2.0](LICENSE-APACHE).
+
+The original C# code (inherited from
+[benrhughes/todotxt.net](https://github.com/benrhughes/todotxt.net)) is covered by the
+[BSD 2-Clause License](BSD_LICENSE.txt), copyright 2011 Ben Hughes.
