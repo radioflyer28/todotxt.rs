@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build (Linux x86_64 — static musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + musl target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl toolchain
+        run: sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Build static release binary
+        run: cargo build --release -p todotxt-tui --target x86_64-unknown-linux-musl
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-musl/release/todotxt-tui dist/todotxt-tui-linux-x86_64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: todotxt-tui-linux-x86_64
+          path: dist/todotxt-tui-linux-x86_64
+
+  build-macos:
+    name: Build (macOS universal)
+    runs-on: macos-latest
+    # Note: macOS binaries always link against Apple's libSystem — no static
+    # alternative exists. All other (Rust/third-party) deps are statically
+    # linked by default. This is the standard portable macOS distribution.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Build arm64
+        run: cargo build --release -p todotxt-tui --target aarch64-apple-darwin
+
+      - name: Build x86_64
+        run: cargo build --release -p todotxt-tui --target x86_64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          mkdir -p dist
+          lipo -create \
+            target/aarch64-apple-darwin/release/todotxt-tui \
+            target/x86_64-apple-darwin/release/todotxt-tui \
+            -output dist/todotxt-tui-macos-universal
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: todotxt-tui-macos-universal
+          path: dist/todotxt-tui-macos-universal
+
+  build-windows:
+    name: Build (Windows x86_64 — static CRT)
+    runs-on: windows-latest
+    env:
+      RUSTFLAGS: "-C target-feature=+crt-static"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build static release binary
+        run: cargo build --release -p todotxt-tui
+
+      - name: Prepare artifact
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item target\release\todotxt-tui.exe dist\todotxt-tui-windows-x86_64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: todotxt-tui-windows-x86_64
+          path: dist/todotxt-tui-windows-x86_64.exe
+
+  release:
+    name: Create GitHub Release
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

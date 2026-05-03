@@ -196,6 +196,14 @@ impl TaskList {
         self.save()
     }
 
+    /// Replace all tasks with `tasks` and save atomically (Phase 36, UNDO restore path).
+    ///
+    /// Used by `apply_undo()` in the TUI to restore a task-list snapshot.
+    pub fn replace_all(&mut self, tasks: Vec<Task>) -> Result<(), TodoError> {
+        self.tasks = tasks;
+        self.save()
+    }
+
     // ── Getters ───────────────────────────────────────────────────────────────
 
     /// Returns the tasks as a slice (not `&Vec<Task>`).

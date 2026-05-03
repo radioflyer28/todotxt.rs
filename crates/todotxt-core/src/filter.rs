@@ -16,6 +16,10 @@ pub enum FilterTerm {
     NegDuePast,
     NegDueFuture,
     NegDueActive,
+    ContextPrefix(String),
+    ProjectPrefix(String),
+    NegContextPrefix(String),
+    NegProjectPrefix(String),
 }
 
 /// A filter that can be applied to a list of tasks.
@@ -51,6 +55,9 @@ impl Filter {
     ///
     /// `DONE` and `-DONE` are matched case-sensitively.
     /// `due:*` tokens are case-insensitive.
+    /// `@foo` (no slash) → ContextPrefix; `@foo/bar` (with slash) → Include for exact match
+    /// `+client` (no slash) → ProjectPrefix; `+client/acme` (with slash) → Include for exact match
+    /// Negated forms work similarly (`-@foo`, `-+client`, etc.)
     /// Other tokens become substring Include/Exclude terms (case-insensitive matching).
     pub fn from_query(q: &str) -> Self {
         let terms = q
@@ -76,7 +83,40 @@ impl Filter {
                     "-due:active" => return FilterTerm::NegDueActive,
                     _ => {}
                 }
-                // Negation prefix
+
+                // Check for negated context prefix (-@foo with no slash)
+                if let Some(context_name) = token.strip_prefix("-@") {
+                    if !context_name.contains('/') {
+                        return FilterTerm::NegContextPrefix(context_name.to_string());
+                    }
+                    // -@foo/bar falls through to Exclude
+                }
+
+                // Check for context prefix (@foo with no slash)
+                if let Some(rest) = token.strip_prefix('@') {
+                    if !rest.contains('/') {
+                        return FilterTerm::ContextPrefix(rest.to_string());
+                    }
+                    // @foo/bar falls through to Include for exact match
+                }
+
+                // Check for negated project prefix (-+client with no slash)
+                if let Some(project_name) = token.strip_prefix("-+") {
+                    if !project_name.contains('/') {
+                        return FilterTerm::NegProjectPrefix(project_name.to_string());
+                    }
+                    // -+client/acme falls through to Exclude
+                }
+
+                // Check for project prefix (+client with no slash)
+                if let Some(rest) = token.strip_prefix('+') {
+                    if !rest.contains('/') {
+                        return FilterTerm::ProjectPrefix(rest.to_string());
+                    }
+                    // +client/acme falls through to Include for exact match
+                }
+
+                // General negation prefix
                 if let Some(rest) = token.strip_prefix('-') {
                     return FilterTerm::Exclude(rest.to_string());
                 }
@@ -132,6 +172,34 @@ impl Filter {
                 FilterTerm::Exclude(s) => !raw
                     .to_ascii_lowercase()
                     .contains(s.to_ascii_lowercase().as_str()),
+                FilterTerm::ContextPrefix(prefix) => {
+                    let prefix_lower = prefix.to_ascii_lowercase();
+                    task.contexts.iter().any(|ctx| {
+                        let ctx_lower = ctx.to_ascii_lowercase();
+                        ctx_lower == prefix_lower || ctx_lower.starts_with(&format!("{}/", prefix_lower))
+                    })
+                }
+                FilterTerm::ProjectPrefix(prefix) => {
+                    let prefix_lower = prefix.to_ascii_lowercase();
+                    task.projects.iter().any(|proj| {
+                        let proj_lower = proj.to_ascii_lowercase();
+                        proj_lower == prefix_lower || proj_lower.starts_with(&format!("{}/", prefix_lower))
+                    })
+                }
+                FilterTerm::NegContextPrefix(prefix) => {
+                    let prefix_lower = prefix.to_ascii_lowercase();
+                    !task.contexts.iter().any(|ctx| {
+                        let ctx_lower = ctx.to_ascii_lowercase();
+                        ctx_lower == prefix_lower || ctx_lower.starts_with(&format!("{}/", prefix_lower))
+                    })
+                }
+                FilterTerm::NegProjectPrefix(prefix) => {
+                    let prefix_lower = prefix.to_ascii_lowercase();
+                    !task.projects.iter().any(|proj| {
+                        let proj_lower = proj.to_ascii_lowercase();
+                        proj_lower == prefix_lower || proj_lower.starts_with(&format!("{}/", prefix_lower))
+                    })
+                }
             };
             if !passes {
                 return false;
@@ -189,8 +257,8 @@ mod tests {
     fn parse_negation_and_include() {
         let f = Filter::from_query("-@work @home");
         assert_eq!(f.terms, vec![
-            FilterTerm::Exclude("@work".into()),
-            FilterTerm::Include("@home".into()),
+            FilterTerm::NegContextPrefix("work".into()),
+            FilterTerm::ContextPrefix("home".into()),
         ]);
     }
 
@@ -301,5 +369,113 @@ mod tests {
         let past_threshold = task(&format!("Past task t:{}", past()));
         assert!(!f.matches_with_date(&future_threshold, today));
         assert!(f.matches_with_date(&past_threshold, today));
+    }
+
+    // ── hierarchical tag prefix matching (META-02) ─────────────────────────────
+
+    #[test]
+    fn parse_context_prefix_no_slash() {
+        assert_eq!(Filter::from_query("@email").terms, vec![FilterTerm::ContextPrefix("email".into())]);
+    }
+
+    #[test]
+    fn parse_exact_context_with_slash() {
+        assert_eq!(Filter::from_query("@email/waiting").terms, vec![FilterTerm::Include("@email/waiting".into())]);
+    }
+
+    #[test]
+    fn parse_project_prefix_no_slash() {
+        assert_eq!(Filter::from_query("+client").terms, vec![FilterTerm::ProjectPrefix("client".into())]);
+    }
+
+    #[test]
+    fn parse_exact_project_with_slash() {
+        assert_eq!(Filter::from_query("+client/acme").terms, vec![FilterTerm::Include("+client/acme".into())]);
+    }
+
+    #[test]
+    fn parse_negated_context_prefix() {
+        assert_eq!(Filter::from_query("-@email").terms, vec![FilterTerm::NegContextPrefix("email".into())]);
+    }
+
+    #[test]
+    fn parse_negated_project_prefix() {
+        assert_eq!(Filter::from_query("-+client").terms, vec![FilterTerm::NegProjectPrefix("client".into())]);
+    }
+
+    #[test]
+    fn context_prefix_matches_exact_context() {
+        let f = Filter::from_query("@email");
+        assert!(f.matches_with_date(&task("Buy milk @email"), today()));
+    }
+
+    #[test]
+    fn context_prefix_matches_hierarchical_context() {
+        let f = Filter::from_query("@email");
+        assert!(f.matches_with_date(&task("Waiting @email/waiting"), today()));
+        assert!(f.matches_with_date(&task("Forward @email/forward"), today()));
+    }
+
+    #[test]
+    fn context_prefix_no_match_different_prefix() {
+        let f = Filter::from_query("@email");
+        assert!(!f.matches_with_date(&task("Task @work"), today()));
+        assert!(!f.matches_with_date(&task("Task @emailer"), today()));
+    }
+
+    #[test]
+    fn project_prefix_matches_exact_and_hierarchical() {
+        let f = Filter::from_query("+client");
+        assert!(f.matches_with_date(&task("Work +client"), today()));
+        assert!(f.matches_with_date(&task("Acme +client/acme"), today()));
+        assert!(!f.matches_with_date(&task("Other +other"), today()));
+    }
+
+    #[test]
+    fn context_prefix_case_insensitive() {
+        let f = Filter::from_query("@EMAIL");
+        assert!(f.matches_with_date(&task("Task @email"), today()));
+        assert!(f.matches_with_date(&task("Task @email/waiting"), today()));
+    }
+
+    #[test]
+    fn negated_context_prefix_excludes_matching() {
+        let f = Filter::from_query("-@email");
+        assert!(f.matches_with_date(&task("Task @work"), today()));
+        assert!(!f.matches_with_date(&task("Task @email"), today()));
+        assert!(!f.matches_with_date(&task("Task @email/waiting"), today()));
+    }
+
+    #[test]
+    fn negated_project_prefix_excludes_matching() {
+        let f = Filter::from_query("-+client");
+        assert!(f.matches_with_date(&task("Task +other"), today()));
+        assert!(!f.matches_with_date(&task("Task +client"), today()));
+        assert!(!f.matches_with_date(&task("Task +client/acme"), today()));
+    }
+
+    #[test]
+    fn exact_slash_delimited_context_matches_only_exact() {
+        let f = Filter::from_query("@email/waiting");
+        assert!(f.matches_with_date(&task("Task @email/waiting"), today()));
+        assert!(!f.matches_with_date(&task("Task @email"), today()));
+        assert!(!f.matches_with_date(&task("Task @email/forward"), today()));
+    }
+
+    #[test]
+    fn exact_slash_delimited_project_matches_only_exact() {
+        let f = Filter::from_query("+client/acme");
+        assert!(f.matches_with_date(&task("Task +client/acme"), today()));
+        assert!(!f.matches_with_date(&task("Task +client"), today()));
+        assert!(!f.matches_with_date(&task("Task +client/other"), today()));
+    }
+
+    #[test]
+    fn prefix_and_exact_slash_can_mix() {
+        let f = Filter::from_query("@email +client/acme");
+        assert!(f.matches_with_date(&task("Task @email +client/acme"), today()));
+        assert!(f.matches_with_date(&task("Task @email/waiting +client/acme"), today()));
+        assert!(!f.matches_with_date(&task("Task @email +client"), today()));
+        assert!(!f.matches_with_date(&task("Task @work +client/acme"), today()));
     }
 }

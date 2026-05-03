@@ -378,6 +378,8 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
     m.insert("theme_cycle".into(),     (KeyCode::Char('t'), KeyModifiers::NONE));
     m.insert("disjoint_select".into(), (KeyCode::Char('v'), KeyModifiers::NONE));
     m.insert("disjoint_mark".into(),   (KeyCode::Char(' '), KeyModifiers::NONE));
+    m.insert("quick_context".into(),   (KeyCode::Char('@'), KeyModifiers::NONE));
+    m.insert("quick_project".into(),   (KeyCode::Char('+'), KeyModifiers::NONE));
     // Phase 22 parity hotkeys (D-11)
     m.insert("help".into(),            (KeyCode::Char('?'), KeyModifiers::NONE));
     m.insert("clear_filter".into(),    (KeyCode::Char('0'), KeyModifiers::NONE));

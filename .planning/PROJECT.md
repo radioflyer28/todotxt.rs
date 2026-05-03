@@ -2,7 +2,7 @@
 
 ## Current State
 
-v1.0 through v1.4 are shipped. The Rust port now has a fully functional CLI, interactive TUI, and Kanban-style vertical pane layout — all verified and archived.
+v1.0 through v1.5 are shipped. The Rust port now includes fast capture/edit flows, picker-driven metadata workflows, safer bulk operations, clipboard flows, and short-horizon undo in addition to the earlier CLI/TUI/pane foundations.
 
 Milestone archives:
 
@@ -11,30 +11,18 @@ Milestone archives:
 - .planning/milestones/v1.2-ROADMAP.md
 - .planning/milestones/v1.3-ROADMAP.md
 - .planning/milestones/v1.4-ROADMAP.md
+- .planning/milestones/v1.5-ROADMAP.md
 
-## Current Milestone: v1.5 Capture Flow + Bulk Safety + Clipboard + Undo
+## Current Milestone
 
-Goal: minimize friction in task capture/edit workflows while improving safety and recovery for high-impact actions.
-
-Target features:
-
-- `s` due-date picker and `i` priority picker with overwrite semantics
-- Date autocomplete for `due:` and `t:` partial inputs with month-valid day options and weekday labels
-- `@` quick context setter and `+` quick project setter for active/selected tasks
-- Autocomplete match list for `@`/`+` setters with arrow-key selection and tab completion
-- Fast add/edit task flows with predictable key behavior and minimal mode switching
-- Safe bulk operations with affected-count preview and explicit cancel path
-- Basic clipboard workflows: cut/copy selected tasks and paste to create new tasks
-- Paste support inside new-task entry (`n`) for duplicate-and-tweak workflows
-- Short-horizon undo for destructive/high-impact actions
-- Hierarchical metadata token conventions (for example `@email/waiting`) without breaking todo.txt compatibility
-- Preserve flexible view behavior (filter/sort/group) across capture/bulk/clipboard/undo flows
+No active milestone is in execution. Next step is to define v1.6 via /gsd-new-milestone and generate a fresh .planning/REQUIREMENTS.md.
 
 ## Next Milestone Goals
 
-- Ship low-friction task capture and metadata editing for high-frequency maintenance workflows
-- Strengthen user trust with safer bulk workflows and lightweight recovery
-- Preserve discoverability and predictable view behavior from v1.4 while extending metadata ergonomics
+- Complete runtime manual validation debt recorded in v1.5 audit (clipboard runtime checks).
+- Decide whether to keep or replace UNDO-03 silent-feedback override behavior.
+- Improve Nyquist validation coverage for phases with missing or partial validation artifacts.
+- Define and prioritize post-v1.5 product goals (GUI track, release automation, or focused TUI/CLI hardening).
 
 ---
 
@@ -84,7 +72,7 @@ Shipped:
 - CFG-01 through CFG-03 (config-defined panes and fallback safety)
 - PATH-01 through PATH-03 (CLI path overrides and archive-path resolution semantics)
 
-### Active (v1.5)
+### Archived (v1.5)
 
 - CAP-01 through CAP-05 (fast capture/edit and property picker workflows)
 - DATE-01 through DATE-04 (month-aware date autocomplete and weekday-labeled suggestions)
@@ -94,6 +82,17 @@ Shipped:
 - UNDO-01 through UNDO-03 (short-horizon recovery path)
 - META-01 through META-02 (todo.txt-native metadata with hierarchical token conventions)
 - VIEW-03 (view consistency across capture and mutation flows)
+
+### Validated (v1.5)
+
+- CAP-01 through CAP-05 — shipped and verified (phase 38 backfill closed evidence gaps)
+- DATE-01 through DATE-04 — shipped and verified
+- TAG-01 through TAG-05 — shipped and verified
+- BULK-01 through BULK-03 — shipped and verified
+- CLIP-01 through CLIP-04 — shipped, with runtime human-check debt accepted at close
+- UNDO-01 through UNDO-03 — shipped, UNDO-03 closed via accepted override
+- META-01 through META-02 — shipped and verified (META-01 orphan resolved)
+- VIEW-03 — shipped and verified
 
 ### Planned (future milestone)
 
@@ -150,4 +149,4 @@ After each milestone:
 4. Context refresh with current state.
 
 ---
-Last updated: 2026-04-29 after v1.5 milestone kickoff.
+Last updated: 2026-05-01 after v1.5 milestone completion.

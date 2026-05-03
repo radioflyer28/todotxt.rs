@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use chrono::Local;
+use chrono::{Local, Datelike};
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append, normalize_line};
@@ -19,8 +19,9 @@ use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
-use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState};
+use crate::state::{Pane, DisplayRow, AutocompleteState, AutocompleteMode, FilteringState, FilterDefiningState, DatePickerState, PriorityPickerState, get_existing_contexts, get_existing_projects, rank_matches};
 use crate::components::PaneList;
+use arboard::Clipboard;
 
 
 
@@ -28,6 +29,7 @@ use crate::components::PaneList;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
     Normal,
+    QuickSetter(char),
     Adding,
     Editing { original_idx: usize },
     PaneLabelEditing { pane_idx: usize },
@@ -41,6 +43,13 @@ pub enum AppMode {
     KeymapErrors,
     /// Read-only overlay showing all keybindings (D-10, Phase 22 parity).
     Help,
+    /// Date picker overlay for setting due dates (Phase 33, Plan 01).
+    #[allow(dead_code)]
+    DatePicker,
+    /// Priority picker overlay for setting priority on active/selected tasks (Phase 34, Plan 01).
+    PriorityPicker,
+    /// Count preview before bulk append — shows "Appending to N tasks" (D-06, Phase 34).
+    AppendTextConfirm,
 }
 
 /// Top-level application state.
@@ -63,6 +72,12 @@ pub struct App {
     pub pending_reload: bool,
     /// Active autocomplete popup state, or `None` when not shown.
     pub autocomplete: Option<AutocompleteState>,
+    /// Active date picker state, or `None` when not shown (Phase 33, Plan 01).
+    pub date_picker: Option<DatePickerState>,
+    /// Active priority picker state, or `None` when not shown (Phase 34, Plan 01).
+    pub priority_picker: Option<PriorityPickerState>,
+    /// Count of tasks targeted by AppendTextConfirm mode (Phase 34, Plan 03).
+    pub append_confirm_count: usize,
     /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
     pub display_indices: Vec<usize>,
     /// Toggle grouped rendering with non-selectable header rows.
@@ -122,6 +137,12 @@ pub struct App {
     /// When true, all panes are hidden and rendering falls back to single-pane view (D-13, Phase 26).
     /// This flag is session-only (not persisted across restarts). All pane state is preserved.
     pub panes_hidden: bool,
+    /// Clipboard instance, lazily initialized on first copy/paste operation (Phase 35, CLIP-01).
+    /// Kept as `None` until first use to avoid startup errors in headless environments.
+    pub clipboard: Option<Clipboard>,
+    /// Single-level undo entry: snapshot of task list + cursor before the last mutating action
+    /// (Phase 36, UNDO-01/02, D-02/D-04). `None` = no undo available.
+    pub undo_entry: Option<crate::state::UndoEntry>,
 }
 
 impl App {
@@ -174,6 +195,9 @@ impl App {
             editor: TextArea::default(),
             pending_reload: false,
             autocomplete: None,
+            date_picker: None,
+            priority_picker: None,
+            append_confirm_count: 0,
             display_indices: Vec::new(),
             grouping: false,
             display_rows: Vec::new(),
@@ -200,6 +224,8 @@ impl App {
             active_pane: 0,
             pane_counter,
             panes_hidden: false,
+            clipboard: None,
+            undo_entry: None,
         };
         // Hydrate every pane immediately so non-active panes are populated on first render.
         app.rebuild_all_panes();
@@ -238,6 +264,31 @@ impl App {
 
     fn push_runtime_warning(&mut self, msg: impl Into<String>) {
         self.runtime_warnings.push(msg.into());
+    }
+
+    /// Capture a snapshot of the current task list and cursor as an undo entry (Phase 36, D-04/D-05).
+    /// Overwrites any previous entry (depth-1 semantics, D-02).
+    fn push_undo_entry(&mut self) {
+        self.undo_entry = Some(crate::state::UndoEntry {
+            tasks: self.task_list.tasks().to_vec(),
+            selected: self.selected,
+        });
+    }
+
+    /// Restore the task list from the undo entry, if one exists (Phase 36, D-04, UNDO-01/02/03).
+    /// Silent no-op when `undo_entry` is `None` (D-08/D-10).
+    fn apply_undo(&mut self) -> color_eyre::Result<()> {
+        let entry = match self.undo_entry.take() {
+            Some(e) => e,
+            None => return Ok(()),
+        };
+        self.task_list
+            .replace_all(entry.tasks)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to restore undo: {}", e))?;
+        self.selected = entry.selected;
+        self.rebuild_all_panes();
+        self.rebuild_and_reanchor();
+        Ok(())
     }
 
     fn error_log_count(&self) -> usize {
@@ -556,6 +607,7 @@ impl App {
                 // AppMode is Copy — match copies the value, releasing the borrow.
                 match self.mode {
                     AppMode::Normal => self.handle_normal_key(key)?,
+                    AppMode::QuickSetter(_) => self.handle_quick_setter_key(key)?,
                     AppMode::Adding | AppMode::Editing { .. } => {
                         self.handle_editor_key(key)?;
                     }
@@ -568,6 +620,9 @@ impl App {
                     AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
                     AppMode::KeymapErrors => self.handle_keymap_errors_key(key)?,
                     AppMode::Help => self.handle_help_key(key)?,
+                    AppMode::DatePicker => self.handle_date_picker_key(key)?,
+                    AppMode::PriorityPicker => self.handle_priority_picker_key(key)?,
+                    AppMode::AppendTextConfirm => self.handle_append_text_confirm_key(key)?,
                 }
             }
             AppEvent::FileChanged => {
@@ -604,11 +659,21 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
         let display_count = self.display_indices.len();
-        let row_count = self.display_rows.len();
+        let row_count = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            self.panes[self.active_pane].display_rows.len()
+        } else {
+            self.display_rows.len()
+        };
         match key.code {
             // ── Ctrl+C quit (not overridable) ────────────────────────────────
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.should_quit = true;
+            }
+
+            // ── Ctrl+Z: undo last mutating action (Phase 36, UNDO-01/02/03, D-01/D-07) ──
+            // Must precede any plain 'z' arm. Silent no-op when history empty (D-08/D-10).
+            KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_undo()?;
             }
 
             // ── Esc: clear selection / exit disjoint mode (not overridable) ──
@@ -635,15 +700,7 @@ impl App {
                 if key.modifiers.contains(KeyModifiers::SHIFT) && row_count > 0 =>
             {
                 self.ensure_anchor();
-                let mut next = self.selected + 1;
-                while next < row_count
-                    && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
-                {
-                    next += 1;
-                }
-                if next < row_count {
-                    self.selected = next;
-                }
+                self.pane_move_down();
                 self.apply_range_selection();
             }
             // Shift+k or Shift+Up: extend contiguous range selection upward (D-09, D-11).
@@ -652,17 +709,7 @@ impl App {
                 if key.modifiers.contains(KeyModifiers::SHIFT) && row_count > 0 =>
             {
                 self.ensure_anchor();
-                if self.selected > 0 {
-                    let mut prev = self.selected.saturating_sub(1);
-                    while prev > 0
-                        && matches!(self.display_rows[prev], DisplayRow::GroupHeader(_))
-                    {
-                        prev -= 1;
-                    }
-                    if matches!(self.display_rows[prev], DisplayRow::Task(_)) {
-                        self.selected = prev;
-                    }
-                }
+                self.pane_move_up();
                 self.apply_range_selection();
             }
             KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
@@ -798,7 +845,7 @@ impl App {
                     || (key.code == KeyCode::Char('u')
                         && key.modifiers == KeyModifiers::NONE)) =>
             {
-                if let Some(canonical) = self.canonical_selected() {
+                if let Some(canonical) = self.active_canonical_selected() {
                     let raw = self.task_list.tasks()[canonical].to_raw().to_string();
                     let mut ed = TextArea::default();
                     ed.insert_str(&raw);
@@ -807,12 +854,26 @@ impl App {
                 }
             }
 
-            _ if !self.selected_tasks.is_empty() && display_count > 0 && self.key_is_action(key, "bulk_delete") => {
-                self.mode = AppMode::DeleteConfirm;
+            _ if display_count > 0 && self.key_is_action(key, "bulk_delete") => {
+                if self.selected_tasks.len() > 1 {
+                    self.mode = AppMode::DeleteConfirm;
+                } else {
+                    self.delete_active_task()?;
+                }
             }
 
-            _ if display_count > 0 && self.key_is_action(key, "delete") => {
-                self.mode = AppMode::DeleteConfirm;
+            _ if display_count > 0
+                && (self.key_is_action(key, "delete")
+                    || (key.code == KeyCode::Delete
+                        && key.modifiers == KeyModifiers::NONE)
+                    || (key.code == KeyCode::Backspace
+                        && key.modifiers == KeyModifiers::NONE)) =>
+            {
+                if self.selected_tasks.len() > 1 {
+                    self.mode = AppMode::DeleteConfirm;
+                } else {
+                    self.delete_active_task()?;
+                }
             }
 
             _ if self.key_is_action(key, "sort_cycle") => {
@@ -823,8 +884,16 @@ impl App {
             }
 
             _ if !self.selected_tasks.is_empty() && display_count > 0 && self.key_is_action(key, "bulk_append") => {
-                self.editor = TextArea::default();
-                self.mode = AppMode::AppendText;
+                let n = self.selected_tasks.len();
+                if n > 1 {
+                    // D-06: show count banner before text entry when multiple tasks targeted
+                    self.append_confirm_count = n;
+                    self.mode = AppMode::AppendTextConfirm;
+                } else {
+                    // Single task — go directly to append text editor
+                    self.editor = TextArea::default();
+                    self.mode = AppMode::AppendText;
+                }
             }
 
             _ if self.key_is_action(key, "theme_cycle") => {
@@ -980,9 +1049,440 @@ impl App {
                 self.rebuild_and_reanchor();
             }
 
+            // 's' opens the date picker for setting due dates (Phase 33, Plan 01)
+            KeyCode::Char('s') if key.modifiers == KeyModifiers::NONE => {
+                if self.has_quick_setter_targets() {
+                    // Start from current month; user can edit month/year inline in picker.
+                    let now = chrono::Local::now();
+                    let month_year = format!("{:04}-{:02}", now.year(), now.month());
+                    self.date_picker = Some(DatePickerState::new(&month_year));
+                    self.mode = AppMode::DatePicker;
+                } else {
+                    self.push_runtime_warning("date picker requires an active task or selection");
+                }
+            }
+
+            // 'i' opens the priority picker overlay (Phase 34, Plan 01 — CAP-04 gap)
+            KeyCode::Char('i') if key.modifiers == KeyModifiers::NONE => {
+                // Require an active task or selection (mirrors date picker guard)
+                if self.has_quick_setter_targets() {
+                    self.priority_picker = Some(PriorityPickerState::new());
+                    self.mode = AppMode::PriorityPicker;
+                } else {
+                    self.push_runtime_warning("priority picker requires an active task or selection");
+                }
+            }
+
+
+            // 'y' copies selected or active task(s) to system clipboard (Phase 35, Plan 01, CLIP-01)
+            KeyCode::Char('y') if key.modifiers == KeyModifiers::NONE => {
+                self.copy_selected_to_clipboard()?;
+            }
+
+            // 'p' pastes clipboard content as new tasks (Phase 35, Plan 02, CLIP-03, D-05)
+            KeyCode::Char('p') if key.modifiers == KeyModifiers::NONE => {
+                self.paste_from_clipboard()?;
+            }
+
+            // '@' opens quick context setter from Normal mode (Phase 33, Plan 02)
+            _ if self.key_is_action(key, "quick_context") => {
+                if !self.has_quick_setter_targets() {
+                    self.push_runtime_warning("quick context setter requires an active task or selection");
+                    return Ok(());
+                }
+
+                let mut items: Vec<String> = get_existing_contexts(&self.task_list).into_iter().collect();
+                items.sort();
+                self.autocomplete = Some(AutocompleteState::new_quick_setter('@', String::new(), items));
+                self.mode = AppMode::QuickSetter('@');
+            }
+
+            // '+' opens quick project setter from Normal mode (Phase 33, Plan 02)
+            _ if self.key_is_action(key, "quick_project") => {
+                if !self.has_quick_setter_targets() {
+                    self.push_runtime_warning("quick project setter requires an active task or selection");
+                    return Ok(());
+                }
+
+                let mut items: Vec<String> = get_existing_projects(&self.task_list).into_iter().collect();
+                items.sort();
+                self.autocomplete = Some(AutocompleteState::new_quick_setter('+', String::new(), items));
+                self.mode = AppMode::QuickSetter('+');
+            }
+
             _ => {}
         }
         Ok(())
+    }
+
+    fn has_quick_setter_targets(&self) -> bool {
+        if self
+            .selected_tasks
+            .iter()
+            .any(|&idx| idx < self.task_list.len())
+        {
+            return true;
+        }
+
+        self.active_canonical_selected().is_some()
+    }
+
+    fn handle_quick_setter_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        let trigger = match self.mode {
+            AppMode::QuickSetter(trigger) => trigger,
+            _ => return Ok(()),
+        };
+
+        match key.code {
+            KeyCode::Esc => {
+                self.autocomplete = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Down => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.focused = true;
+                    ac.selected = (ac.selected + 1).min(ac.items.len().saturating_sub(1));
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.focused = true;
+                    ac.selected = ac.selected.saturating_sub(1);
+                }
+            }
+            KeyCode::Backspace => {
+                let mut next_prefix = None;
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.prefix.pop();
+                    next_prefix = Some(ac.prefix.clone());
+                }
+                if let Some(prefix) = next_prefix {
+                    let ranked = self.quick_setter_candidates(trigger, &prefix);
+                    if let Some(ref mut ac) = self.autocomplete {
+                        ac.items = ranked;
+                        ac.selected = 0;
+                        ac.focused = false;
+                    }
+                }
+            }
+            KeyCode::Tab | KeyCode::Enter => {
+                let chosen = self.autocomplete.as_ref().and_then(|ac| {
+                    ac.items.get(ac.selected).cloned().or_else(|| {
+                        if Self::is_valid_quick_setter_token(&ac.prefix) {
+                            Some(ac.prefix.clone())
+                        } else {
+                            None
+                        }
+                    })
+                });
+
+                if let Some(token) = chosen {
+                    let targets = self.quick_setter_targets();
+                    let added = self.apply_token_to_tasks(trigger, &token, targets)?;
+                    if added == 0 {
+                        self.push_runtime_warning(format!("{}{} already present on target task(s)", trigger, token));
+                    }
+                }
+
+                self.autocomplete = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Char(c) if Self::is_valid_quick_setter_char(c) => {
+                let mut next_prefix = None;
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.prefix.push(c);
+                    next_prefix = Some(ac.prefix.clone());
+                }
+                if let Some(prefix) = next_prefix {
+                    let ranked = self.quick_setter_candidates(trigger, &prefix);
+                    if let Some(ref mut ac) = self.autocomplete {
+                        ac.items = ranked;
+                        ac.selected = 0;
+                        ac.focused = false;
+                    }
+                }
+            }
+            _ => {
+                self.autocomplete = None;
+                self.mode = AppMode::Normal;
+                self.handle_normal_key(key)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn is_valid_quick_setter_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '-' || c == '/'
+    }
+
+    fn is_valid_quick_setter_token(token: &str) -> bool {
+        !token.trim().is_empty() && token.chars().all(Self::is_valid_quick_setter_char)
+    }
+
+    fn quick_setter_candidates(&self, trigger: char, prefix: &str) -> Vec<String> {
+        let mut all: Vec<String> = match trigger {
+            '@' => get_existing_contexts(&self.task_list).into_iter().collect(),
+            '+' => get_existing_projects(&self.task_list).into_iter().collect(),
+            _ => Vec::new(),
+        };
+
+        if Self::is_valid_quick_setter_token(prefix)
+            && !all.iter().any(|item| item.eq_ignore_ascii_case(prefix))
+        {
+            all.push(prefix.to_string());
+        }
+
+        all.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()).then_with(|| a.cmp(b)));
+        all.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        rank_matches(prefix, all)
+    }
+
+    fn quick_setter_targets(&self) -> Vec<usize> {
+        if !self.selected_tasks.is_empty() {
+            let mut indices: Vec<usize> = self
+                .selected_tasks
+                .iter()
+                .copied()
+                .filter(|&idx| idx < self.task_list.len())
+                .collect();
+            indices.sort_unstable_by(|a, b| b.cmp(a));
+            indices.dedup();
+            return indices;
+        }
+
+        self.active_canonical_selected().into_iter().collect()
+    }
+
+    /// Copy selected or active task text to the system clipboard (Phase 35, Plan 01, CLIP-01).
+    /// Targets selected_tasks (if non-empty) or the active cursor task.
+    /// Multi-task copy joins lines with newlines in descending-canonical-index order (D-08, D-17).
+    fn copy_selected_to_clipboard(&mut self) -> color_eyre::Result<()> {
+        // 1. Determine targets: selected tasks or active task (D-03)
+        let mut targets: Vec<usize> = if !self.selected_tasks.is_empty() {
+            self.selected_tasks
+                .iter()
+                .copied()
+                .filter(|&idx| idx < self.task_list.len())
+                .collect()
+        } else if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected) {
+            vec![*idx]
+        } else {
+            vec![]
+        };
+
+        // Abort silently if no task targeted (D-10: skip header rows)
+        if targets.is_empty() {
+            self.push_runtime_warning("No task selected");
+            return Ok(());
+        }
+
+        // 2. Sort in descending-canonical-index order (D-08, D-17)
+        targets.sort_unstable_by(|a, b| b.cmp(a));
+
+        // 3. Collect raw text from each target
+        let tasks = self.task_list.tasks();
+        let clipboard_text: Vec<String> = targets
+            .iter()
+            .filter_map(|&idx| tasks.get(idx))
+            .map(|t| t.to_raw().to_string())
+            .collect();
+        let text_to_copy = clipboard_text.join("\n");
+
+        // 4. Lazy-initialize arboard (D-02: avoid startup errors in headless environments)
+        if self.clipboard.is_none() {
+            match Clipboard::new() {
+                Ok(cb) => self.clipboard = Some(cb),
+                Err(_) => {
+                    self.push_runtime_warning("Clipboard unavailable");
+                    return Ok(());
+                }
+            }
+        }
+
+        // 5. Write to clipboard and show status feedback (D-09)
+        if let Some(ref mut cb) = self.clipboard {
+            match cb.set_text(text_to_copy) {
+                Ok(_) => {
+                    let msg = if targets.len() == 1 {
+                        "copied 1 task".to_string()
+                    } else {
+                        format!("copied {} tasks", targets.len())
+                    };
+                    self.push_runtime_warning(msg);
+                }
+                Err(_) => {
+                    self.push_runtime_warning("Failed to copy to clipboard");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Paste clipboard content as new task entries in Normal mode (`p` key, Phase 35, Plan 02, CLIP-03).
+    /// Reads clipboard, splits on newlines, parses each non-empty line as a Task, appends all to task_list.
+    /// All lines pasted in a single operation (D-05, D-11). Rebuilds view and reanchors after paste.
+    fn paste_from_clipboard(&mut self) -> color_eyre::Result<()> {
+        // Lazy-initialize arboard (D-02)
+        if self.clipboard.is_none() {
+            match Clipboard::new() {
+                Ok(cb) => self.clipboard = Some(cb),
+                Err(_) => {
+                    self.push_runtime_warning("clipboard is empty");
+                    return Ok(());
+                }
+            }
+        }
+
+        // Read clipboard text
+        let clipboard_text = if let Some(ref mut cb) = self.clipboard {
+            match cb.get_text() {
+                Ok(text) => text,
+                Err(_) => {
+                    self.push_runtime_warning("clipboard is empty");
+                    return Ok(());
+                }
+            }
+        } else {
+            self.push_runtime_warning("clipboard is empty");
+            return Ok(());
+        };
+
+        // Split and filter empty lines (D-11, D-12)
+        let lines: Vec<String> = clipboard_text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.to_string())
+            .collect();
+
+        if lines.is_empty() {
+            self.push_runtime_warning("clipboard is empty");
+            return Ok(());
+        }
+
+        let count = lines.len();
+        self.push_undo_entry();
+
+        // Parse each line as a Task and add to task_list (D-12: raw text, no transformation)
+        for line in lines {
+            let task = Task::parse(&line);
+            self.task_list
+                .add(task)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to paste task: {}", e))?;
+        }
+
+        // Rebuild views and reanchor (D-14)
+        self.rebuild_all_panes();
+        self.rebuild_and_reanchor();
+
+        let msg = if count == 1 {
+            "pasted 1 task".to_string()
+        } else {
+            format!("pasted {} tasks", count)
+        };
+        self.push_runtime_warning(msg);
+
+        Ok(())
+    }
+
+    /// Paste first clipboard line into the Adding-mode editor (Ctrl+V, Phase 35, Plan 02, CLIP-04, D-15).
+    /// Single-line editor: only the first clipboard line is inserted. Empty clipboard is a silent no-op.
+    fn paste_in_editor(&mut self) -> color_eyre::Result<()> {
+        // Lazy-initialize arboard (D-02)
+        if self.clipboard.is_none() {
+            match Clipboard::new() {
+                Ok(cb) => self.clipboard = Some(cb),
+                Err(_) => {
+                    return Ok(()); // Silent no-op on init failure (D-15)
+                }
+            }
+        }
+
+        // Read clipboard text
+        let clipboard_text = if let Some(ref mut cb) = self.clipboard {
+            match cb.get_text() {
+                Ok(text) => text,
+                Err(_) => return Ok(()), // Silent no-op if empty (D-15)
+            }
+        } else {
+            return Ok(());
+        };
+
+        // Extract first line only (single-line editor, D-15)
+        let first_line = clipboard_text.lines().next().unwrap_or("").to_string();
+        if !first_line.is_empty() {
+            self.editor.insert_str(&first_line);
+        }
+
+        Ok(())
+    }
+
+    fn apply_token_to_tasks(
+        &mut self,
+        trigger: char,
+        token: &str,
+        mut targets: Vec<usize>,
+    ) -> color_eyre::Result<usize> {
+        let normalized_token = token.trim();
+        if !Self::is_valid_quick_setter_token(normalized_token) {
+            return Ok(0);
+        }
+
+        targets.sort_unstable_by(|a, b| b.cmp(a));
+        targets.dedup();
+
+        let tasks = self.task_list.tasks();
+        let mut replacements: Vec<(usize, Task)> = Vec::new();
+        let mut added = 0usize;
+
+        for idx in targets {
+            if let Some(task) = tasks.get(idx) {
+                let already_exists = match trigger {
+                    '@' => task
+                        .contexts
+                        .iter()
+                        .any(|ctx| ctx.eq_ignore_ascii_case(normalized_token)),
+                    '+' => task
+                        .projects
+                        .iter()
+                        .any(|proj| proj.eq_ignore_ascii_case(normalized_token)),
+                    _ => true,
+                };
+
+                if already_exists {
+                    continue;
+                }
+
+                let new_line = format!(
+                    "{} {}{}",
+                    task.to_raw().trim_end(),
+                    trigger,
+                    normalized_token
+                );
+                replacements.push((idx, normalize_line(&new_line)));
+                added += 1;
+            }
+        }
+
+        if !replacements.is_empty() {
+            self.push_undo_entry();
+            self.task_list
+                .batch_update(replacements)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to apply quick token: {}", e))?;
+            self.rebuild_all_panes();
+            self.rebuild_and_reanchor();
+            self.push_runtime_warning(format!("added {}{}", trigger, normalized_token));
+        }
+
+        self.selected_tasks.clear();
+        self.selection_anchor = None;
+        self.disjoint_select = false;
+
+        Ok(added)
     }
 
     /// Handle key events in the KeymapErrors read-only overlay (D-09, Phase 22).
@@ -1230,6 +1730,11 @@ impl App {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
+        // Intercept Ctrl+V before default passthrough — paste from clipboard into editor (Phase 35, Plan 02, CLIP-04, D-15)
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('v') {
+            return self.paste_in_editor();
+        }
+
         match key.code {
             KeyCode::Esc => {
                 if self.autocomplete.is_some() {
@@ -1314,11 +1819,7 @@ impl App {
                     .to_string();
 
                 if let Some(pane) = self.panes.get_mut(pane_idx) {
-                    pane.label = if new_label.is_empty() {
-                        format!("Pane {}", pane.id + 1)
-                    } else {
-                        new_label
-                    };
+                    pane.label = new_label;
                 }
 
                 self.editor = TextArea::default();
@@ -1344,6 +1845,7 @@ impl App {
     }
 
     /// Recompute autocomplete state from the current editor line.
+    /// Handles both token autocomplete (@/+) and date autocomplete (due:/t:).
     fn update_autocomplete(&mut self) {
         match self.mode {
             AppMode::Adding | AppMode::Editing { .. } => {}
@@ -1351,6 +1853,26 @@ impl App {
             _ => { self.autocomplete = None; return; }
         }
         let line = self.editor.lines().first().cloned().unwrap_or_default();
+        
+        // Check for date patterns first (due: or t:)
+        if let Some((month_year, _pos)) = self.extract_date_pattern(&line) {
+            if let Ok(date_suggestions) = crate::state::generate_date_suggestions(&month_year) {
+                if !date_suggestions.is_empty() {
+                    // Use a special trigger character '#' for date autocomplete
+                    if let Some(ref mut ac) = self.autocomplete {
+                        if ac.trigger == '#' && ac.prefix == month_year {
+                            ac.items = date_suggestions;
+                            ac.selected = ac.selected.min(ac.items.len().saturating_sub(1));
+                            return;
+                        }
+                    }
+                    self.autocomplete = Some(AutocompleteState::new('#', month_year, date_suggestions));
+                    return;
+                }
+            }
+        }
+        
+        // Fall back to token autocomplete (@/+)
         // Find last @ or + in the line.
         let trigger_pos = line.rfind(|c: char| c == '@' || c == '+');
         if let Some(pos) = trigger_pos {
@@ -1384,21 +1906,86 @@ impl App {
         }
     }
 
-    /// Insert the currently selected autocomplete token into the editor.
+    /// Extract date pattern from line if present.
+    /// Detects patterns like "due:2026-07-" or "t:2026-07-" and returns (month_year, position).
+    /// Returns None if no valid date pattern is found.
+    fn extract_date_pattern(&self, line: &str) -> Option<(String, usize)> {
+        // Look for "due:" or "t:" followed by date pattern
+        let patterns = ["due:", "t:"];
+        for pattern in &patterns {
+            if let Some(pos) = line.rfind(pattern) {
+                let after_pattern = &line[pos + pattern.len()..];
+                // Match YYYY-MM or YYYY-MM- (potentially incomplete date)
+                // Pattern: digits-digits or digits-digits-
+                if after_pattern.len() >= 7 {
+                    let candidate = &after_pattern[..7]; // First 7 chars (YYYY-MM)
+                    let parts: Vec<&str> = candidate.split('-').collect();
+                    if parts.len() == 2 {
+                        if parts[0].len() == 4 && parts[1].len() == 2 {
+                            if parts[0].chars().all(|c| c.is_ascii_digit()) &&
+                               parts[1].chars().all(|c| c.is_ascii_digit()) {
+                                // Valid YYYY-MM pattern
+                                return Some((candidate.to_string(), pos));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Insert the currently selected autocomplete token or date into the editor.
     fn accept_completion(&mut self) {
-        let (trigger, token) = match &self.autocomplete {
-            Some(ac) => match ac.items.get(ac.selected) {
-                Some(token) => (ac.trigger, token.clone()),
-                None => { self.autocomplete = None; return; }
-            },
-            None => return,
-        };
         let line = self.editor.lines().first().cloned().unwrap_or_default();
-        if let Some(pos) = line.rfind(trigger) {
-            let new_line = format!("{}{}{}", &line[..=pos], token, "");
-            let mut new_editor = tui_textarea::TextArea::default();
-            new_editor.insert_str(&new_line);
-            self.editor = new_editor;
+        
+        match &self.autocomplete {
+            Some(ac) => {
+                if ac.trigger == '#' {
+                    // Date autocomplete: extract day from selected item (e.g., "14 Tue")
+                    if let Some(item) = ac.items.get(ac.selected) {
+                        if let Some(day_str) = item.split_whitespace().next() {
+                            // Reconstruct full date: month_year + day
+                            let full_date = format!("{}-{}", ac.prefix, day_str);
+                            
+                            // Find and replace the date pattern in the line
+                            if let Some((pattern_str, pos)) = self.extract_date_pattern(&line) {
+                                let pattern = if line[pos..].starts_with("due:") {
+                                    "due:"
+                                } else {
+                                    "t:"
+                                };
+                                let new_line = format!(
+                                    "{}{}{}{}",
+                                    &line[..pos],
+                                    pattern,
+                                    full_date,
+                                    if pos + pattern.len() + pattern_str.len() < line.len() {
+                                        &line[pos + pattern.len() + pattern_str.len()..]
+                                    } else {
+                                        ""
+                                    }
+                                );
+                                let mut new_editor = tui_textarea::TextArea::default();
+                                new_editor.insert_str(&new_line);
+                                self.editor = new_editor;
+                            }
+                        }
+                    }
+                } else {
+                    // Token autocomplete: insert selected token after trigger
+                    if let Some(token) = ac.items.get(ac.selected) {
+                        let trigger = ac.trigger;
+                        if let Some(pos) = line.rfind(trigger) {
+                            let new_line = format!("{}{}{}", &line[..=pos], token, "");
+                            let mut new_editor = tui_textarea::TextArea::default();
+                            new_editor.insert_str(&new_line);
+                            self.editor = new_editor;
+                        }
+                    }
+                }
+            }
+            None => return,
         }
         self.autocomplete = None;
     }
@@ -1411,12 +1998,15 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
         if key.code == KeyCode::Char('y') {
+            self.push_undo_entry();
             if self.selected_tasks.is_empty() {
                 // Existing single-task path (D-01 fallback: d with empty selection)
-                if let Some(idx) = self.canonical_selected() {
+                if let Some(idx) = self.active_canonical_selected() {
                     self.task_list
                         .delete(idx)
                         .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
+                    // Keep all panes' canonical rows in sync after mutation.
+                    self.rebuild_all_panes();
                     self.rebuild_and_reanchor();
                 }
             } else {
@@ -1428,6 +2018,8 @@ impl App {
                         .delete(idx)
                         .map_err(|e| color_eyre::eyre::eyre!("Failed to bulk delete task {}: {}", idx, e))?;
                 }
+                // Keep all panes' canonical rows in sync after mutation.
+                self.rebuild_all_panes();
                 self.rebuild_and_reanchor();
                 // D-04: clear selection and exit disjoint mode after bulk delete
                 self.selected_tasks.clear();
@@ -1444,6 +2036,30 @@ impl App {
         // Any key returns to Normal (D-07).
         self.mode = AppMode::Normal;
         self.apply_pending_reload()?;
+        Ok(())
+    }
+
+    // ── Append text confirm key handler (count preview, D-06) ──────────────────
+
+    fn handle_append_text_confirm_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Enter => {
+                // Confirmed — open text editor for bulk append
+                self.editor = TextArea::default();
+                self.mode = AppMode::AppendText;
+                // append_confirm_count no longer needed; AppendText reads selected_tasks directly
+            }
+            KeyCode::Esc => {
+                // Cancel — selection preserved per D-03 (do NOT clear selected_tasks)
+                self.append_confirm_count = 0;
+                self.mode = AppMode::Normal;
+                self.apply_pending_reload()?;
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -1497,6 +2113,7 @@ impl App {
                         })
                         .collect();
 
+                    self.push_undo_entry();
                     self.task_list
                         .batch_update(replacements)
                         .map_err(|e| color_eyre::eyre::eyre!("Failed to bulk append: {}", e))?;
@@ -1520,6 +2137,236 @@ impl App {
         Ok(())
     }
 
+    // ── Date picker key handler ───────────────────────────────────────────────
+
+    fn handle_date_picker_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                // Cancel — no tasks mutated
+                self.date_picker = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Down => {
+                if let Some(ref mut dp) = self.date_picker {
+                    dp.focused = true;
+                    dp.select_next();
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut dp) = self.date_picker {
+                    dp.focused = true;
+                    dp.select_prev();
+                    dp.day_input.clear();
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(ref mut dp) = self.date_picker {
+                    if !dp.day_input.is_empty() {
+                        dp.day_input.pop();
+                    } else {
+                        dp.month_year.pop();
+                    }
+
+                    dp.suggestions = crate::state::generate_date_suggestions(&dp.month_year)
+                        .unwrap_or_default();
+                    if let Some(day) = dp.selected_day {
+                        let still_valid = dp.suggestions.iter().any(|s| {
+                            s.split_whitespace()
+                                .next()
+                                .and_then(|d| d.parse::<u32>().ok())
+                                .map(|d| d == day)
+                                .unwrap_or(false)
+                        });
+                        if !still_valid {
+                            dp.selected_day = dp
+                                .suggestions
+                                .first()
+                                .and_then(|s| s.split_whitespace().next())
+                                .and_then(|d| d.parse::<u32>().ok());
+                        }
+                    }
+                    dp.focused = true;
+                }
+            }
+            KeyCode::Char(ch) if key.modifiers == KeyModifiers::NONE && (ch.is_ascii_digit() || ch == '-' || ch == '/') => {
+                if let Some(ref mut dp) = self.date_picker {
+                    // First typed character starts direct date entry from scratch.
+                    // This keeps arrow navigation for day picking, while allowing YYYY-MM-DD typing.
+                    if !dp.focused && dp.day_input.is_empty() {
+                        dp.month_year.clear();
+                    }
+
+                    let typed = if ch == '/' { '-' } else { ch };
+
+                    if typed == '-' {
+                        if dp.month_year.len() == 4 && !dp.month_year.contains('-') {
+                            dp.month_year.push('-');
+                            dp.day_input.clear();
+                        }
+                    } else if dp.month_year.len() < 7 {
+                        if dp.month_year.len() == 4 && !dp.month_year.contains('-') {
+                            dp.month_year.push('-');
+                        }
+                        if dp.month_year.len() < 7 {
+                            dp.month_year.push(typed);
+                        }
+                        dp.day_input.clear();
+                    } else if dp.day_input.len() < 2 {
+                        dp.day_input.push(typed);
+                    }
+
+                    dp.suggestions = crate::state::generate_date_suggestions(&dp.month_year)
+                        .unwrap_or_default();
+
+                    // If user typed day digits, try to select that day in the suggestion list.
+                    if !dp.day_input.is_empty() {
+                        if let Ok(day) = dp.day_input.parse::<u32>() {
+                            let matches_month = dp.suggestions.iter().any(|s| {
+                                s.split_whitespace()
+                                    .next()
+                                    .and_then(|d| d.parse::<u32>().ok())
+                                    .map(|d| d == day)
+                                    .unwrap_or(false)
+                            });
+                            if matches_month {
+                                dp.selected_day = Some(day);
+                            }
+                        }
+                    } else if dp.selected_day.is_none() {
+                        dp.selected_day = dp
+                            .suggestions
+                            .first()
+                            .and_then(|s| s.split_whitespace().next())
+                            .and_then(|d| d.parse::<u32>().ok());
+                    }
+
+                    dp.focused = true;
+                }
+            }
+            KeyCode::Tab | KeyCode::Enter => {
+                // Accept selected day and mutate task(s)
+                if let Some(dp) = self.date_picker.take() {
+                    let chosen_day = if !dp.day_input.is_empty() {
+                        dp.day_input.parse::<u32>().ok()
+                    } else {
+                        dp.selected_day
+                    };
+
+                    if let Some(selected_day) = chosen_day {
+                        // D-13: parse date for structured mutation via with_due_date()
+                        use chrono::NaiveDate;
+                        let new_date = NaiveDate::parse_from_str(
+                            &format!("{}-{:02}", dp.month_year, selected_day),
+                            "%Y-%m-%d",
+                        ).map_err(|e| color_eyre::eyre::eyre!("Invalid date: {}", e))?;
+
+                        // Determine targets from the shared quick-setter targeting semantics.
+                        let targets = self.quick_setter_targets();
+
+                        // Update each task via structured mutation (D-13)
+                        let tasks = self.task_list.tasks();
+                        let mut replacements: Vec<(usize, Task)> = Vec::new();
+
+                        for &idx in &targets {
+                            if let Some(task) = tasks.get(idx) {
+                                // with_due_date() rebuilds via rebuild_raw,
+                                // preserving all non-due fields (D-13)
+                                replacements.push((idx, task.clone().with_due_date(Some(new_date))));
+                            }
+                        }
+
+                        if !replacements.is_empty() {
+                            self.push_undo_entry();
+                            let _ = self.task_list.batch_update(replacements);
+                            self.rebuild_and_reanchor();
+                        }
+                    } else {
+                        self.push_runtime_warning("invalid day for selected month");
+                    }
+                }
+                self.selected_tasks.clear();
+                self.selection_anchor = None;
+                self.mode = AppMode::Normal;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    // ── Priority picker key handler ───────────────────────────────────────────
+
+    fn handle_priority_picker_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                // Cancel — no tasks mutated, selection preserved (D-03)
+                self.priority_picker = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Down => {
+                if let Some(ref mut pp) = self.priority_picker {
+                    pp.focused = true;
+                    pp.select_next();
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut pp) = self.priority_picker {
+                    pp.focused = true;
+                    pp.select_prev();
+                }
+            }
+            KeyCode::Char(ch) if ch.is_alphabetic() => {
+                // Type-to-jump: jump to that priority letter
+                if let Some(ref mut pp) = self.priority_picker {
+                    pp.focused = true;
+                    pp.jump_to(ch);
+                }
+            }
+            KeyCode::Tab | KeyCode::Enter => {
+                // Accept and apply priority to target tasks
+                if let Some(pp) = self.priority_picker.take() {
+                    let chosen_priority = pp.selected_priority(); // None = "clear priority"
+
+                    // Determine targets via shared quick-setter semantics (selected or active).
+                    let targets = self.quick_setter_targets();
+
+                    if !targets.is_empty() {
+                        let tasks = self.task_list.tasks();
+                        let replacements: Vec<(usize, Task)> = targets
+                            .iter()
+                            .filter_map(|&idx| {
+                                tasks.get(idx).map(|t| {
+                                    // D-13: structured mutation via with_priority builder
+                                    (idx, t.clone().with_priority(chosen_priority))
+                                })
+                            })
+                            .collect();
+
+                        if !replacements.is_empty() {
+                            self.push_undo_entry();
+                            self.task_list
+                                .batch_update(replacements)
+                                .map_err(|e| color_eyre::eyre::eyre!("Failed to set priority: {}", e))?;
+                            self.rebuild_and_reanchor();
+                        }
+                    }
+                }
+                // Clear selection after accept (consistent with date picker accept behavior)
+                self.selected_tasks.clear();
+                self.selection_anchor = None;
+                self.mode = AppMode::Normal;
+                self.apply_pending_reload()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     // ── Edit mode helpers ─────────────────────────────────────────────────────
 
     /// Discard changes and return to Normal mode, applying any queued reload (D-10).
@@ -1538,6 +2385,7 @@ impl App {
                 // T-21-07: Adding always uses Task::parse — normalize_edit does not apply here.
                 // User is creating a new task from scratch; there is no "original" to merge into.
                 let task = Task::parse(&text);
+                self.push_undo_entry();
                 self.task_list
                     .add(task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to add task: {}", e))?;
@@ -1561,6 +2409,7 @@ impl App {
                 } else {
                     Task::parse(&text)
                 };
+                self.push_undo_entry();
                 self.task_list
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
@@ -1745,6 +2594,21 @@ impl App {
         }
     }
 
+    /// Resolve selected canonical index from the current interaction scope.
+    ///
+    /// In multi-pane mode, uses the active pane cursor; otherwise uses global/single-pane cursor.
+    fn active_canonical_selected(&self) -> Option<usize> {
+        let selected = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            self.pane_canonical_selected()
+        } else {
+            self.canonical_selected()
+        };
+
+        // Guard against stale display mappings (e.g., after reload/race) so caller paths
+        // never index tasks out-of-bounds.
+        selected.filter(|&idx| idx < self.task_list.len())
+    }
+
     /// Toggle the cursor row's canonical index in `selected_tasks`.
     ///
     /// No-op when the cursor is on a `GroupHeader` row (D-08).
@@ -1773,7 +2637,7 @@ impl App {
     /// for the entire duration of a shift-range operation.
     fn ensure_anchor(&mut self) {
         if self.selection_anchor.is_none() {
-            self.selection_anchor = self.canonical_selected();
+            self.selection_anchor = self.active_canonical_selected();
         }
     }
 
@@ -1786,17 +2650,28 @@ impl App {
             Some(a) => a,
             None => return,
         };
-        let cursor_canon = match self.canonical_selected() {
+
+        let (rows, selected_row) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            let pane = &self.panes[self.active_pane];
+            (&pane.display_rows, pane.selected)
+        } else {
+            (&self.display_rows, self.selected)
+        };
+
+        let cursor_canon = match rows.get(selected_row) {
+            Some(DisplayRow::Task(idx)) => Some(*idx),
+            _ => None,
+        };
+        let cursor_canon = match cursor_canon {
             Some(c) => c,
             None => return,
         };
+
         // Locate display-row positions for anchor and cursor canonical indices.
-        let anchor_row = self
-            .display_rows
+        let anchor_row = rows
             .iter()
             .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == anchor_canon));
-        let cursor_row = self
-            .display_rows
+        let cursor_row = rows
             .iter()
             .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == cursor_canon));
         let (anchor_row, cursor_row) = match (anchor_row, cursor_row) {
@@ -1811,7 +2686,7 @@ impl App {
         // Replace selection with only the tasks inside the [lo, hi] display range.
         self.selected_tasks.clear();
         for row in lo..=hi {
-            if let DisplayRow::Task(idx) = self.display_rows[row] {
+            if let DisplayRow::Task(idx) = rows[row] {
                 self.selected_tasks.insert(idx);
             }
         }
@@ -1831,6 +2706,7 @@ impl App {
         let task = self.task_list.tasks()[idx].clone();
         let was_completed = task.completed;
         let toggled = task.with_completed(!was_completed);
+        self.push_undo_entry();
         // update() calls save() internally — single atomic disk write (temp rename).
         if let Err(e) = self.task_list.update(idx, toggled) {
             // Non-fatal: write to stderr (terminal restore guard is active).
@@ -1866,10 +2742,37 @@ impl App {
         let task = self.task_list.tasks()[idx].clone();
         let was_completed = task.completed;
         let toggled = task.with_completed(!was_completed);
+        self.push_undo_entry();
         if let Err(e) = self.task_list.update(idx, toggled) {
             eprintln!("toggle_done error: {e}");
         }
         self.rebuild_all_panes();
+    }
+
+    /// Delete either the single selected task or the active cursor task immediately.
+    fn delete_active_task(&mut self) -> color_eyre::Result<()> {
+        let idx = if self.selected_tasks.len() == 1 {
+            self.selected_tasks
+                .iter()
+                .next()
+                .copied()
+                .filter(|&idx| idx < self.task_list.len())
+        } else {
+            self.active_canonical_selected()
+        };
+
+        if let Some(idx) = idx {
+            self.push_undo_entry();
+            self.task_list
+                .delete(idx)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to delete task: {}", e))?;
+            self.rebuild_all_panes();
+            self.rebuild_and_reanchor();
+        }
+
+        self.clear_selection();
+        self.mode = AppMode::Normal;
+        Ok(())
     }
 
     /// Toggle the cursor row's canonical index in `selected_tasks` for the active pane (Phase 24-02).
@@ -1888,7 +2791,13 @@ impl App {
     /// Move selection down in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_down(&mut self) {
         self.reconcile_active_pane();
+        let use_global_cursor = self.should_show_single_pane() || self.panes_hidden;
+        let global_selected = self.selected;
         let pane = self.active_pane_mut();
+
+        if use_global_cursor {
+            pane.selected = global_selected.min(pane.display_rows.len().saturating_sub(1));
+        }
 
         if pane.label_selected {
             pane.label_selected = false;
@@ -1901,40 +2810,53 @@ impl App {
             if pane.selected >= pane.display_rows.len() {
                 pane.selected = 0;
             }
-            return;
+        } else {
+            let row_count = pane.display_rows.len();
+            if row_count > 0 {
+                let mut next = pane.selected + 1;
+                while next < row_count
+                    && matches!(pane.display_rows[next], DisplayRow::GroupHeader(_))
+                {
+                    next += 1;
+                }
+                if next < row_count {
+                    pane.selected = next;
+                }
+            }
         }
 
-        let row_count = pane.display_rows.len();
-        if row_count > 0 {
-            let mut next = pane.selected + 1;
-            while next < row_count
-                && matches!(pane.display_rows[next], DisplayRow::GroupHeader(_))
-            {
-                next += 1;
-            }
-            if next < row_count {
-                pane.selected = next;
-            }
+        if use_global_cursor {
+            self.selected = pane.selected;
         }
     }
 
     /// Move selection up in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_up(&mut self) {
         self.reconcile_active_pane();
+        let use_global_cursor = self.should_show_single_pane() || self.panes_hidden;
+        let global_selected = self.selected;
         let pane = self.active_pane_mut();
-        if pane.label_selected {
-            return;
+        if use_global_cursor {
+            pane.selected = global_selected.min(pane.display_rows.len().saturating_sub(1));
         }
-        if pane.selected == 0 {
-            pane.label_selected = true;
-            return;
+        if !pane.label_selected {
+            if pane.selected == 0 {
+                pane.label_selected = true;
+            } else {
+                let mut prev = pane.selected.saturating_sub(1);
+                while prev > 0 && matches!(pane.display_rows[prev], DisplayRow::GroupHeader(_)) {
+                    prev -= 1;
+                }
+                if matches!(pane.display_rows.get(prev), Some(DisplayRow::Task(_))) {
+                    pane.selected = prev;
+                } else {
+                    pane.label_selected = true;
+                }
+            }
         }
-        let mut prev = pane.selected.saturating_sub(1);
-        while prev > 0 && matches!(pane.display_rows[prev], DisplayRow::GroupHeader(_)) {
-            prev -= 1;
-        }
-        if matches!(pane.display_rows.get(prev), Some(DisplayRow::Task(_))) {
-            pane.selected = prev;
+
+        if use_global_cursor {
+            self.selected = pane.selected;
         }
     }
 
@@ -1995,6 +2917,14 @@ impl App {
                 self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
             }
+            AppMode::QuickSetter(_) => {
+                // Keep Normal-mode layout and render quick-setter popup above status.
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_autocomplete_popup(frame, chunks[1]);
+            }
             AppMode::Filtering => {
                 let panel_height = 1_u16 + (self.presets.len() as u16).min(5);
                 let chunks =
@@ -2030,6 +2960,27 @@ impl App {
                 self.render_status_bar(frame, chunks[1]);
                 self.render_help_overlay(frame, frame.area());
             }
+            AppMode::DatePicker => {
+                // Task list visible behind; date picker overlay floats above (Phase 33, Plan 01).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_date_picker_overlay(frame, chunks[1]);
+            }
+            AppMode::PriorityPicker => {
+                // Task list visible behind; priority picker overlay floats above (Phase 34, Plan 01).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_priority_picker_overlay(frame, chunks[1]);
+            }
+            AppMode::AppendTextConfirm => {
+                // Task list visible behind; count confirmation banner floats above (Phase 34, Plan 03).
+                let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_status_bar(frame, chunks[1]);
+                self.render_append_text_confirm(frame, chunks[1]);
+            }
         }
     }
 
@@ -2058,7 +3009,13 @@ impl App {
                         // Visual precedence: selected non-cursor rows get `>` prefix (D-14).
                         let is_selected = self.selected_tasks.contains(ci);
                         let is_cursor = row_idx == self.selected;
-                        let prefix = if is_selected && !is_cursor { "> " } else { "" };
+                        let prefix = if self.disjoint_select && is_cursor {
+                            "V "
+                        } else if is_selected && !is_cursor {
+                            "> "
+                        } else {
+                            ""
+                        };
                         let content = format!("{}{}{}: {}", prefix, indent, ci + 1, t.to_raw());
                         // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
                         // Style precedence: completed (DIM) > deferred shown (DIM) > priority A/B/C > overdue > plain.
@@ -2154,6 +3111,8 @@ impl App {
                 pane,
                 is_active,
                 is_active && pane.label_selected,
+                &self.selected_tasks,
+                self.disjoint_select,
                 &self.styles,
                 &self.task_list,
                 self.show_deferred,
@@ -2202,6 +3161,11 @@ impl App {
             left.push_str(&format!(" | {} selected", self.selected_tasks.len()));
         }
 
+        // Show explicit indicator when disjoint select mode is active, even with zero selected rows.
+        if self.disjoint_select {
+            left.push_str(" | SELECT mode (space=mark, v=exit)");
+        }
+
         // Error-log indicator — shown when keymap/runtime warnings exist.
         let error_count = self.error_log_count();
         if error_count > 0 {
@@ -2246,7 +3210,7 @@ impl App {
             middle.push_str(" [+deferred]");
         }
 
-        let right = "  q quit | n add | u edit | d del | D bulk del | T bulk app | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
+        let right = "  q quit | n add | u edit | d/Del/Bksp del | D bulk del (confirm) | T bulk app | @ context | + project | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -2369,6 +3333,9 @@ impl App {
             ("Tasks", "Tasks", &[
                 "add", "edit", "delete", "bulk_delete", "bulk_append", "toggle_done",
             ]),
+            ("Quick Edits", "Quick Edits", &[
+                "quick_context", "quick_project",
+            ]),
             ("Filter", "Filter", &[
                 "filter_open", "filter_define", "filter_toggle", "clear_filter",
             ]),
@@ -2404,6 +3371,8 @@ impl App {
             ("reload", "Reload file"),
             ("disjoint_select", "Disjoint select"),
             ("disjoint_mark", "Mark selection"),
+            ("quick_context", "Quick context setter"),
+            ("quick_project", "Quick project setter"),
             ("pane_add", "Create pane"),
             ("pane_delete", "Delete pane"),
             ("pane_hide_toggle", "Toggle panes"),
@@ -2515,23 +3484,15 @@ impl App {
         use ratatui::text::{Line, Span};
         use ratatui::widgets::Paragraph;
 
-        let tasks = self.task_list.tasks();
-
         let text = if self.selected_tasks.len() > 1 {
-            // Bulk confirmation: show count, not task preview (D-02)
+            // Bulk confirmation: show count, not task preview (D-02, D-07)
             format!("Delete {} tasks?  y=confirm  any=cancel", self.selected_tasks.len())
         } else if self.selected_tasks.len() == 1 {
-            // Single-task-via-selection: show existing preview (D-02)
-            let idx = *self.selected_tasks.iter().next().unwrap();
-            let preview = tasks.get(idx).map(|t| t.to_raw().to_string()).unwrap_or_default();
-            format!("Delete: \"{}\"  y=confirm  any=cancel", preview)
+            // Single-task-via-selection: show count (D-07 wording update)
+            "Delete 1 task?  y=confirm  any=cancel".to_string()
         } else {
-            // Cursor-task delete (selection empty): existing behavior
-            let preview = match self.canonical_selected() {
-                Some(idx) => tasks[idx].to_raw().to_string(),
-                None => String::new(),
-            };
-            format!("Delete: \"{}\"  y=confirm  any=cancel", preview)
+            // Cursor-task delete (selection empty): show "Delete task?"
+            "Delete task?  y=confirm  any=cancel".to_string()
         };
 
         frame.render_widget(Paragraph::new(Line::from(Span::raw(text))), area);
@@ -2583,11 +3544,31 @@ impl App {
         let popup_height = (ac.items.len() as u16).min(5).min(footer_area.y);
         if popup_height == 0 { return; }
 
+        let popup_title = match ac.mode {
+            AutocompleteMode::QuickSetter(trigger) => {
+                let label = if trigger == '@' { "context" } else { "project" };
+                let target_count = if self.selected_tasks.is_empty() {
+                    1
+                } else {
+                    self.selected_tasks.len()
+                };
+                Some(format!(
+                    " {}{} | input: {} | {} target(s) | ↑↓ nav  Tab/Enter apply  Esc cancel ",
+                    trigger,
+                    label,
+                    ac.prefix,
+                    target_count
+                ))
+            }
+            _ => None,
+        };
+
         let popup_width = ac.items.iter()
             .map(|s| s.len() + 4) // 4 for trigger char + borders
             .max()
             .unwrap_or(20)
-            .min(40) as u16;
+            .max(popup_title.as_ref().map(|s| s.len() + 2).unwrap_or(0))
+            .min(88) as u16;
         let popup_width = popup_width.min(frame.area().width);
 
         let popup_area = Rect {
@@ -2607,14 +3588,174 @@ impl App {
             Style::default().add_modifier(Modifier::DIM)
         };
 
+        let popup_block = if let Some(title) = popup_title {
+            Block::default().borders(Borders::ALL).title(title)
+        } else {
+            Block::default().borders(Borders::ALL)
+        };
+
         let popup_list = List::new(items)
-            .block(Block::default().borders(Borders::ALL))
+            .block(popup_block)
             .highlight_style(highlight_style);
 
         let mut list_state = ListState::default().with_selected(Some(ac.selected));
 
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+
+    /// Render the date picker overlay (Phase 33, Plan 01).
+    /// Displays month/year and a list of day suggestions with weekday labels.
+    fn render_date_picker_overlay(&self, frame: &mut Frame, footer_area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+
+        let dp = match &self.date_picker {
+            Some(dp) => dp,
+            None => return,
+        };
+
+        let suggestions_height = if dp.suggestions.is_empty() { 1 } else { dp.suggestions.len() as u16 };
+        let popup_height = suggestions_height.min(10).max(3).min(footer_area.y);
+        if popup_height == 0 { return; }
+
+        let title = if dp.day_input.is_empty() {
+            format!(" Set due date: {} (type YYYY-MM-DD or use arrows) ", dp.month_year)
+        } else {
+            format!(" Set due date: {}-{} (type YYYY-MM-DD or use arrows) ", dp.month_year, dp.day_input)
+        };
+
+        let popup_width = dp.suggestions.iter()
+            .map(|s| s.len() + 4)
+            .max()
+            .unwrap_or(20)
+            .max(title.len() + 2)
+            .min(72) as u16;
+        let popup_width = popup_width.min(frame.area().width);
+
+        let popup_area = Rect {
+            x: footer_area.x,
+            y: footer_area.y.saturating_sub(popup_height),
+            width: popup_width,
+            height: popup_height,
+        };
+
+        let items: Vec<ListItem> = if dp.suggestions.is_empty() {
+            vec![ListItem::new(" Type YYYY-MM-DD, then Enter ")]
+        } else {
+            dp.suggestions
+                .iter()
+                .map(|day_str| ListItem::new(day_str.clone()))
+                .collect()
+        };
+
+        let highlight_style = if dp.focused {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+
+        let selected_idx = if dp.suggestions.is_empty() {
+            None
+        } else {
+            dp.selected_day.and_then(|day| {
+                dp.suggestions.iter().position(|s| {
+                    s.split_whitespace().next()
+                        .and_then(|d| d.parse::<u32>().ok())
+                        .map(|d| d == day)
+                        .unwrap_or(false)
+                })
+            })
+        };
+        let popup_list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(title))
+            .highlight_style(highlight_style);
+
+        let mut list_state = ListState::default().with_selected(selected_idx);
+
+        frame.render_widget(ratatui::widgets::Clear, popup_area);
+        frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+
+    /// Render the priority picker overlay (Phase 34, Plan 01).
+    /// Displays A–Z priorities plus "— (no priority)" in a scrollable list.
+    fn render_priority_picker_overlay(&self, frame: &mut Frame, footer_area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+
+        let pp = match &self.priority_picker {
+            Some(pp) if !pp.items.is_empty() => pp,
+            _ => return,
+        };
+
+        let popup_height = (pp.items.len() as u16).min(10).min(footer_area.y);
+        if popup_height == 0 { return; }
+
+        let popup_width = 28u16.min(frame.area().width);
+
+        let popup_area = Rect {
+            x: footer_area.x,
+            y: footer_area.y.saturating_sub(popup_height),
+            width: popup_width,
+            height: popup_height,
+        };
+
+        let items: Vec<ListItem> = pp.items.iter()
+            .map(|s| ListItem::new(s.clone()))
+            .collect();
+
+        let highlight_style = if pp.focused {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+
+        // Count targets for header
+        let n = if !self.selected_tasks.is_empty() { self.selected_tasks.len() } else { 1 };
+        let title = if n > 1 {
+            format!(" Setting priority — {} tasks ", n)
+        } else {
+            " Set priority ".to_string()
+        };
+
+        let popup_list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(title))
+            .highlight_style(highlight_style);
+
+        let mut list_state = ListState::default().with_selected(Some(pp.selected_idx));
+
+        frame.render_widget(ratatui::widgets::Clear, popup_area);
+        frame.render_stateful_widget(popup_list, popup_area, &mut list_state);
+    }
+
+    /// Render the bulk append count confirmation banner (D-06, Phase 34, Plan 03).
+    fn render_append_text_confirm(&self, frame: &mut Frame, footer_area: ratatui::layout::Rect) {
+        use ratatui::layout::Rect;
+        use ratatui::style::{Modifier, Style};
+        use ratatui::widgets::{Block, Borders, Paragraph};
+
+        let n = self.append_confirm_count;
+        if n == 0 { return; }
+
+        let text = format!("Appending to {} tasks — Enter to continue, Esc to cancel", n);
+        let popup_width = (text.len() as u16 + 4).min(frame.area().width);
+        if footer_area.y < 3 { return; }
+
+        let popup_area = Rect {
+            x: footer_area.x,
+            y: footer_area.y.saturating_sub(3),
+            width: popup_width,
+            height: 3,
+        };
+
+        let paragraph = Paragraph::new(text)
+            .block(Block::default().borders(Borders::ALL).title(" Bulk Append "))
+            .style(Style::default().add_modifier(Modifier::BOLD));
+
+        frame.render_widget(ratatui::widgets::Clear, popup_area);
+        frame.render_widget(paragraph, popup_area);
     }
 
     /// Render the F-key preset definition panel (D-06, D-07, Plan 16-03).
@@ -2769,7 +3910,10 @@ fn group_key_for(task: &Task, sort: &SortOrder) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::NamedTempFile;
+
+    static CLIPBOARD_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn make_app_with_tasks(task_lines: &[&str]) -> App {
         let mut file = NamedTempFile::new().expect("failed to create temp file");
@@ -2844,6 +3988,26 @@ mod tests {
         }).unwrap();
     }
 
+    fn key_no_mod(code: crossterm::event::KeyCode) -> crossterm::event::KeyEvent {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
+    fn key_ctrl(code: crossterm::event::KeyCode) -> crossterm::event::KeyEvent {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
     #[test]
     fn ctrl_n_triggers_pane_add_not_add_mode() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
@@ -2881,6 +4045,159 @@ mod tests {
     }
 
     #[test]
+    fn edit_targets_selected_row_in_active_pane() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.pane_add();
+        app.rebuild_all_panes();
+        assert!(!app.should_show_single_pane(), "must be in multi-pane mode");
+
+        app.active_pane_mut().selected = 1;
+        press_key(&mut app, KeyCode::Char('u'));
+
+        match app.mode {
+            AppMode::Editing { original_idx } => {
+                assert_eq!(original_idx, 1, "edit should target selected row, not first row");
+            }
+            _ => panic!("expected Editing mode after edit key"),
+        }
+    }
+
+    #[test]
+    fn delete_targets_selected_row_in_active_pane() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.pane_add();
+        app.rebuild_all_panes();
+        assert!(!app.should_show_single_pane(), "must be in multi-pane mode");
+
+        app.active_pane_mut().selected = 1;
+
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.task_list.len(), 2);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task C");
+        assert_eq!(app.mode, AppMode::Normal, "single delete should not enter confirmation mode");
+    }
+
+    #[test]
+    fn active_canonical_selected_filters_stale_global_index() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.display_rows = vec![DisplayRow::Task(999)];
+        app.selected = 0;
+
+        assert_eq!(app.active_canonical_selected(), None);
+    }
+
+    #[test]
+    fn delete_confirm_y_with_stale_index_is_noop_not_panic() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.display_rows = vec![DisplayRow::Task(999)];
+        app.selected = 0;
+        app.mode = AppMode::DeleteConfirm;
+
+        let confirm_key = KeyEvent {
+            code: KeyCode::Char('y'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+
+        app.handle_delete_confirm_key(confirm_key).unwrap();
+
+        assert_eq!(app.task_list.len(), 2, "stale index should not delete any task");
+        assert_eq!(app.mode, AppMode::Normal, "mode should return to normal");
+    }
+
+    #[test]
+    fn single_delete_with_duplicate_content_targets_cursor_row() {
+        let mut app = make_app_with_tasks(&["n", "n", "n", "n", "n"]);
+        app.selected = 3;
+
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.task_list.len(), 4);
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn single_selected_task_delete_with_duplicate_content_no_panic() {
+        let mut app = make_app_with_tasks(&["n", "n", "n", "n", "n"]);
+
+        // Simulate one task selected in disjoint mode and delete via 'd'.
+        app.disjoint_select = true;
+        app.selected = 2;
+        press_key(&mut app, KeyCode::Char(' ')); // select one task
+        assert_eq!(app.selected_tasks.len(), 1);
+
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.task_list.len(), 4, "single selected delete should remove one task");
+        assert!(app.selected_tasks.is_empty(), "selection should clear after delete path");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn backspace_alias_deletes_single_task_immediately() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 1;
+
+        press_key(&mut app, KeyCode::Backspace);
+
+        assert_eq!(app.task_list.len(), 2);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task C");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn delete_key_alias_deletes_single_task_immediately() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 1;
+
+        press_key(&mut app, KeyCode::Delete);
+
+        assert_eq!(app.task_list.len(), 2);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task C");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn delete_with_multiple_selected_tasks_still_prompts_confirmation() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.disjoint_select = true;
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(2);
+        assert_eq!(app.selected_tasks.len(), 2);
+
+        press_key(&mut app, KeyCode::Char('d'));
+
+        assert_eq!(app.mode, AppMode::DeleteConfirm, "multi-delete should still require confirmation");
+        assert_eq!(app.task_list.len(), 3, "tasks should remain until confirmation");
+    }
+
+    #[test]
+    fn delete_rebuilds_inactive_panes_to_prevent_stale_indices() {
+        let mut app = make_app_with_tasks(&["n", "n", "n"]);
+        app.pane_add();
+        app.rebuild_all_panes();
+        assert_eq!(app.panes.len(), 2);
+
+        // Delete from pane 1; pane 0 must also be rebuilt to avoid stale canonical indices.
+        app.active_pane = 1;
+        app.active_pane_mut().selected = 1;
+        press_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.mode, AppMode::Normal);
+
+        for pane in &app.panes {
+            for row in &pane.display_rows {
+                if let DisplayRow::Task(idx) = row {
+                    assert!(*idx < app.task_list.len(), "pane contains stale canonical index after delete");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn v_key_toggles_disjoint_select_on() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
         assert!(!app.disjoint_select);
@@ -2902,6 +4219,203 @@ mod tests {
         app.disjoint_select = true;
         press_key(&mut app, KeyCode::Char(' '));
         assert!(app.selected_tasks.contains(&0), "Space should add cursor task to selected_tasks in disjoint mode");
+    }
+
+    #[test]
+    fn s_opens_date_picker_when_selected_tasks_exist_even_on_group_header_cursor() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.selected_tasks.insert(1);
+        app.display_rows = vec![
+            DisplayRow::GroupHeader("Header".to_string()),
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+        ];
+        app.selected = 0;
+
+        press_key(&mut app, KeyCode::Char('s'));
+
+        assert_eq!(app.mode, AppMode::DatePicker, "'s' should open date picker when selection exists");
+        assert!(app.date_picker.is_some());
+    }
+
+    #[test]
+    fn date_picker_enter_applies_due_date_to_selected_tasks() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.mode = AppMode::DatePicker;
+        app.date_picker = Some(DatePickerState::new("2032-02"));
+        if let Some(ref mut dp) = app.date_picker {
+            dp.selected_day = Some(29);
+        }
+
+        app.handle_date_picker_key(key_no_mod(KeyCode::Enter)).unwrap();
+
+        assert_eq!(app.task_list.tasks()[0].due_date.map(|d| d.to_string()), Some("2032-02-29".to_string()));
+        assert_eq!(app.task_list.tasks()[1].due_date.map(|d| d.to_string()), Some("2032-02-29".to_string()));
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn date_picker_supports_typing_month_then_day() {
+        let mut app = make_app_with_tasks(&["Task one"]);
+        app.mode = AppMode::DatePicker;
+        app.date_picker = Some(DatePickerState {
+            month_year: String::new(),
+            selected_day: None,
+            day_input: String::new(),
+            suggestions: vec![],
+            focused: false,
+        });
+
+        for ch in ['2', '0', '3', '2', '-', '0', '2', '2', '9'] {
+            app.handle_date_picker_key(key_no_mod(KeyCode::Char(ch))).unwrap();
+        }
+
+        let dp = app.date_picker.as_ref().unwrap();
+        assert_eq!(dp.month_year, "2032-02");
+        assert_eq!(dp.day_input, "29");
+        assert_eq!(dp.selected_day, Some(29));
+    }
+
+    #[test]
+    fn date_picker_allows_direct_full_date_typing_without_backspacing_default() {
+        let mut app = make_app_with_tasks(&["Task one"]);
+        app.mode = AppMode::DatePicker;
+        app.date_picker = Some(DatePickerState::new("2026-04"));
+
+        // First typed key starts from scratch (YYYY-MM-DD).
+        for ch in ['2', '0', '3', '1', '-', '1', '2', '2', '5'] {
+            app.handle_date_picker_key(key_no_mod(KeyCode::Char(ch))).unwrap();
+        }
+
+        let dp = app.date_picker.as_ref().unwrap();
+        assert_eq!(dp.month_year, "2031-12");
+        assert_eq!(dp.day_input, "25");
+    }
+
+    #[test]
+    fn y_copies_active_task_to_clipboard() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["copy me"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard.set_text("seed".to_string()).is_err() {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        press_key(&mut app, KeyCode::Char('y'));
+
+        let copied = app
+            .clipboard
+            .as_mut()
+            .and_then(|cb| cb.get_text().ok());
+        assert_eq!(copied.as_deref(), Some("copy me"));
+    }
+
+    #[test]
+    fn y_copies_selected_tasks_in_descending_canonical_order() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard.set_text("seed".to_string()).is_err() {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(2);
+        press_key(&mut app, KeyCode::Char('y'));
+
+        let copied = app
+            .clipboard
+            .as_mut()
+            .and_then(|cb| cb.get_text().ok());
+        assert_eq!(copied.as_deref(), Some("task C\ntask A"));
+    }
+
+    #[test]
+    fn cut_composes_copy_then_delete_for_single_selected_task() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard.set_text("seed".to_string()).is_err() {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        app.disjoint_select = true;
+        app.selected = 1;
+        app.active_pane_mut().selected = 1;
+        press_key(&mut app, KeyCode::Char(' '));
+        press_key(&mut app, KeyCode::Char('y'));
+        press_key(&mut app, KeyCode::Char('d'));
+
+        assert_eq!(app.task_list.len(), 1);
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A");
+    }
+
+    #[test]
+    fn p_pastes_each_non_empty_clipboard_line_as_task() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["existing"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard
+            .set_text("first pasted\n\nsecond pasted\n".to_string())
+            .is_err()
+        {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        app.paste_from_clipboard().unwrap();
+
+        let tasks = app.task_list.tasks();
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[1].to_raw(), "first pasted");
+        assert_eq!(tasks[2].to_raw(), "second pasted");
+    }
+
+    #[test]
+    fn ctrl_v_in_adding_mode_pastes_first_clipboard_line_only() {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap();
+
+        let mut app = make_app_with_tasks(&["existing"]);
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(_) => return,
+        };
+        if clipboard
+            .set_text("first line\nsecond line".to_string())
+            .is_err()
+        {
+            return;
+        }
+        app.clipboard = Some(clipboard);
+
+        press_key(&mut app, KeyCode::Char('n'));
+        assert_eq!(app.mode, AppMode::Adding);
+
+        app.handle_editor_key(key_ctrl(KeyCode::Char('v'))).unwrap();
+
+        let content = app.editor.lines().join("\n");
+        assert_eq!(content, "first line");
     }
 
     #[test]
@@ -3100,12 +4614,48 @@ mod tests {
         ];
         app.display_indices = vec![0, 1, 2];
         app.selected = 0;
+        app.panes[0].display_rows = app.display_rows.clone();
+        app.panes[0].selected = 0;
         press_shift_key(&mut app, KeyCode::Char('j'));
         // shift-j should skip GroupHeader at row 1 and land on Task(1) at row 2
         assert_eq!(app.selected, 2, "shift-j should skip GroupHeader rows (D-08)");
         assert!(app.selected_tasks.contains(&0), "Task 0 (anchor) should be selected");
         assert!(app.selected_tasks.contains(&1), "Task 1 (at row 2) should be selected");
         assert!(!app.selected_tasks.is_empty());
+    }
+
+    #[test]
+    fn shift_range_in_multi_pane_uses_active_pane_rows_not_global_rows() {
+        let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
+        app.pane_add();
+
+        // Force multi-pane mode path and provide active pane rows with a header gap.
+        app.panes_hidden = false;
+        app.active_pane = 1;
+        app.panes[1].display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::GroupHeader("H".to_string()),
+            DisplayRow::Task(2),
+            DisplayRow::Task(3),
+        ];
+        app.panes[1].selected = 0;
+
+        // Keep global rows different to catch accidental global-row usage.
+        app.display_rows = vec![
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+            DisplayRow::Task(2),
+            DisplayRow::Task(3),
+        ];
+        app.selected = 0;
+
+        press_shift_key(&mut app, KeyCode::Down);
+
+        // Should skip header and land on canonical 2 from pane row 2.
+        assert_eq!(app.panes[1].selected, 2);
+        assert!(app.selected_tasks.contains(&0));
+        assert!(app.selected_tasks.contains(&2));
+        assert!(!app.selected_tasks.contains(&1), "must not accidentally select global-row task 1");
     }
 
     // ── Task 1 (19-03): Selection persistence through rebuild ─────────────────
@@ -3568,6 +5118,35 @@ mod tests {
     }
 
     #[test]
+    fn pane_label_edit_save_allows_empty_label() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].label_selected = true;
+        assert_eq!(app.panes[1].label, "Work");
+
+        press_key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, AppMode::PaneLabelEditing { pane_idx: 1 });
+
+        app.editor = TextArea::default();
+
+        app.handle_pane_label_edit_key(
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            },
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(app.panes[1].label, "");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
     fn pane_label_edit_escape_cancels_changes() {
         use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
 
@@ -3594,6 +5173,24 @@ mod tests {
 
         assert_eq!(app.panes[1].label, original);
         assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn pane_label_can_be_selected_with_up_when_group_header_is_above_first_task() {
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].display_rows = vec![
+            DisplayRow::GroupHeader("Group".to_string()),
+            DisplayRow::Task(0),
+            DisplayRow::Task(1),
+        ];
+        app.panes[1].selected = 1;
+        app.panes[1].label_selected = false;
+
+        app.pane_move_up();
+
+        assert!(app.panes[1].label_selected, "Up from first task after group header should select pane header");
+        assert_eq!(app.panes[1].selected, 1, "header selection should not move cursor to a different task row");
     }
 
     // ── Phase 28: Per-pane FilterDefining FAIL-1 fix ──────────────────────────
@@ -3664,6 +5261,131 @@ mod tests {
         assert_eq!(app.mode, AppMode::Normal);
         // filter_defining_state must be cleared.
         assert!(app.filter_defining_state.is_none());
+    }
+
+    // ── Phase 36: Undo infrastructure tests ──────────────────────────────────
+
+    #[test]
+    fn push_then_apply_restores_task_list() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected = 0;
+        // Snapshot before mutation
+        app.push_undo_entry();
+        // Mutate: delete task B (index 1)
+        app.task_list.delete(1).unwrap();
+        app.rebuild_all_panes();
+        assert_eq!(app.task_list.tasks().len(), 1, "should have 1 task after delete");
+        // Undo
+        app.apply_undo().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 2, "should have 2 tasks after undo");
+        let names: Vec<String> = app.task_list.tasks().iter().map(|t| t.body.clone()).collect();
+        assert!(names.iter().any(|n| n.contains("task A")), "task A must be present");
+        assert!(names.iter().any(|n| n.contains("task B")), "task B must be present");
+        assert_eq!(app.selected, 0, "cursor must be restored to 0");
+    }
+
+    #[test]
+    fn apply_undo_when_empty_is_no_op() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        app.undo_entry = None;
+        // apply_undo with no snapshot must not panic and must leave tasks intact
+        app.apply_undo().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 1, "task list unchanged when undo_entry is None");
+    }
+
+    #[test]
+    fn second_push_overwrites_first() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 0;
+        // First push: 3 tasks
+        app.push_undo_entry();
+        // Mutate: delete C (index 2) → 2 tasks
+        app.task_list.delete(2).unwrap();
+        // Second push: 2 tasks
+        app.push_undo_entry();
+        // Mutate: delete B (now index 1) → 1 task
+        app.task_list.delete(1).unwrap();
+        assert_eq!(app.task_list.tasks().len(), 1);
+        // Undo should restore to 2 tasks (second push), not 3
+        app.apply_undo().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 2, "should restore to 2 tasks (second snapshot)");
+    }
+
+    #[test]
+    fn apply_undo_clears_entry() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.push_undo_entry();
+        app.apply_undo().unwrap();
+        assert!(app.undo_entry.is_none(), "undo_entry must be None after apply_undo (second Ctrl+Z is a no-op)");
+    }
+
+    #[test]
+    fn ctrl_z_in_normal_mode_triggers_apply_undo() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected = 0;
+        // Snapshot before mutation
+        app.push_undo_entry();
+        // Mutate: delete task B
+        app.task_list.delete(1).unwrap();
+        app.rebuild_all_panes();
+        assert_eq!(app.task_list.tasks().len(), 1);
+        // Simulate Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks().len(), 2, "Ctrl+Z must restore the task list");
+    }
+
+    // ── Phase 36 Plan 02: end-to-end undo round-trip integration tests ───────
+
+    #[test]
+    fn delete_undo_round_trip() {
+        // delete_active_task now calls push_undo_entry() internally
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected = 1; // select "task B"
+        app.rebuild_display_indices();
+
+        // Trigger delete via 'd' key which routes to delete_active_task in confirm-skip path
+        // Use delete_active_task directly to test the wired site
+        app.delete_active_task().unwrap();
+        assert_eq!(app.task_list.tasks().len(), 2, "task B should be deleted");
+
+        // Undo via Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks().len(), 3, "task list should have 3 tasks after undo");
+    }
+
+    #[test]
+    fn add_undo_round_trip() {
+        // save_and_exit (AppMode::Adding) now calls push_undo_entry() before task_list.add()
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        let original_count = app.task_list.tasks().len();
+
+        // Simulate adding via save_and_exit
+        app.mode = AppMode::Adding;
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("new task");
+            ta
+        };
+        app.save_and_exit().unwrap();
+        assert_eq!(app.task_list.tasks().len(), original_count + 1, "task should be added");
+
+        // Undo via Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks().len(), original_count, "Ctrl+Z should remove the added task");
+    }
+
+    #[test]
+    fn toggle_undo_round_trip() {
+        // pane_toggle_done now calls push_undo_entry() before task_list.update()
+        let mut app = make_app_with_tasks(&["task A"]);
+        let was_completed = app.task_list.tasks()[0].completed;
+
+        app.pane_toggle_done();
+        assert_ne!(app.task_list.tasks()[0].completed, was_completed, "completion state should have changed");
+
+        // Undo via Ctrl+Z
+        press_ctrl_key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.task_list.tasks()[0].completed, was_completed, "Ctrl+Z should restore original completion state");
     }
 }
 
