@@ -39,32 +39,44 @@ Built in Rust. Ships as a single static binary with no runtime dependencies.
 
 ## 1. Install
 
-### Download binaries (no Rust required)
+### Using the install script (recommended)
 
-Go to the [Releases](../../releases) page and grab the files for your platform.
-Each release ships two binaries: **`todotxt-tui`** (the TUI) and **`todotxt`** (the CLI companion).
-
-| Platform | TUI binary | CLI binary |
-|----------|-----------|-----------|
-| Linux x86_64 | `todotxt-tui-linux-x86_64` | `todotxt-linux-x86_64` |
-| macOS (Apple Silicon + Intel) | `todotxt-tui-macos-universal` | `todotxt-macos-universal` |
-| Windows x86_64 | `todotxt-tui-windows-x86_64.exe` | `todotxt-windows-x86_64.exe` |
-
-All binaries are fully static — no libc dependency on Linux, no VC++ redistributable on Windows.
-
-**Linux / macOS** — make them executable and put them on your PATH:
+**Linux / macOS:**
 
 ```sh
-chmod +x todotxt-tui-linux-x86_64 todotxt-linux-x86_64
-sudo mv todotxt-tui-linux-x86_64 /usr/local/bin/todotxt-tui
-sudo mv todotxt-linux-x86_64 /usr/local/bin/todotxt
+curl -fsSL https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.sh | sh
 ```
 
-**Windows** — move the `.exe` files somewhere on your `PATH`, e.g.:
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.ps1 | iex
+```
+
+Both scripts download the correct binary for your platform, install it to a directory on
+your `PATH`, and print the alias setup snippet to add to your shell profile.
+
+### Manual download
+
+Go to the [Releases](../../releases) page and grab the file for your platform:
+
+| Platform | File | Notes |
+|----------|------|-------|
+| Linux x86_64 | `todotxt-tui-linux-x86_64` | Fully static (musl); no libc dependency |
+| macOS (Apple Silicon + Intel) | `todotxt-tui-macos-universal` | Universal binary; runs natively on arm64 and x86_64 |
+| Windows x86_64 | `todotxt-tui-windows-x86_64.exe` | Static CRT; no VC++ redistributable required |
+
+**Linux / macOS:**
+
+```sh
+chmod +x todotxt-tui-linux-x86_64
+sudo mv todotxt-tui-linux-x86_64 /usr/local/bin/todotxt-tui
+```
+
+**Windows:**
 
 ```powershell
 Move-Item todotxt-tui-windows-x86_64.exe "$env:USERPROFILE\bin\todotxt-tui.exe"
-Move-Item todotxt-windows-x86_64.exe    "$env:USERPROFILE\bin\todotxt.exe"
 ```
 
 ---
