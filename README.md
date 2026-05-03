@@ -1,51 +1,46 @@
-# todotxt — A fast, cross-platform todo.txt CLI tool
+# todotxt-tui
 
-A command-line task manager that reads and writes the [todo.txt format](https://github.com/todotxt/todo.txt).
-Built in Rust. Works on Linux, macOS, and Windows.
+A keyboard-driven terminal UI for [todo.txt](https://github.com/todotxt/todo.txt) files.
+No database. No cloud. Just a plain text file — and a fast, full-featured TUI to manage it.
 
-**Audiences:** This documentation is written for both human users and AI agent consumers.
-The [JSON Schema Documentation](#4-json-schema-documentation) section uses structured tables
-for machine-parseable integration.
+Built in Rust. Ships as a single static binary with no runtime dependencies.
 
 ---
 
-## Features
+## What it looks like
 
-- **CLI** — 25+ commands: add, do, list, filter, sort, archive, bulk ops, JSON output, TOML config, shell completions
-- **todo.sh compatible** — Drop-in alias support for `add`/`a`, `do`/`x`, `ls`, `lsa`, `lsp`, `rm` and more. Use `--compat` for numbered output.
-- **TUI** — Keyboard-driven terminal UI: live filter, sort, grouping (`g`), deferred task toggle (`h`), persistent filter presets, dual-pane layout, undo (`Ctrl+Z`)
-- **Multi-select + bulk actions** — Press `v` in the TUI to enter selection mode; bulk delete (`D`) and bulk append (`T`) operate on all selected tasks
-- **Configurable keymap** — Override any TUI binding via `[keymap]` in `config.toml`; conflict detection warns on invalid or duplicate chords
-- **Deferred tasks** — Tasks with a future `t:YYYY-MM-DD` threshold date are hidden by default; toggle with `h` in the TUI or `--all` in the CLI
-- **Hierarchical tag filtering** — Filter by `@context` prefix or `+project` prefix; combines with exact-match filters
-- **todo.txt format** — Strict round-trip: priorities, projects (`+tag`), contexts (`@tag`), due dates (`due:`), threshold dates (`t:`), completion dates
-- **Cross-platform** — Windows, Linux, macOS. Pre-built static binaries on every release.
+```
+┌─ All tasks ─────────────────────────────────────────────────────────────────┐
+│ ▶ (A) Fix login bug +api @backend due:2026-05-05                            │
+│   (B) Write release notes +docs                                             │
+│   Review PR #42 +api @backend                                               │
+│   Buy groceries +home @errands                                              │
+│   Call dentist @personal due:2026-05-10                                     │
+└─────────────────────────────────────────── filter: @backend  sort: priority ┘
+  a=add  d=delete  x=done  p=priority  Ctrl+F=filter  ?=help  q=quit
+```
 
 ---
 
 ## Table of Contents
 
-1. [Installation](#1-installation)
-2. [Quick Start](#2-quick-start)
-3. [Full Command Reference](#3-full-command-reference)
-4. [JSON Schema Documentation](#4-json-schema-documentation)
-5. [Config File Format](#5-config-file-format)
-6. [Shell Completion Instructions](#6-shell-completion-instructions)
-7. [todo.txt Format Primer](#7-todotxt-format-primer)
+1. [Install](#1-install)
+2. [First run](#2-first-run)
+3. [Quick start walkthrough](#3-quick-start-walkthrough)
+4. [All keybindings](#4-all-keybindings)
+5. [Configuration](#5-configuration)
+6. [Startup flags](#6-startup-flags)
+7. [CLI companion](#7-cli-companion-todotxt)
+8. [todo.txt format primer](#8-todotxt-format-primer)
+9. [Building from source](#9-building-from-source)
 
 ---
 
-## 1. Installation
+## 1. Install
 
-### From source (requires Rust >= 1.75)
+### Download a binary (no Rust required)
 
-```sh
-cargo install todotxt
-```
-
-### Pre-built binaries (no Rust required)
-
-Download a binary for your platform from the [Releases](../../releases) page:
+Go to the [Releases](../../releases) page and grab the file for your platform:
 
 | Platform | File | Notes |
 |----------|------|-------|
@@ -53,256 +48,234 @@ Download a binary for your platform from the [Releases](../../releases) page:
 | macOS (Apple Silicon + Intel) | `todotxt-tui-macos-universal` | Universal binary; runs natively on arm64 and x86_64 |
 | Windows x86_64 | `todotxt-tui-windows-x86_64.exe` | Static CRT; no VC++ redistributable required |
 
-Make the binary executable (Linux/macOS) and place it on your `PATH`:
+**Linux / macOS** — make it executable and put it on your PATH:
 
 ```sh
 chmod +x todotxt-tui-linux-x86_64
-mv todotxt-tui-linux-x86_64 /usr/local/bin/todotxt-tui
+sudo mv todotxt-tui-linux-x86_64 /usr/local/bin/todotxt-tui
 ```
 
-### Post-install: shell completions
+**Windows** — move the `.exe` somewhere on your `PATH`, e.g.:
 
-After installing, generate completion scripts for your shell — see
-[Shell Completion Instructions](#6-shell-completion-instructions).
+```powershell
+Move-Item todotxt-tui-windows-x86_64.exe "$env:USERPROFILE\bin\todotxt-tui.exe"
+```
 
 ---
 
-## 2. Quick Start
+## 2. First run
 
-Five commands to get started:
+Just launch it:
 
 ```sh
-# Add a task with a project and context tag
-todotxt add "Buy groceries +shopping @errands"
-
-# List all incomplete tasks
-todotxt list
-
-# Mark task 1 as complete
-todotxt do 1
-
-# Show completion stats
-todotxt stats
-
-# Move completed tasks to done.txt
-todotxt archive
+todotxt-tui
 ```
 
-Each command exits `0` on success, `1` if a task ID is not found, and `2` on validation errors.
+On the very first run the TUI:
+
+1. Creates `~/.todotxt.rs/config.toml` with sensible defaults
+2. Points `todo_file` at `~/.todotxt.rs/todo.txt`
+3. Opens with an empty task list — start adding with **`a`**
+
+No files to create, no config to write. Just run it.
+
+### Where your files live
+
+| OS | Location |
+|----|----------|
+| Linux | `~/.todotxt.rs/` |
+| macOS | `~/.todotxt.rs/` |
+| Windows | `%USERPROFILE%\.todotxt.rs\` |
+
+```
+~/.todotxt.rs/
+  config.toml        ← settings (auto-created on first run)
+  todo.txt           ← your tasks
+  done.txt           ← completed tasks (created when you first archive)
+```
+
+### Portable mode
+
+Drop `config.toml` in the same directory as the binary to activate portable mode.
+The TUI runs fully self-contained — `todo.txt` and `done.txt` also default to that
+same directory. Nothing is read from or written to your home folder.
+Useful for USB drives or shared machines.
 
 ---
 
-## 3. Full Command Reference
+## 3. Quick start walkthrough
 
-| Command | Aliases | Description | Key flags |
-|---------|---------|-------------|-----------|
-| `list [FILTERS]` | `ls` | List incomplete tasks, optionally filtered | `--json`, `--filter/-f` |
-| `stats` | — | Show totals: complete, incomplete, overdue, due today | `--json` |
-| `projects` | — | List all `+project` tags | `--json` |
-| `contexts` | — | List all `@context` tags | `--json` |
-| `show <ID>` | — | Show a single task by ID | `--json` |
-| `add <TEXT>` | — | Add a new task | `--date`, `--no-date`, `--json` |
-| `do <IDS>...` | — | Mark one or more tasks complete | `--json` |
-| `undo <IDS>...` | — | Unmark completed tasks | `--json` |
-| `del <ID>` | `rm` | Delete a task by ID | `--json` |
-| `edit <ID> <TEXT>` | — | Replace task text | `--json` |
-| `append <ID> <TEXT>` | — | Append text to a task | `--json` |
-| `prepend <ID> <TEXT>` | — | Prepend text to a task | `--json` |
-| `pri <PRIORITY> <IDS>...` | — | Set task priority (A-Z) | `--json` |
-| `depri <IDS>...` | — | Remove priority from tasks | `--json` |
-| `due <ID> <DATE>` | — | Set a due date (`today`, `tomorrow`, `YYYY-MM-DD`, weekday name) | `--json` |
-| `postpone <ID> <DAYS>` | — | Advance due date by N days | `--json` |
-| `archive` | — | Move completed tasks to `done.txt` | `--json` |
-| `del-done` | — | Delete completed tasks from `todo.txt` | `--json` |
-| `completions <SHELL>` | — | Output shell completion script | — |
+### Step 1 — Add your first tasks
 
-### Global flags (available on all commands)
+Press **`a`** to open the add dialog, type a task, press **`Enter`**:
 
-| Flag | Description |
-|------|-------------|
-| `--todo-file <PATH>` | Override the `todo.txt` path |
-| `--config <PATH>` | Use a specific config file |
-| `--json` | Output results as JSON envelope |
-| `--no-color` | Disable ANSI color output |
-| `--quiet` | Suppress non-error output |
+```
+Buy groceries +shopping @errands
+(A) Fix login bug +api due:2026-05-05
+Call dentist @personal t:2026-05-08
+```
 
-### TUI keybindings reference
+todo.txt format quick reference:
+
+| Syntax | What it does |
+|--------|-------------|
+| `(A)` at the start | Sets priority — `(A)` highest, `(Z)` lowest |
+| `+tag` | Adds a project tag |
+| `@tag` | Adds a context tag |
+| `due:YYYY-MM-DD` | Sets a due date |
+| `t:YYYY-MM-DD` | Deferred threshold — task hidden until this date |
+
+### Step 2 — Navigate and act on tasks
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` or `↓` / `↑` | Move cursor down / up |
-| `Enter` | Edit selected task |
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
+| `x` | Mark task complete (toggle) |
+| `d` | Delete task (asks for confirmation) |
+| `Enter` | Edit task text inline |
+| `Ctrl+Z` | Undo the last change |
+
+### Step 3 — Filter to focus
+
+Press **`Ctrl+F`** (or **`/`**) to open the filter panel. Type any text, or use these patterns:
+
+| Filter syntax | What it matches |
+|---------------|----------------|
+| `@errands` | Tasks with the `@errands` context |
+| `@work` | All `@work*` tasks — prefix match, so `@work-remote` also matches |
+| `+shopping` | Tasks with the `+shopping` project |
+| `due:today` | Tasks due today |
+
+Press **`0`** to clear the active filter.
+Press **`F1`**–**`F9`** to jump to a saved filter preset (configured in `config.toml`).
+
+### Step 4 — Set priorities and due dates
+
+| Key | Action |
+|-----|--------|
+| `p` | Set priority (opens A–Z picker) |
+| `u` | Remove priority |
+| `D` | Set due date — type `today`, `tomorrow`, a weekday name, or `YYYY-MM-DD` |
+
+### Step 5 — Archive completed tasks
+
+When your done list piles up, run the companion CLI:
+
+```sh
+todotxt archive
+```
+
+This moves completed tasks from `todo.txt` into `done.txt`. Press **`.`** in the TUI
+afterward to reload from disk.
+
+---
+
+## 4. All keybindings
+
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
+| `Tab` | Switch active pane (dual-pane mode) |
+| `.` | Reload tasks from disk |
+
+### Task actions
+
+| Key | Action |
+|-----|--------|
 | `a` | Add new task |
+| `Enter` | Edit selected task |
+| `x` | Toggle complete |
 | `d` | Delete task (with confirmation) |
-| `x` | Toggle task complete |
 | `p` | Set priority |
 | `u` | Remove priority |
-| `D` (due date) | Set due date |
+| `D` | Set due date |
 | `Ctrl+Z` | Undo last mutation |
+
+### Selection and bulk actions
+
+| Key | Action |
+|-----|--------|
 | `v` | Enter / exit selection mode |
-| `Space` | Toggle task selection |
-| `D` (in selection mode) | Bulk delete selected tasks |
-| `T` (in selection mode) | Bulk append text to selected tasks |
+| `Space` | Toggle selection of current task |
+| `D` *(in selection mode)* | Bulk delete selected tasks |
+| `T` *(in selection mode)* | Bulk append text to selected tasks |
+
+### View and filter
+
+| Key | Action |
+|-----|--------|
 | `Ctrl+F` / `/` | Open filter panel |
-| `F1`–`F9` | Apply saved filter preset |
 | `0` | Clear active filter |
+| `F1`–`F9` | Apply saved filter preset |
 | `g` | Toggle task grouping |
 | `s` | Cycle sort order |
 | `h` | Toggle deferred task visibility |
-| `.` | Reload from disk |
-| `Tab` | Switch active pane (dual-pane mode) |
+
+### UI
+
+| Key | Action |
+|-----|--------|
 | `?` | Open keybindings help overlay |
 | `!` | Open error / warning log |
 | `q` / `Ctrl+C` | Quit |
 
-All bindings are overridable via `[keymap]` in `config.toml`.
-
-### TUI startup path flags (v1.4)
-
-The `todotxt-tui` binary supports startup path overrides:
-
-| Flag | Description |
-|------|-------------|
-| `--todo <PATH>` | Override the todo file for this run |
-| `--archive <PATH>` | Override the archive (done) file for this run |
-| `--config <PATH>` | Load configuration from a specific config file |
-
-Path resolution semantics:
-
-- CLI flags take precedence over config values.
-- If `--todo` is provided and `--archive` is omitted, archive defaults to `done.txt` in the same directory as the selected todo path.
+All bindings can be overridden in `config.toml` — see [Customizing keybindings](#customizing-keybindings).
 
 ---
 
-## 4. JSON Schema Documentation
+## 5. Configuration
 
-All commands accept a global `--json` flag. When set, output is a JSON envelope.
+Config file location: see [Where your files live](#where-your-files-live) above.
 
-### Envelope format
-
-| Field | Type | Always present | Description |
-|-------|------|----------------|-------------|
-| `schema_version` | `integer` | yes | Always `1`. Increment indicates breaking change. |
-| `data` | `object` or `array` | on success | Command-specific payload. |
-| `error` | `object` | on failure | Present instead of `data` when exit code is non-zero. |
-
-**Success example (list):**
-```json
-{
-  "schema_version": 1,
-  "data": [
-    {
-      "id": 1,
-      "raw": "(A) Buy groceries +shopping @errands",
-      "priority": "A",
-      "is_complete": false,
-      "projects": ["shopping"],
-      "contexts": ["errands"],
-      "due_date": null
-    }
-  ]
-}
-```
-
-**Error example:**
-```json
-{
-  "schema_version": 1,
-  "error": {
-    "code": 1,
-    "message": "task not found: 99"
-  }
-}
-```
-
-### Task object fields
-
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `id` | `integer` | 1-based line number in `todo.txt` | `1` |
-| `raw` | `string` | Original unmodified task line | `"(A) Buy milk +groceries"` |
-| `priority` | `string or null` | Single uppercase letter, or `null` | `"A"` |
-| `is_complete` | `boolean` | `true` if task starts with `x ` | `false` |
-| `creation_date` | `string or null` | ISO 8601 date (`YYYY-MM-DD`) or `null` | `"2026-01-15"` |
-| `completion_date` | `string or null` | ISO 8601 date set when `do` is called, or `null` | `null` |
-| `projects` | `array<string>` | All `+tag` values without the `+` | `["shopping"]` |
-| `contexts` | `array<string>` | All `@tag` values without the `@` | `["errands"]` |
-| `due_date` | `string or null` | `YYYY-MM-DD` from `due:` key-value tag, or `null` | `"2026-05-01"` |
-| `tags` | `object` | All `key:value` pairs as a string map | `{"due": "2026-05-01"}` |
-
-### Error object fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `code` | `integer` | `1` = not found / no match; `2` = validation error |
-| `message` | `string` | Human-readable error description |
-
-### Agent integration note
-
-> **Parse `schema_version` first.** Reject responses where `schema_version != 1` to detect
-> breaking changes before accessing `data`. This field is the stability contract between
-> producers and AI agent consumers.
-
----
-
-## 5. Config File Format
-
-### Platform paths
-
-| OS | Config location |
-|----|----------------|
-| Linux | `~/.todotxt.rs/config.toml` |
-| macOS | `~/.todotxt.rs/config.toml` |
-| Windows | `%USERPROFILE%\.todotxt.rs\config.toml` |
-
-All three files live together in the same directory by default:
-
-```
-~/.todotxt.rs/
-  config.toml   ← settings
-  todo.txt      ← your tasks
-  done.txt      ← completed tasks (auto-created by archive)
-```
-
-On first run, both `todotxt` and `todotxt-tui` auto-create `~/.todotxt.rs/config.toml`
-with `todo_file` pre-set to `~/.todotxt.rs/todo.txt`. Create `todo.txt` there and you're
-ready to go.
-
-### Portable mode
-
-Place `config.toml` in the same directory as the `todotxt` binary to activate portable mode.
-When a sidecar `config.toml` is detected at runtime, it takes precedence over the platform path.
-This makes the tool fully self-contained for USB/portable deployments.
-
-### Full config example
+### Minimal config
 
 ```toml
 [paths]
-todo_file = "~/.todotxt.rs/todo.txt"   # Default on first run
-done_file = "~/.todotxt.rs/done.txt"   # Optional: defaults to done.txt beside todo.txt
+todo_file = "~/.todotxt.rs/todo.txt"
+```
+
+### Full config reference
+
+```toml
+[paths]
+todo_file = "~/.todotxt.rs/todo.txt"   # required
+done_file = "~/.todotxt.rs/done.txt"   # optional; defaults to done.txt beside todo.txt
 
 [display]
-color = true           # Default: true. Set false to disable ANSI colors.
-preset = "default"     # Output preset: default | minimal | compact
+color = true            # set false to disable ANSI colors
+preset = "default"      # default | minimal | compact
 
 [behavior]
-auto_creation_date = false   # Prepend YYYY-MM-DD to new tasks automatically
+auto_creation_date = false   # prepend today's date to every new task
 
 [tui]
-theme = "default"           # Optional: "default" or "light"
+theme = "default"       # "default" or "light"
+```
 
-[keymap]
-# Override any TUI action binding. Supported: letter keys, ctrl+<key>, named keys
-# (backspace, enter, space, f1–f12, up, down, left, right, esc, tab)
-# move_down = "j"
-# move_up = "k"
-# filter = "ctrl+f"
-# quit = "q"
+### Saved filter presets
 
+Assign filters to **`F1`**–**`F9`** for instant view switching:
+
+```toml
+[filters]
+f1 = "@work"
+f2 = "due:today"
+f3 = "+personal"
+```
+
+### Dual-pane layout
+
+Define named panes shown side-by-side with independent filters and sort orders:
+
+```toml
 [[panes]]
 label = "Work"
-filter = "project:work"
-sort = "priority"           # file_order | priority | due_date | alphabetical
+filter = "+work"
+sort = "priority"     # file_order | priority | due_date | alphabetical
 group = true
 
 [[panes]]
@@ -312,83 +285,99 @@ sort = "due_date"
 group = false
 ```
 
-### Pane config (`[[panes]]`) (v1.4)
+Switch between panes with **`Tab`**.
 
-Each `[[panes]]` entry is optional and supports these fields:
+### Customizing keybindings
 
-| Field | Type | Default | Notes |
-|-------|------|---------|-------|
-| `label` | string | empty string | UI may substitute a generated pane title when empty |
-| `filter` | string | empty string | Initial pane-scoped filter query |
-| `sort` | string | `file_order` | Allowed values: `file_order`, `priority`, `due_date`, `alphabetical` |
-| `group` | bool | `false` | Enables grouped rendering for that pane |
+Override any binding in `[keymap]`. Supported formats: single letters (`a`),
+`ctrl+<letter>`, named keys (`backspace`, `enter`, `space`, `f1`–`f12`, `up`, `down`,
+`left`, `right`, `esc`, `tab`).
 
-Invalid pane entries are skipped safely with a warning while other panes continue to load.
+```toml
+[keymap]
+quit       = "ctrl+q"
+filter     = "/"
+move_down  = "ctrl+n"
+move_up    = "ctrl+p"
+```
+
+The TUI reports conflicts at startup if two actions share the same key.
 
 ---
 
-## 6. Shell Completion Instructions
+## 6. Startup flags
 
-Generate and install completion scripts for your shell:
+```
+todotxt-tui [OPTIONS]
 
-**Bash:**
-```bash
-todotxt completions bash >> ~/.bashrc && source ~/.bashrc
+Options:
+  --todo <PATH>      Override the todo file for this run
+  --archive <PATH>   Override the archive (done) file for this run
+  --config <PATH>    Load configuration from a specific file
+  --version          Print version and exit
+  -h, --help         Print help
 ```
 
-**Zsh:**
-```zsh
-todotxt completions zsh > "${fpath[1]}/_todotxt" && compinit
-```
-
-Or to a local completions dir:
-```zsh
-mkdir -p ~/.zsh/completions
-todotxt completions zsh > ~/.zsh/completions/_todotxt
-echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc && source ~/.zshrc
-```
-
-**Fish:**
-```fish
-todotxt completions fish > ~/.config/fish/completions/todotxt.fish
-```
-
-**PowerShell:**
-```powershell
-todotxt completions powershell >> $PROFILE
-. $PROFILE
-```
+If `--todo` is given without `--archive`, the archive path defaults to `done.txt` in the
+same directory as the selected todo file.
 
 ---
 
-## 7. todo.txt Format Primer
+## 7. CLI companion (`todotxt`)
 
-todo.txt is a plain-text task format. Each line is one task. The format is:
+The `todotxt` binary ships alongside the TUI and covers scripting, shell pipelines,
+and quick one-off operations. Both tools read the same `config.toml` and `todo.txt`.
+
+```sh
+todotxt add "Review PR #42 +api @backend"
+todotxt list @backend
+todotxt do 3
+todotxt archive
+todotxt stats
+```
+
+For the full CLI command reference, JSON output format, and shell completion setup,
+see [README.cli.md](README.cli.md).
+
+---
+
+## 8. todo.txt format primer
+
+Each line in `todo.txt` is one task:
 
 ```
 (PRIORITY) CREATION-DATE task text +project @context key:value
 ```
 
-All fields except the task text are optional and positional.
-
 | Token | Meaning | Example |
 |-------|---------|---------|
-| `(A)` to `(Z)` | Priority — `(A)` is highest | `(A) Buy milk` |
-| `YYYY-MM-DD` at start | Creation date | `2026-01-15 Buy milk` |
-| `+word` | Project tag | `+groceries` |
-| `@word` | Context tag | `@home` |
-| `key:value` | Metadata tag | `due:2026-05-01` |
-| `x ` prefix | Completed task | `x 2026-01-15 Buy milk` |
+| `(A)` – `(Z)` | Priority; `(A)` is highest | `(A) Fix the bug` |
+| `YYYY-MM-DD` at start | Creation date | `2026-01-15 Write tests` |
+| `+word` | Project tag | `+api` |
+| `@word` | Context tag | `@backend` |
+| `due:YYYY-MM-DD` | Due date | `due:2026-05-10` |
+| `t:YYYY-MM-DD` | Threshold (deferred) date — hidden until this date | `t:2026-05-08` |
+| `x ` prefix | Completed task | `x 2026-05-01 Buy milk` |
 
-**Completed task format:**
+Full spec: [github.com/todotxt/todo.txt](https://github.com/todotxt/todo.txt)
 
-```
-x COMPLETION-DATE CREATION-DATE task text
+---
+
+## 9. Building from source
+
+Requires Rust ≥ 1.75.
+
+```sh
+git clone https://github.com/radioflyer28/todotxt.rs
+cd todotxt.rs
+cargo build --release -p todotxt-tui    # TUI binary
+cargo build --release -p todotxt        # CLI binary
 ```
 
-**Example completed task:**
-```
-x 2026-04-10 2026-04-01 (A) Submit tax return +finance @office due:2026-04-15
-```
+Binaries land in `target/release/`.
 
-**Reference:** [Official todo.txt format specification](https://github.com/todotxt/todo.txt)
+---
+
+## License
+
+BSD — see [BSD_LICENSE.txt](BSD_LICENSE.txt).
