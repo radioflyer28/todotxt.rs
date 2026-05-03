@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.0] - 2026-05-03
+
+### Added
+- **Single-depth undo (Ctrl+Z)** — Press `Ctrl+Z` in the TUI to undo the last mutation. Covers all 10 edit operations: add, delete, edit, complete, uncomplete, set priority, remove priority, set due date, append, and prepend. Undo is silent when no history is available.
+- **Hierarchical tag filtering** — Filter queries now support `@context` and `+project` prefix matching. Use `@work` to match tasks containing any context starting with `work`, and `+home` for any project starting with `home`. Combines with existing exact-match filtering.
+- **Pre-built release binaries** — `todotxt-tui` binaries are now published to [GitHub Releases](../../releases) on every version tag. Downloads available for Linux (static musl x86_64), macOS (universal arm64+x86_64), and Windows (static CRT x86_64). No Rust toolchain required to install.
+
+### Changed
+- **Pinned dependency versions** — All external crate dependencies are now pinned to exact resolved versions to prevent silent breaking changes from `cargo update`.
+- **Release alignment for v1.5** — Workspace crates are versioned to `1.5.0` for milestone ship readiness.
+
 ## [1.4.0] - 2026-04-28
 
 ### Added

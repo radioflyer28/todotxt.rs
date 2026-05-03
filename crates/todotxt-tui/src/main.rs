@@ -23,7 +23,7 @@ use event::AppEvent;
 use tui::TerminalGuard;
 
 #[derive(Debug, Parser)]
-#[command(name = "todotxt-tui")]
+#[command(name = "todotxt-tui", version)]
 struct Args {
     #[arg(short = 't', long = "todo", value_name = "PATH")]
     todo: Option<std::path::PathBuf>,

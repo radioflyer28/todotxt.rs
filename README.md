@@ -13,10 +13,13 @@ for machine-parseable integration.
 
 - **CLI** — 25+ commands: add, do, list, filter, sort, archive, bulk ops, JSON output, TOML config, shell completions
 - **todo.sh compatible** — Drop-in alias support for `add`/`a`, `do`/`x`, `ls`, `lsa`, `lsp`, `rm` and more. Use `--compat` for numbered output.
-- **TUI** — Keyboard-driven terminal UI: live filter, sort, grouping (`g`), deferred task toggle (`h`), persistent filter presets
+- **TUI** — Keyboard-driven terminal UI: live filter, sort, grouping (`g`), deferred task toggle (`h`), persistent filter presets, dual-pane layout, undo (`Ctrl+Z`)
+- **Multi-select + bulk actions** — Press `v` in the TUI to enter selection mode; bulk delete (`D`) and bulk append (`T`) operate on all selected tasks
+- **Configurable keymap** — Override any TUI binding via `[keymap]` in `config.toml`; conflict detection warns on invalid or duplicate chords
 - **Deferred tasks** — Tasks with a future `t:YYYY-MM-DD` threshold date are hidden by default; toggle with `h` in the TUI or `--all` in the CLI
+- **Hierarchical tag filtering** — Filter by `@context` prefix or `+project` prefix; combines with exact-match filters
 - **todo.txt format** — Strict round-trip: priorities, projects (`+tag`), contexts (`@tag`), due dates (`due:`), threshold dates (`t:`), completion dates
-- **Cross-platform** — Windows, Linux, macOS
+- **Cross-platform** — Windows, Linux, macOS. Pre-built static binaries on every release.
 
 ---
 
@@ -40,10 +43,22 @@ for machine-parseable integration.
 cargo install todotxt
 ```
 
-### Pre-built binaries
+### Pre-built binaries (no Rust required)
 
-Pre-built binaries for Linux, macOS, and Windows are coming in v1.1. See the
-[Releases](../../releases) page.
+Download a binary for your platform from the [Releases](../../releases) page:
+
+| Platform | File | Notes |
+|----------|------|-------|
+| Linux x86_64 | `todotxt-tui-linux-x86_64` | Fully static (musl); no libc dependency |
+| macOS (Apple Silicon + Intel) | `todotxt-tui-macos-universal` | Universal binary; runs natively on arm64 and x86_64 |
+| Windows x86_64 | `todotxt-tui-windows-x86_64.exe` | Static CRT; no VC++ redistributable required |
+
+Make the binary executable (Linux/macOS) and place it on your `PATH`:
+
+```sh
+chmod +x todotxt-tui-linux-x86_64
+mv todotxt-tui-linux-x86_64 /usr/local/bin/todotxt-tui
+```
 
 ### Post-install: shell completions
 
@@ -110,6 +125,37 @@ Each command exits `0` on success, `1` if a task ID is not found, and `2` on val
 | `--json` | Output results as JSON envelope |
 | `--no-color` | Disable ANSI color output |
 | `--quiet` | Suppress non-error output |
+
+### TUI keybindings reference
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` or `↓` / `↑` | Move cursor down / up |
+| `Enter` | Edit selected task |
+| `a` | Add new task |
+| `d` | Delete task (with confirmation) |
+| `x` | Toggle task complete |
+| `p` | Set priority |
+| `u` | Remove priority |
+| `D` (due date) | Set due date |
+| `Ctrl+Z` | Undo last mutation |
+| `v` | Enter / exit selection mode |
+| `Space` | Toggle task selection |
+| `D` (in selection mode) | Bulk delete selected tasks |
+| `T` (in selection mode) | Bulk append text to selected tasks |
+| `Ctrl+F` / `/` | Open filter panel |
+| `F1`–`F9` | Apply saved filter preset |
+| `0` | Clear active filter |
+| `g` | Toggle task grouping |
+| `s` | Cycle sort order |
+| `h` | Toggle deferred task visibility |
+| `.` | Reload from disk |
+| `Tab` | Switch active pane (dual-pane mode) |
+| `?` | Open keybindings help overlay |
+| `!` | Open error / warning log |
+| `q` / `Ctrl+C` | Quit |
+
+All bindings are overridable via `[keymap]` in `config.toml`.
 
 ### TUI startup path flags (v1.4)
 
@@ -231,6 +277,14 @@ auto_creation_date = false   # Prepend YYYY-MM-DD to new tasks automatically
 
 [tui]
 theme = "default"           # Optional: "default" or "light"
+
+[keymap]
+# Override any TUI action binding. Supported: letter keys, ctrl+<key>, named keys
+# (backspace, enter, space, f1–f12, up, down, left, right, esc, tab)
+# move_down = "j"
+# move_up = "k"
+# filter = "ctrl+f"
+# quit = "q"
 
 [[panes]]
 label = "Work"
