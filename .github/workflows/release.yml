@@ -13,7 +13,7 @@ jobs:
     name: Build (Linux x86_64 — static musl)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable + musl target
         uses: dtolnay/rust-toolchain@stable
@@ -34,7 +34,7 @@ jobs:
           cp target/x86_64-unknown-linux-musl/release/todotxt-tui dist/todotxt-tui-linux-x86_64
           cp target/x86_64-unknown-linux-musl/release/todotxt dist/todotxt-linux-x86_64
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-x86_64
           path: dist/
@@ -46,7 +46,7 @@ jobs:
     # alternative exists. All other (Rust/third-party) deps are statically
     # linked by default. This is the standard portable macOS distribution.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable + targets
         uses: dtolnay/rust-toolchain@stable
@@ -75,7 +75,7 @@ jobs:
             target/x86_64-apple-darwin/release/todotxt \
             -output dist/todotxt-macos-universal
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-universal
           path: dist/
@@ -86,7 +86,7 @@ jobs:
     env:
       RUSTFLAGS: "-C target-feature=+crt-static"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -102,7 +102,7 @@ jobs:
           Copy-Item target\release\todotxt-tui.exe dist\todotxt-tui-windows-x86_64.exe
           Copy-Item target\release\todotxt.exe dist\todotxt-windows-x86_64.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-x86_64
           path: dist/
@@ -112,13 +112,13 @@ jobs:
     needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
           generate_release_notes: true
