@@ -14,49 +14,15 @@ use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append, normalize_line};
 use tui_textarea::TextArea;
 
-use crate::config::TuiConfig;
-use crate::config::resolve_keymap;
+use crate::config::{PaneConfig, PaneSort, TuiConfig, resolve_keymap};
 use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
 use crate::tui::Tui;
+use crate::state::{Pane, DisplayRow, AutocompleteState, FilteringState, FilterDefiningState};
+use crate::components::PaneList;
 
-/// State for the @context / +project autocomplete popup (D-08, D-09 in 11-CONTEXT.md).
-#[derive(Debug, Clone)]
-pub struct AutocompleteState {
-    pub trigger: char,    // '@' or '+'
-    pub prefix: String,   // text typed after the trigger (NOT including trigger)
-    pub items: Vec<String>, // filtered token list (without trigger char)
-    pub selected: usize,  // current highlight index in popup
-    pub focused: bool,    // true when Down arrow moved focus into popup
-}
 
-impl AutocompleteState {
-    pub fn new(trigger: char, prefix: String, items: Vec<String>) -> Self {
-        AutocompleteState { trigger, prefix, items, selected: 0, focused: false }
-    }
-}
-
-/// State for the filter panel input and preset list (Phase 12, Plan 02).
-pub struct FilteringState {
-    pub editor: TextArea<'static>,
-    pub selected_preset: usize,
-    /// Snapshot of `filter_query` captured when the panel was opened (D-02).
-    /// Restored on Esc so no destructive clear occurs.
-    pub snapshot: String,
-}
-
-/// State for the F-key preset definition panel (D-01, D-06, D-07).
-pub struct FilterDefiningState {
-    /// Row 0: editable active filter with live preview (D-07).
-    pub active_editor: TextArea<'static>,
-    /// Preset names in sorted order (index 0 = preset #1).
-    pub preset_names: Vec<String>,
-    /// One editor per preset slot; index 0 corresponds to preset_names[0].
-    pub preset_editors: Vec<TextArea<'static>>,
-    /// Currently focused row: 0 = active filter row, 1–9 = preset row N.
-    pub selected_row: usize,
-}
 
 /// Interaction mode for the TUI (D-01 in 11-CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +30,7 @@ pub enum AppMode {
     Normal,
     Adding,
     Editing { original_idx: usize },
+    PaneLabelEditing { pane_idx: usize },
     DeleteConfirm,
     Filtering,
     /// F-key preset definition panel (D-01 in 16-CONTEXT.md).
@@ -74,12 +41,6 @@ pub enum AppMode {
     KeymapErrors,
     /// Read-only overlay showing all keybindings (D-10, Phase 22 parity).
     Help,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DisplayRow {
-    Task(usize),
-    GroupHeader(String),
 }
 
 /// Top-level application state.
@@ -150,9 +111,47 @@ pub struct App {
     pub effective_keymap: std::collections::HashMap<String, (crossterm::event::KeyCode, crossterm::event::KeyModifiers)>,
     /// Scroll offset for the help overlay (lines scrolled from the top).
     pub help_scroll: u16,
+    /// Vector of panes, each with independent task view state
+    pub panes: Vec<Pane>,
+    /// 0-based index of the currently active pane
+    pub active_pane: usize,
+    #[allow(dead_code)]
+
+    /// Counter for auto-labeling new panes (e.g., "Pane 1", "Pane 2"). Initialized to 2; first pane is "Pane 1" (D-05).
+    pub pane_counter: usize,
+    /// When true, all panes are hidden and rendering falls back to single-pane view (D-13, Phase 26).
+    /// This flag is session-only (not persisted across restarts). All pane state is preserved.
+    pub panes_hidden: bool,
 }
 
 impl App {
+    fn panes_from_config(config: &TuiConfig) -> Vec<Pane> {
+        let mut panes: Vec<Pane> = config
+            .panes
+            .iter()
+            .enumerate()
+            .map(|(idx, pane_cfg)| {
+                let label = if pane_cfg.label.trim().is_empty() {
+                    format!("Pane {}", idx + 1)
+                } else {
+                    pane_cfg.label.clone()
+                };
+
+                let mut pane = Pane::new(idx, label);
+                pane.filter_query = pane_cfg.filter.clone();
+                pane.sort_order = pane_cfg.sort.to_sort_order();
+                pane.grouping = pane_cfg.group;
+                pane
+            })
+            .collect();
+
+        if panes.is_empty() {
+            panes.push(Pane::new(0, String::new()));
+        }
+
+        panes
+    }
+
     pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, palette: Theme, no_color: bool) -> Self {
         // Build sorted presets vec from config for quick filter selection (Plan 02).
         let mut presets: Vec<(String, String)> = config
@@ -163,6 +162,8 @@ impl App {
         presets.sort_by(|(a, _), (b, _)| a.cmp(b));
         // Resolve keymap at startup — applies user overrides, collects warnings (D-04, Phase 22).
         let (effective_keymap, keymap_warnings) = resolve_keymap(&config);
+        let panes = Self::panes_from_config(&config);
+        let pane_counter = panes.len() + 1;
         let mut app = App {
             should_quit: false,
             task_list,
@@ -195,21 +196,40 @@ impl App {
             runtime_warnings: Vec::new(),
             effective_keymap,
             help_scroll: 0,
+            panes,
+            active_pane: 0,
+            pane_counter,
+            panes_hidden: false,
         };
+        // Hydrate every pane immediately so non-active panes are populated on first render.
+        app.rebuild_all_panes();
         app.rebuild_display_indices();
         app
     }
 
     /// Returns true when the given key event matches the configured binding for `action` (D-05, Phase 22).
     ///
-    /// Checks `effective_keymap` so user overrides are honoured. For bindings with no modifier
-    /// (e.g. uppercase 'D' for bulk_delete), matches on key code only — this preserves the
-    /// existing behavior where terminals may or may not report the implicit SHIFT modifier
-    /// separately for uppercase printable characters.
+    /// Checks `effective_keymap` so user overrides are honoured.
+    ///
+    /// For bindings with no configured modifier, require no modifiers to avoid accidental
+    /// collisions (e.g. Ctrl+N must not also match plain 'n').
+    ///
+    /// One exception is uppercase printable bindings (e.g. 'D' for bulk_delete): terminals may
+    /// or may not report an implicit SHIFT modifier for uppercase input, so we accept either
+    /// no modifier or SHIFT-only in that case.
     fn key_is_action(&self, key: crossterm::event::KeyEvent, action: &str) -> bool {
         self.effective_keymap.get(action).map_or(false, |(code, mods)| {
             if mods.is_empty() {
-                key.code == *code
+                if key.code != *code {
+                    return false;
+                }
+
+                match code {
+                    KeyCode::Char(c) if c.is_ascii_uppercase() => {
+                        key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT
+                    }
+                    _ => key.modifiers.is_empty(),
+                }
             } else {
                 key.code == *code && key.modifiers.contains(*mods)
             }
@@ -235,6 +255,243 @@ impl App {
         lines
     }
 
+    /// Move focus to the next pane (right arrow)
+    pub fn focus_next_pane(&mut self) {
+        self.reconcile_active_pane();
+        if self.panes.len() > 1 {
+            self.active_pane = (self.active_pane + 1) % self.panes.len();
+        }
+    }
+
+    /// Move focus to the previous pane (left arrow)
+    pub fn focus_prev_pane(&mut self) {
+        self.reconcile_active_pane();
+        if self.panes.len() > 1 {
+            self.active_pane = if self.active_pane == 0 {
+                self.panes.len() - 1
+            } else {
+                self.active_pane - 1
+            };
+        }
+    }
+
+    /// Create a new pane with auto-label and append it to the right (D-05, D-06, D-07).
+    /// Returns early if pane count >= 10 (D-03). Focus shifts to the newly created pane.
+    pub fn pane_add(&mut self) {
+        if self.panes.len() >= 10 {
+            return;
+        }
+        let pane_id = self.panes.len();
+        let label = format!("Pane {}", self.pane_counter);
+        self.panes.push(Pane::new(pane_id, label));
+        self.pane_counter += 1;
+        self.active_pane = pane_id;
+    }
+
+    /// Delete the active pane with adjacent focus shift and ID re-normalization (D-08, D-09, D-11).
+    /// Focus shifts: prefer left (active_pane - 1), else right (0), else none.
+    /// Returns early if panes list is empty (D-04).
+    pub fn pane_delete(&mut self) {
+        if self.panes.is_empty() {
+            return;
+        }
+        let focus_index = if self.active_pane > 0 {
+            self.active_pane - 1
+        } else if self.panes.len() > 1 {
+            0
+        } else {
+            0
+        };
+        self.panes.remove(self.active_pane);
+        // Re-normalize all pane IDs after deletion (D-11)
+        for (idx, pane) in self.panes.iter_mut().enumerate() {
+            pane.id = idx;
+        }
+        self.active_pane = focus_index;
+        self.reconcile_active_pane();
+    }
+
+    /// Toggle pane visibility — hides all panes (single-pane render) or restores them (D-12, D-13, D-14, Phase 26).
+    /// Hidden state is session-only (not persisted). All pane structure and state are fully preserved.
+    pub fn pane_hide_toggle(&mut self) {
+        self.panes_hidden = !self.panes_hidden;
+    }
+
+
+    #[allow(dead_code)]
+    pub fn active_pane_mut(&mut self) -> &mut Pane {
+        self.reconcile_active_pane();
+        &mut self.panes[self.active_pane]
+    }
+
+    /// Get immutable reference to the active pane
+    #[allow(dead_code)]
+    pub fn active_pane(&self) -> &Pane {
+        &self.panes[self.active_pane]
+    }
+
+    /// Determine if the UI should render with the single-pane fallback path.
+    pub fn should_show_single_pane(&self) -> bool {
+        if self.panes.is_empty() {
+            return true;
+        }
+        if self.panes.len() == 1 {
+            return true;
+        }
+        self.panes.iter().all(Pane::is_empty)
+    }
+
+    /// Return display rows for the currently active rendering mode.
+    #[allow(dead_code)]
+    pub fn display_rows(&self) -> &[DisplayRow] {
+        if self.should_show_single_pane() {
+            self.panes
+                .first()
+                .map(|pane| pane.display_rows.as_slice())
+                .unwrap_or(&[])
+        } else {
+            self.panes
+                .get(self.active_pane)
+                .map(|pane| pane.display_rows.as_slice())
+                .unwrap_or(&[])
+        }
+    }
+
+    /// Return mutable display rows for the active rendering mode.
+    #[allow(dead_code)]
+    pub fn display_rows_mut(&mut self) -> &mut Vec<DisplayRow> {
+        self.reconcile_active_pane();
+        let pane_idx = if self.should_show_single_pane() {
+            0
+        } else {
+            self.active_pane
+        };
+        &mut self.panes[pane_idx].display_rows
+    }
+
+    /// Ensure pane state is always index-safe.
+    pub fn reconcile_active_pane(&mut self) {
+        if self.panes.is_empty() {
+            self.panes.push(Pane::new(0, String::new()));
+            self.active_pane = 0;
+            return;
+        }
+        if self.active_pane >= self.panes.len() {
+            self.active_pane = self.panes.len() - 1;
+        }
+    }
+
+    /// Rebuild display rows for the visible pane in the current mode.
+    pub fn rebuild_visible_rows(&mut self) {
+        self.reconcile_active_pane();
+        let pane_idx = if self.should_show_single_pane() {
+            0
+        } else {
+            self.active_pane
+        };
+        let pane = &mut self.panes[pane_idx];
+
+        // Per-pane query behavior (D-04, Phase 25): Apply active pane's filter_query
+        let filter_str = pane.filter_query.trim();
+        let filter = Filter::from_query(filter_str);
+        
+        let mut filtered_tasks: Vec<(usize, &Task)> = self
+            .task_list
+            .filter(&filter)
+            .into_iter()
+            .collect();
+
+        // Per-pane sort behavior (D-09, Phase 25): Apply active pane's sort_order
+        if pane.sort_order != SortOrder::FileOrder {
+            filtered_tasks.sort_by(|(_, a), (_, b)| pane.sort_order.compare(a, b));
+        }
+
+        // Per-pane grouping behavior (D-09, Phase 25): Add group headers if enabled
+        let rows: Vec<DisplayRow> = if pane.grouping && !filtered_tasks.is_empty() {
+            let mut display_rows: Vec<DisplayRow> = Vec::new();
+            let mut last_key: Option<String> = None;
+            
+            for (source_index, task) in &filtered_tasks {
+                let key = group_key_for(task, &pane.sort_order);
+                if last_key.as_deref() != Some(&key) {
+                    display_rows.push(DisplayRow::GroupHeader(key.clone()));
+                    last_key = Some(key);
+                }
+                display_rows.push(DisplayRow::Task(*source_index));
+            }
+            display_rows
+        } else {
+            filtered_tasks
+                .into_iter()
+                .map(|(source_index, _task)| DisplayRow::Task(source_index))
+                .collect()
+        };
+
+        pane.display_rows = rows;
+
+        if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
+            pane.selected = pane.display_rows.len() - 1;
+        } else if pane.display_rows.is_empty() {
+            pane.selected = 0;
+        }
+    }
+
+    /// Rebuild display rows for ALL panes using each pane's own filter/sort/group state.
+    ///
+    /// Call after any task_list mutation (add, edit, delete, reload) to keep sibling panes
+    /// fresh without waiting for focus. (WARN-3 fix, Phase 28)
+    pub fn rebuild_all_panes(&mut self) {
+        let pane_count = self.panes.len();
+        for idx in 0..pane_count {
+            // Extract per-pane settings as owned values so we can borrow self.task_list next.
+            let filter_query = self.panes[idx].filter_query.clone();
+            let sort_order = self.panes[idx].sort_order;
+            let grouping = self.panes[idx].grouping;
+
+            // Build new display rows. Use a sub-block so `filtered` (which holds &Task refs
+            // from self.task_list) is dropped before we mutably borrow self.panes[idx].
+            let new_rows: Vec<DisplayRow> = {
+                let filter = Filter::from_query(filter_query.trim());
+                let mut filtered: Vec<(usize, &Task)> = self
+                    .task_list
+                    .filter(&filter)
+                    .into_iter()
+                    .collect();
+
+                if sort_order != SortOrder::FileOrder {
+                    filtered.sort_by(|(_, a), (_, b)| sort_order.compare(a, b));
+                }
+
+                if grouping && !filtered.is_empty() {
+                    let mut rows: Vec<DisplayRow> = Vec::new();
+                    let mut last_key: Option<String> = None;
+                    for (source_index, task) in &filtered {
+                        let key = group_key_for(task, &sort_order);
+                        if last_key.as_deref() != Some(&key) {
+                            rows.push(DisplayRow::GroupHeader(key.clone()));
+                            last_key = Some(key);
+                        }
+                        rows.push(DisplayRow::Task(*source_index));
+                    }
+                    rows
+                } else {
+                    filtered
+                        .into_iter()
+                        .map(|(source_index, _)| DisplayRow::Task(source_index))
+                        .collect()
+                }
+            }; // `filtered` dropped here — self.task_list borrow released
+
+            let pane = &mut self.panes[idx];
+            pane.display_rows = new_rows;
+            if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
+                pane.selected = pane.display_rows.len() - 1;
+            } else if pane.display_rows.is_empty() {
+                pane.selected = 0;
+            }
+        }
+    }
+
     /// Main event loop. Blocks on `rx.recv()` — no polling (D-02).
     pub fn run(
         &mut self,
@@ -256,6 +513,29 @@ impl App {
             }
         }
 
+        if self.should_quit {
+            self.persist_panes_on_quit()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn persist_panes_on_quit(&mut self) -> color_eyre::Result<()> {
+        self.config.panes = self
+            .panes
+            .iter()
+            .map(|pane| PaneConfig {
+                label: pane.label.clone(),
+                filter: pane.filter_query.clone(),
+                sort: PaneSort::from_sort_order(pane.sort_order),
+                group: pane.grouping,
+            })
+            .collect();
+
+        if let Some(path) = self.config_path.clone() {
+            self.config.save(&path)?;
+        }
+
         Ok(())
     }
 
@@ -265,6 +545,7 @@ impl App {
         event: AppEvent,
         terminal: &mut Tui,
     ) -> color_eyre::Result<()> {
+        self.reconcile_active_pane();
         match event {
             AppEvent::Key(key) => {
                 // Only react to key presses, not releases or repeats.
@@ -277,6 +558,9 @@ impl App {
                     AppMode::Normal => self.handle_normal_key(key)?,
                     AppMode::Adding | AppMode::Editing { .. } => {
                         self.handle_editor_key(key)?;
+                    }
+                    AppMode::PaneLabelEditing { pane_idx } => {
+                        self.handle_pane_label_edit_key(key, pane_idx)?;
                     }
                     AppMode::AppendText => self.handle_append_text_key(key)?,
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
@@ -297,6 +581,7 @@ impl App {
                         )
                     })?;
                     self.prune_stale_selections();
+                    self.rebuild_all_panes();
                     self.rebuild_and_reanchor();
                 } else {
                     self.pending_reload = true;
@@ -331,6 +616,16 @@ impl App {
                 self.selected_tasks.clear();
                 self.selection_anchor = None;
                 self.disjoint_select = false;
+            }
+
+            // ── Pane navigation (left/right arrows, Phase 24) ────────────────
+            KeyCode::Left => {
+                self.focus_prev_pane();
+                self.rebuild_and_reanchor();
+            }
+            KeyCode::Right => {
+                self.focus_next_pane();
+                self.rebuild_and_reanchor();
             }
 
             // ── Navigation — non-overridable arms ───────────────────────────
@@ -372,28 +667,23 @@ impl App {
             }
             KeyCode::Char('j') | KeyCode::Down if row_count > 0 => {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
-                let mut next = self.selected + 1;
-                while next < row_count
-                    && matches!(self.display_rows[next], DisplayRow::GroupHeader(_))
-                {
-                    next += 1;
-                }
-                if next < row_count {
-                    self.selected = next;
-                }
+                self.pane_move_down();
             }
             KeyCode::Char('k') | KeyCode::Up if row_count > 0 => {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
-                if self.selected == 0 {
-                    return Ok(());
-                }
-                let mut prev = self.selected.saturating_sub(1);
-                while prev > 0 && matches!(self.display_rows[prev], DisplayRow::GroupHeader(_)) {
-                    prev -= 1;
-                }
-                if matches!(self.display_rows[prev], DisplayRow::Task(_)) {
-                    self.selected = prev;
-                }
+                self.pane_move_up();
+            }
+
+            // Enter on selected pane header opens inline pane-label editing.
+            KeyCode::Enter
+                if !self.should_show_single_pane()
+                    && self.panes[self.active_pane].label_selected =>
+            {
+                let pane_idx = self.active_pane;
+                let current_label = self.panes[pane_idx].label.clone();
+                self.editor = TextArea::default();
+                self.editor.insert_str(&current_label);
+                self.mode = AppMode::PaneLabelEditing { pane_idx };
             }
             // Shift+Ctrl+U: half-page range extension upward (D-10).
             // MUST precede plain Ctrl+U arm so SHIFT check wins (T-19-04).
@@ -464,13 +754,19 @@ impl App {
             // filter_toggle must precede filter_open — both default to 'f';
             // filter_toggle requires CONTROL so it must be checked first.
             _ if self.key_is_action(key, "filter_toggle") => {
-                if self.filter_query.trim().is_empty() {
+                // Per-pane filter toggle (D-02, Phase 25): Apply only to active pane's filter_query
+                let current_filter = {
+                    let active_pane = self.active_pane();
+                    active_pane.filter_query.clone()
+                };
+                
+                if current_filter.trim().is_empty() {
                     if let Some(prev) = self.toggled_filter_query.take() {
-                        self.filter_query = prev;
+                        self.active_pane_mut().filter_query = prev;
                     }
                 } else {
-                    self.toggled_filter_query = Some(self.filter_query.clone());
-                    self.filter_query.clear();
+                    self.toggled_filter_query = Some(current_filter);
+                    self.active_pane_mut().filter_query.clear();
                 }
                 self.rebuild_and_reanchor();
             }
@@ -480,7 +776,7 @@ impl App {
             }
 
             _ if self.disjoint_select && self.key_is_action(key, "disjoint_mark") => {
-                self.toggle_task_selection();
+                self.pane_toggle_task_selection();
             }
 
             _ if self.key_is_action(key, "disjoint_select") => {
@@ -488,7 +784,7 @@ impl App {
             }
 
             _ if display_count > 0 && self.key_is_action(key, "toggle_done") => {
-                self.toggle_done();
+                self.pane_toggle_done();
             }
 
             _ if self.key_is_action(key, "add") => {
@@ -520,7 +816,9 @@ impl App {
             }
 
             _ if self.key_is_action(key, "sort_cycle") => {
-                self.sort_order = cycle_sort(self.sort_order);
+                // Per-pane sort state (D-07, Phase 25): Apply only to active pane
+                let current_sort = self.active_pane().sort_order;
+                self.active_pane_mut().sort_order = cycle_sort(current_sort);
                 self.rebuild_and_reanchor();
             }
 
@@ -544,19 +842,21 @@ impl App {
             }
 
             _ if self.key_is_action(key, "filter_open") => {
+                // Per-pane filter panel (D-02, Phase 25): Snapshot active pane's current filter query
+                let active_pane = self.active_pane();
                 let mut editor = TextArea::default();
-                editor.insert_str(&self.filter_query);
+                editor.insert_str(&active_pane.filter_query);
                 self.filter_state = Some(FilteringState {
                     editor,
                     selected_preset: 0,
-                    snapshot: self.filter_query.clone(), // per D-02
+                    snapshot: active_pane.filter_query.clone(), // Snapshot per-pane filter state
                 });
                 self.mode = AppMode::Filtering;
             }
 
             _ if self.key_is_action(key, "filter_define") => {
                 let mut active_editor = TextArea::default();
-                active_editor.insert_str(&self.filter_query);
+                active_editor.insert_str(&self.active_pane().filter_query);
 
                 // Build deterministic numbered slots (f1..fN) so slot positions never shift.
                 const MIN_PRESET_SLOTS: usize = 5;
@@ -605,7 +905,9 @@ impl App {
             }
 
             _ if display_count > 0 && self.key_is_action(key, "group_toggle") => {
-                self.grouping = !self.grouping;
+                // Per-pane grouping state (D-08, Phase 25): Apply only to active pane
+                let current_grouping = self.active_pane().grouping;
+                self.active_pane_mut().grouping = !current_grouping;
                 self.rebuild_and_reanchor();
             }
 
@@ -627,7 +929,8 @@ impl App {
 
             // '0' clears the active filter (D-11, Phase 22)
             _ if self.key_is_action(key, "clear_filter") => {
-                self.filter_query.clear();
+                // Per-pane: clear active pane's filter (Phase 25)
+                self.active_pane_mut().filter_query.clear();
                 self.toggled_filter_query = None;
                 self.rebuild_and_reanchor();
             }
@@ -637,7 +940,8 @@ impl App {
                 let slot = format!("f{}", c);
                 if let Some(preset) = self.config.presets.get(&slot) {
                     if let Some(filter_str) = preset.filter.as_ref() {
-                        self.filter_query = filter_str.clone();
+                        // Per-pane: apply preset filter to active pane (Phase 25)
+                        self.active_pane_mut().filter_query = filter_str.clone();
                         self.toggled_filter_query = None;
                         self.rebuild_and_reanchor();
                     }
@@ -656,6 +960,24 @@ impl App {
                         self.push_runtime_warning(format!("reload failed: {}", e));
                     }
                 }
+            }
+
+            // Ctrl+N creates a new pane with auto-label (D-17, Phase 26)
+            _ if self.key_is_action(key, "pane_add") => {
+                self.pane_add();
+                self.rebuild_and_reanchor();
+            }
+
+            // Ctrl+W deletes the active pane with focus shift (D-18, Phase 26)
+            _ if self.key_is_action(key, "pane_delete") => {
+                self.pane_delete();
+                self.rebuild_and_reanchor();
+            }
+
+            // Ctrl+P toggles pane visibility (D-19, Phase 26)
+            _ if self.key_is_action(key, "pane_hide_toggle") => {
+                self.pane_hide_toggle();
+                self.rebuild_and_reanchor();
             }
 
             _ => {}
@@ -711,18 +1033,23 @@ impl App {
     ) -> color_eyre::Result<()> {
         match key.code {
             KeyCode::Esc => {
-                // Restore prior filter (D-02) — do NOT clear
+                // Restore prior filter from snapshot — per-pane (D-02, Phase 25)
                 let snapshot = self.filter_state.as_ref().map(|s| s.snapshot.clone()).unwrap_or_default();
-                self.filter_query = snapshot;
+                self.active_pane_mut().filter_query = snapshot;
                 self.filter_state = None;
                 self.mode = AppMode::Normal;
                 self.rebuild_and_reanchor();
                 self.apply_pending_reload()?;
             }
             KeyCode::Enter => {
-                self.filter_state = None;
+                // Apply filter to active pane
+                if let Some(state) = self.filter_state.take() {
+                    let filter_text = state.editor.lines().join("").trim().to_string();
+                    self.active_pane_mut().filter_query = filter_text;
+                }
                 self.mode = AppMode::Normal;
                 self.toggled_filter_query = None;
+                self.rebuild_and_reanchor();
                 self.apply_pending_reload()?;
             }
             KeyCode::Down => {
@@ -734,7 +1061,8 @@ impl App {
                         let query = self.presets[state.selected_preset].1.clone();
                         state.editor = TextArea::default();
                         state.editor.insert_str(&query);
-                        self.filter_query = query;
+                        // Per-pane: update active pane's filter (D-03, Phase 25)
+                        self.active_pane_mut().filter_query = query;
                     }
                 }
                 self.rebuild_and_reanchor();
@@ -746,7 +1074,8 @@ impl App {
                         let query = self.presets[state.selected_preset].1.clone();
                         state.editor = TextArea::default();
                         state.editor.insert_str(&query);
-                        self.filter_query = query;
+                        // Per-pane: update active pane's filter (D-03, Phase 25)
+                        self.active_pane_mut().filter_query = query;
                     }
                 }
                 self.rebuild_and_reanchor();
@@ -760,19 +1089,22 @@ impl App {
                         state.editor.insert_str(&query);
                         state.selected_preset = idx;
                     }
-                    self.filter_query = query;
+                    // Per-pane: update active pane's filter (D-03, Phase 25)
+                    self.active_pane_mut().filter_query = query;
                     self.rebuild_and_reanchor();
                 }
             }
             _ => {
                 if let Some(ref mut state) = self.filter_state {
                     state.editor.input(key);
-                    self.filter_query = state
+                    let filter_text = state
                         .editor
                         .lines()
                         .first()
                         .cloned()
                         .unwrap_or_default();
+                    // Per-pane: update active pane's filter as user types (D-04, Phase 25)
+                    self.active_pane_mut().filter_query = filter_text;
                 }
                 self.rebuild_and_reanchor();
             }
@@ -806,7 +1138,8 @@ impl App {
             // D-04: Enter = save preset definitions to TOML, return to Normal.
             KC::Enter => {
                 // Apply currently selected row on save: row 0 = active query, rows 1..N = selected preset.
-                self.filter_query = if state.selected_row == 0 {
+                // Capture new_query while `state` borrow is active; assign to active pane after state is dropped (FAIL-1 fix, Phase 28).
+                let new_query = if state.selected_row == 0 {
                     state.active_editor.lines().join("").trim().to_string()
                 } else {
                     let idx = state.selected_row - 1;
@@ -816,7 +1149,6 @@ impl App {
                         .map(|e| e.lines().join("").trim().to_string())
                         .unwrap_or_default()
                 };
-                    self.toggled_filter_query = None;
 
                 // Update config.presets from editors.
                 for (i, name) in state.preset_names.iter().enumerate() {
@@ -847,6 +1179,9 @@ impl App {
 
                 self.filter_defining_state = None;
                 self.mode = AppMode::Normal;
+                // Write the new query to the active pane (not global self.filter_query) — FAIL-1 fix (Phase 28).
+                self.active_pane_mut().filter_query = new_query;
+                self.toggled_filter_query = None;
                 self.rebuild_and_reanchor();
             }
 
@@ -868,12 +1203,13 @@ impl App {
                 let selected = state.selected_row;
                 if selected == 0 {
                     state.active_editor.input(key);
-                    // D-07: live preview — update filter_query from active editor.
-                    self.filter_query = self
+                    // D-07: live preview — update active pane's filter_query from active editor (FAIL-1 fix, Phase 28).
+                    let preview_query = self
                         .filter_defining_state
                         .as_ref()
                         .map(|s| s.active_editor.lines().join("").trim().to_string())
                         .unwrap_or_default();
+                    self.active_pane_mut().filter_query = preview_query;
                     self.rebuild_and_reanchor();
                 } else {
                     let idx = selected - 1;
@@ -952,6 +1288,44 @@ impl App {
             _ => {
                 self.editor.input(key);
                 self.update_autocomplete();
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_pane_label_edit_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        pane_idx: usize,
+    ) -> color_eyre::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.editor = TextArea::default();
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Enter => {
+                let new_label = self
+                    .editor
+                    .lines()
+                    .first()
+                    .cloned()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+
+                if let Some(pane) = self.panes.get_mut(pane_idx) {
+                    pane.label = if new_label.is_empty() {
+                        format!("Pane {}", pane.id + 1)
+                    } else {
+                        new_label
+                    };
+                }
+
+                self.editor = TextArea::default();
+                self.mode = AppMode::Normal;
+            }
+            _ => {
+                self.editor.input(key);
             }
         }
         Ok(())
@@ -1170,6 +1544,7 @@ impl App {
                 // Move selection to the newly added task (D-13).
                 let canonical = self.task_list.len().saturating_sub(1);
                 self.rebuild_display_indices();
+                self.rebuild_all_panes();
                 self.selected = self
                     .display_rows
                     .iter()
@@ -1190,6 +1565,7 @@ impl App {
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
                 self.rebuild_display_indices();
+                self.rebuild_all_panes();
                 self.selected = self
                     .display_rows
                     .iter()
@@ -1304,9 +1680,52 @@ impl App {
     ///
     /// Saves the current canonical index, rebuilds, then restores the selection
     /// to the display row where that canonical index now appears (or row 0).
+    ///
+    /// For multi-pane mode, also updates the active pane's display_rows with per-pane query state.
     fn rebuild_and_reanchor(&mut self) {
-        let old_canonical = self.canonical_selected();
+        // In multi-pane mode, capture old canonical from the active pane's cursor (WARN-4 fix, Phase 28).
+        let old_canonical = if !self.should_show_single_pane() && self.panes.len() > 1 {
+            let pane = &self.panes[self.active_pane];
+            match pane.display_rows.get(pane.selected) {
+                Some(DisplayRow::Task(idx)) => Some(*idx),
+                _ => self.canonical_selected(),
+            }
+        } else {
+            self.canonical_selected()
+        };
+
+        // GAP-1 fix (Phase 31): sync global fields from active pane when in single-pane or hidden mode
+        // In multi-pane mode, rebuild_visible_rows() uses per-pane fields directly.
+        // In single-pane or panes_hidden mode, rebuild_display_indices() (global path) is used,
+        // so we must sync the global state to match the active pane before calling rebuild_display_indices().
+        if self.should_show_single_pane() || self.panes_hidden {
+            let pane = &self.panes[self.active_pane];
+            self.filter_query = pane.filter_query.clone();
+            self.sort_order = pane.sort_order;
+            self.grouping = pane.grouping;
+        }
+
         self.rebuild_display_indices();
+
+        // Per-pane rebuild (Phase 25): Update active pane's display_rows with per-pane filter/sort/group
+        if !self.should_show_single_pane() && self.panes.len() > 1 {
+            self.rebuild_visible_rows();
+            // WARN-4 fix: reanchor the active pane's cursor after rebuild (Phase 28).
+            let new_pane_selected = old_canonical
+                .and_then(|ci| {
+                    self.panes[self.active_pane]
+                        .display_rows
+                        .iter()
+                        .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == ci))
+                })
+                .unwrap_or(0);
+            let pane = &mut self.panes[self.active_pane];
+            pane.selected = new_pane_selected;
+            if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
+                pane.selected = pane.display_rows.len() - 1;
+            }
+        }
+
         self.selected = old_canonical
             .and_then(|ci| {
                 self.display_rows
@@ -1329,6 +1748,7 @@ impl App {
     /// Toggle the cursor row's canonical index in `selected_tasks`.
     ///
     /// No-op when the cursor is on a `GroupHeader` row (D-08).
+    #[allow(dead_code)]
     fn toggle_task_selection(&mut self) {
         if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected).cloned() {
             if self.selected_tasks.contains(&idx) {
@@ -1402,6 +1822,7 @@ impl App {
     /// D-10: immediate save via `task_list.update()` (which calls `save()` internally).
     /// D-11: toggles both ways — incomplete→done AND done→incomplete.
     /// D-12: called by both `x` and bare `u`.
+    #[allow(dead_code)]
     fn toggle_done(&mut self) {
         let idx = match self.canonical_selected() {
             Some(i) => i,
@@ -1418,19 +1839,119 @@ impl App {
         self.rebuild_and_reanchor();
     }
 
+    /// Get the canonical task index for the currently selected row in the active pane (Phase 24-02).
+    fn pane_canonical_selected(&self) -> Option<usize> {
+        let pane = self.active_pane();
+        if pane.label_selected {
+            return None;
+        }
+        match pane.display_rows.get(pane.selected) {
+            Some(DisplayRow::Task(idx)) => Some(*idx),
+            _ => pane.display_rows.first().and_then(|r| {
+                match r {
+                    DisplayRow::Task(idx) => Some(*idx),
+                    _ => None,
+                }
+            }),
+        }
+    }
+
+    /// Toggle the completion state of the currently selected task in the active pane (Phase 24-02).
+    fn pane_toggle_done(&mut self) {
+        self.reconcile_active_pane();
+        let idx = match self.pane_canonical_selected() {
+            Some(i) => i,
+            None => return,
+        };
+        let task = self.task_list.tasks()[idx].clone();
+        let was_completed = task.completed;
+        let toggled = task.with_completed(!was_completed);
+        if let Err(e) = self.task_list.update(idx, toggled) {
+            eprintln!("toggle_done error: {e}");
+        }
+        self.rebuild_all_panes();
+    }
+
+    /// Toggle the cursor row's canonical index in `selected_tasks` for the active pane (Phase 24-02).
+    fn pane_toggle_task_selection(&mut self) {
+        self.reconcile_active_pane();
+        let pane = self.active_pane();
+        if let Some(DisplayRow::Task(idx)) = pane.display_rows.get(pane.selected).cloned() {
+            if self.selected_tasks.contains(&idx) {
+                self.selected_tasks.remove(&idx);
+            } else {
+                self.selected_tasks.insert(idx);
+            }
+        }
+    }
+
+    /// Move selection down in the active pane, skipping group headers (Phase 24-02).
+    fn pane_move_down(&mut self) {
+        self.reconcile_active_pane();
+        let pane = self.active_pane_mut();
+
+        if pane.label_selected {
+            pane.label_selected = false;
+            pane.selected = 0;
+            while pane.selected < pane.display_rows.len()
+                && matches!(pane.display_rows[pane.selected], DisplayRow::GroupHeader(_))
+            {
+                pane.selected += 1;
+            }
+            if pane.selected >= pane.display_rows.len() {
+                pane.selected = 0;
+            }
+            return;
+        }
+
+        let row_count = pane.display_rows.len();
+        if row_count > 0 {
+            let mut next = pane.selected + 1;
+            while next < row_count
+                && matches!(pane.display_rows[next], DisplayRow::GroupHeader(_))
+            {
+                next += 1;
+            }
+            if next < row_count {
+                pane.selected = next;
+            }
+        }
+    }
+
+    /// Move selection up in the active pane, skipping group headers (Phase 24-02).
+    fn pane_move_up(&mut self) {
+        self.reconcile_active_pane();
+        let pane = self.active_pane_mut();
+        if pane.label_selected {
+            return;
+        }
+        if pane.selected == 0 {
+            pane.label_selected = true;
+            return;
+        }
+        let mut prev = pane.selected.saturating_sub(1);
+        while prev > 0 && matches!(pane.display_rows[prev], DisplayRow::GroupHeader(_)) {
+            prev -= 1;
+        }
+        if matches!(pane.display_rows.get(prev), Some(DisplayRow::Task(_))) {
+            pane.selected = prev;
+        }
+    }
+
     /// Render the TUI frame with mode-aware layout.
     ///
     /// Signature is `&mut self` because tui-textarea's Widget impl requires
     /// rendering via a mutable reference on some paths.
     fn draw(&mut self, frame: &mut Frame) {
         use ratatui::layout::{Constraint::{Length, Min}, Layout};
+        self.reconcile_active_pane();
 
         match self.mode {
             AppMode::DeleteConfirm => {
                 // Three-row split: task list | confirm panel | status bar (D-06).
                 let chunks =
                     Layout::vertical([Min(0), Length(1), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_delete_confirm(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
@@ -1438,11 +1959,21 @@ impl App {
                 // Two-row split: task list | inline editor in footer row (D-02).
                 let chunks =
                     Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 // tui-textarea renders directly; ratatui 0.29 Widget impl for &TextArea.
                 frame.render_widget(&self.editor, chunks[1]);
                 // Autocomplete popup floats above the footer row (D-08, D-09).
                 self.render_autocomplete_popup(frame, chunks[1]);
+            }
+            AppMode::PaneLabelEditing { .. } => {
+                // Two-row split: panes | inline pane label editor.
+                use ratatui::widgets::Paragraph;
+                let chunks =
+                    Layout::vertical([Min(0), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                let footer_cols = Layout::horizontal([Length(13), Min(0)]).split(chunks[1]);
+                frame.render_widget(Paragraph::new("Pane label: "), footer_cols[0]);
+                frame.render_widget(&self.editor, footer_cols[1]);
             }
             AppMode::AppendText => {
                 // Two-row split: task list | inline editor with "Append: " label in footer row (D-11).
@@ -1450,7 +1981,7 @@ impl App {
                 use ratatui::widgets::Paragraph;
                 let chunks =
                     Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 // Split footer row: label (9 chars) | editor
                 let footer_cols =
                     Layout::horizontal([Length(9), Min(0)]).split(chunks[1]);
@@ -1458,17 +1989,17 @@ impl App {
                 frame.render_widget(&self.editor, footer_cols[1]);
             }
             AppMode::Normal => {
-                // Two-row split: task list | status bar (D-14).
+                // Two-row split: panes area | status bar (D-14).
                 let chunks =
                     Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
             }
             AppMode::Filtering => {
                 let panel_height = 1_u16 + (self.presets.len() as u16).min(5);
                 let chunks =
                     Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_filter_panel(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
@@ -1481,21 +2012,21 @@ impl App {
                 let panel_height = (2_u16 + 1 + preset_rows).max(4);
                 let chunks =
                     Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_filter_defining_panel(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
             AppMode::KeymapErrors => {
                 // Task list visible behind; overlay covers the screen (D-09, Phase 22).
                 let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
                 self.render_keymap_errors_overlay(frame, frame.area());
             }
             AppMode::Help => {
                 // Task list visible behind; help overlay covers the screen (D-10, Phase 22).
                 let chunks = Layout::vertical([Min(0), Length(1)]).split(frame.area());
-                self.render_task_list(frame, chunks[0]);
+                self.render_panes(frame, chunks[0]);
                 self.render_status_bar(frame, chunks[1]);
                 self.render_help_overlay(frame, frame.area());
             }
@@ -1585,6 +2116,51 @@ impl App {
         frame.render_stateful_widget(list, area, &mut list_state);
     }
 
+    /// Render multiple vertical panes side-by-side (Phase 24-02).
+    fn render_panes(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::layout::{Constraint, Direction, Layout};
+
+        // When panes_hidden is true, render as single-pane view (D-13, Phase 26)
+        if self.panes_hidden {
+            self.render_task_list(frame, area);
+            return;
+        }
+
+        if self.should_show_single_pane() {
+            self.render_task_list(frame, area);
+            return;
+        }
+
+        let pane_count = self.panes.len();
+        if pane_count == 0 {
+            return;
+        }
+
+        // Calculate equal width for each pane
+        let pane_constraints = vec![Constraint::Percentage(100 / pane_count as u16); pane_count];
+        let pane_areas = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(pane_constraints)
+            .split(area);
+
+        // Render each pane
+        for (pane_idx, pane) in self.panes.iter().enumerate() {
+            let pane_area = pane_areas[pane_idx];
+            let is_active = pane_idx == self.active_pane;
+
+            PaneList::render(
+                frame,
+                pane_area,
+                pane,
+                is_active,
+                is_active && pane.label_selected,
+                &self.styles,
+                &self.task_list,
+                self.show_deferred,
+            );
+        }
+    }
+
     /// Render the one-row status bar with file info and key hints.
     fn render_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         use ratatui::text::{Line, Span};
@@ -1593,17 +2169,16 @@ impl App {
 
         let tasks = self.task_list.tasks();
         let total = tasks.len();
-        let visible = self.display_indices.len();
+        let scoped_indices = self.status_scope_task_indices();
+        let visible = scoped_indices.len();
 
-        let due_today = self
-            .display_indices
+        let due_today = scoped_indices
             .iter()
             .filter(|&&ci| {
                 !tasks[ci].completed && tasks[ci].due_status() == DueStatus::Today
             })
             .count();
-        let overdue = self
-            .display_indices
+        let overdue = scoped_indices
             .iter()
             .filter(|&&ci| {
                 !tasks[ci].completed && tasks[ci].due_status() == DueStatus::Overdue
@@ -1617,6 +2192,7 @@ impl App {
             .unwrap_or("todo.txt");
 
         let mut left = format!("{} | {}/{} tasks", file_name, visible, total);
+        
         if due_today > 0 || overdue > 0 {
             left.push_str(&format!(" | {} due today | {} overdue", due_today, overdue));
         }
@@ -1637,16 +2213,33 @@ impl App {
 
         let mut middle = String::new();
 
-        let trimmed_filter = self.filter_query.trim();
-        if !trimmed_filter.is_empty() {
+        // Per-pane query state (Phase 25): Show active pane's filter/sort/group state
+        let (pane_filter, pane_sort, pane_grouping) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            let pane = &self.panes[self.active_pane];
+            (
+                pane.filter_query.clone(),
+                pane.sort_order,
+                pane.grouping,
+            )
+        } else {
+            // Fallback to global state when showing single pane
+            (
+                self.filter_query.clone(),
+                self.sort_order,
+                self.grouping,
+            )
+        };
+
+        let trimmed_filter = pane_filter.trim();
+        if let Some(filter_display) = Self::format_status_filter(trimmed_filter) {
             middle.push_str(" | ");
-            middle.push_str(trimmed_filter);
+            middle.push_str(&filter_display);
         }
-        if self.sort_order != SortOrder::FileOrder {
+        if pane_sort != SortOrder::FileOrder {
             middle.push_str(" | sort: ");
-            middle.push_str(sort_name(self.sort_order));
+            middle.push_str(sort_name(pane_sort));
         }
-        if self.grouping {
+        if pane_grouping {
             middle.push_str(" | group: on");
         }
         if self.show_deferred {
@@ -1665,13 +2258,22 @@ impl App {
             middle
         } else {
             let available = total_width.saturating_sub(left_len);
-            if available == 0 {
+            if available < 3 {
+                // Too narrow to show anything meaningful
                 String::new()
-            } else if available == 1 {
-                "…".to_string()
             } else {
+                // Truncate middle at pipe boundaries for cleaner appearance
                 let truncated: String = middle.chars().take(available - 1).collect();
-                format!("{}…", truncated)
+                let last_pipe = truncated.rfind(" | ");
+                if let Some(pos) = last_pipe {
+                    if pos > 0 {
+                        format!("{}…", &truncated[..pos])
+                    } else {
+                        format!("{}…", truncated)
+                    }
+                } else {
+                    format!("{}…", truncated)
+                }
             }
         };
 
@@ -1689,6 +2291,38 @@ impl App {
         };
 
         frame.render_widget(Paragraph::new(status_line), area);
+    }
+
+    /// Returns canonical task indices for status-bar counts in the active visual scope.
+    /// In multi-pane mode this is the active pane's task rows (excluding group headers);
+    /// otherwise it uses the single-pane/global display indices.
+    fn status_scope_task_indices(&self) -> Vec<usize> {
+        if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+            self.panes[self.active_pane]
+                .display_rows
+                .iter()
+                .filter_map(|row| match row {
+                    DisplayRow::Task(idx) => Some(*idx),
+                    DisplayRow::GroupHeader(_) => None,
+                })
+                .collect()
+        } else {
+            self.display_indices.clone()
+        }
+    }
+
+    fn format_status_filter(trimmed_filter: &str) -> Option<String> {
+        if trimmed_filter.is_empty() {
+            return None;
+        }
+
+        let value = if trimmed_filter.len() > 30 {
+            format!("{}…", &trimmed_filter[..27])
+        } else {
+            trimmed_filter.to_string()
+        };
+
+        Some(format!("filter: {}", value))
     }
 
     /// Render a centered help overlay showing all 19 resolved keybindings (D-10, Phase 22).
@@ -1744,6 +2378,9 @@ impl App {
             ("Select", "Select", &[
                 "disjoint_select", "disjoint_mark",
             ]),
+            ("Panes", "Panes", &[
+                "pane_add", "pane_delete", "pane_hide_toggle",
+            ]),
             ("App", "App", &[
                 "help", "quit",
             ]),
@@ -1767,6 +2404,9 @@ impl App {
             ("reload", "Reload file"),
             ("disjoint_select", "Disjoint select"),
             ("disjoint_mark", "Mark selection"),
+            ("pane_add", "Create pane"),
+            ("pane_delete", "Delete pane"),
+            ("pane_hide_toggle", "Toggle panes"),
             ("help", "Show help"),
             ("quit", "Quit"),
         ].into_iter().collect();
@@ -1797,6 +2437,10 @@ impl App {
         lines.push(Line::from("  shift+ctrl+u  Extend selection half-page up"));
         lines.push(Line::from("  \u{2500}\u{2500} Presets \u{2500}\u{2500}".to_string()));
         lines.push(Line::from("         1-9  Apply filter preset"));
+        lines.push(Line::from("  \u{2500}\u{2500} Pane label \u{2500}\u{2500}".to_string()));
+        lines.push(Line::from("      up @ top  Select pane header"));
+        lines.push(Line::from("         enter  Edit pane label"));
+        lines.push(Line::from("     enter/esc  Save / cancel label edit"));
         lines.push(Line::from("  \u{2500}\u{2500} Errors \u{2500}\u{2500}".to_string()));
         lines.push(Line::from("           !  Show error log"));
 
@@ -2190,6 +2834,52 @@ mod tests {
         }).unwrap();
     }
 
+    fn press_ctrl_key(app: &mut App, code: crossterm::event::KeyCode) {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        app.handle_normal_key(KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+    }
+
+    #[test]
+    fn ctrl_n_triggers_pane_add_not_add_mode() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        assert_eq!(app.mode, AppMode::Normal);
+        assert_eq!(app.panes.len(), 1);
+
+        press_ctrl_key(&mut app, KeyCode::Char('n'));
+
+        assert_eq!(app.mode, AppMode::Normal, "Ctrl+N should not enter Adding mode");
+        assert_eq!(app.panes.len(), 2, "Ctrl+N should add a pane");
+    }
+
+    #[test]
+    fn ctrl_w_triggers_pane_delete_not_noop() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        app.pane_add();
+        assert_eq!(app.panes.len(), 2);
+
+        press_ctrl_key(&mut app, KeyCode::Char('w'));
+
+        assert_eq!(app.panes.len(), 1, "Ctrl+W should delete active pane");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn ctrl_p_triggers_pane_hide_toggle() {
+        let mut app = make_app_with_tasks(&["Task one", "Task two"]);
+        assert!(!app.panes_hidden);
+
+        press_ctrl_key(&mut app, KeyCode::Char('p'));
+        assert!(app.panes_hidden, "Ctrl+P should hide panes");
+
+        press_ctrl_key(&mut app, KeyCode::Char('p'));
+        assert!(!app.panes_hidden, "Ctrl+P should toggle panes back on");
+    }
+
     #[test]
     fn v_key_toggles_disjoint_select_on() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
@@ -2231,6 +2921,12 @@ mod tests {
             DisplayRow::Task(0),
         ];
         app.selected = 0;
+        // Also update pane for Phase 24-02
+        app.active_pane_mut().display_rows = vec![
+            DisplayRow::GroupHeader("Header".to_string()),
+            DisplayRow::Task(0),
+        ];
+        app.active_pane_mut().selected = 0;
         press_key(&mut app, KeyCode::Char(' '));
         assert!(app.selected_tasks.is_empty(), "Space on GroupHeader must be a no-op (D-08)");
     }
@@ -2720,4 +3416,257 @@ mod tests {
         // Must NOT contain [v] or v-mode prefix
         assert!(!left.contains("[v]"), "D-14 violated: status bar must not show [v] prefix");
     }
+
+    #[test]
+    fn status_scope_uses_active_pane_tasks_in_multi_pane_mode() {
+        let mut app = make_two_pane_app(&["new task one", "old task", "new task two"]);
+
+        app.panes[0].filter_query = "new".to_string();
+        app.panes[1].filter_query = "old".to_string();
+        app.active_pane = 1;
+        app.rebuild_all_panes();
+
+        let scoped = app.status_scope_task_indices();
+        assert_eq!(scoped.len(), 1, "status scope should use active pane filtered task count");
+        assert_eq!(scoped[0], 1, "active pane filter 'old' should target canonical index 1");
+    }
+
+    #[test]
+    fn status_filter_display_has_explicit_label() {
+        let display = App::format_status_filter("new").expect("filter text should be shown");
+        assert_eq!(display, "filter: new");
+    }
+
+    #[test]
+    fn status_filter_display_truncates_long_values() {
+        let long_filter = "abcdefghijklmnopqrstuvwxyz0123456789";
+        let display = App::format_status_filter(long_filter).expect("filter text should be shown");
+        assert!(display.starts_with("filter: "));
+        assert!(display.ends_with('…'));
+    }
+
+    // ── Phase 24, Plan 01: Pane navigation tests ────────────────────────────
+
+    #[test]
+    fn test_app_initializes_with_one_pane() {
+        let app = make_app_with_tasks(&["Task 1"]);
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.active_pane, 0);
+        assert_eq!(app.panes[0].label, "");
+    }
+
+    #[test]
+    fn test_focus_next_pane_single_pane_noop() {
+        let mut app = make_app_with_tasks(&["Task 1"]);
+        let original = app.active_pane;
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, original, "Should not change with only one pane");
+    }
+
+    #[test]
+    fn test_focus_navigation_multiple_panes() {
+        let mut app = make_app_with_tasks(&["Task 1"]);
+
+        // Add two more panes manually
+        app.panes.push(Pane::new(1, "Work".to_string()));
+        app.panes.push(Pane::new(2, "Personal".to_string()));
+
+        assert_eq!(app.active_pane, 0);
+
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 1);
+
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 2);
+
+        // Wrap around
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 0);
+
+        // Test prev
+        app.focus_prev_pane();
+        assert_eq!(app.active_pane, 2);
+    }
+
+    #[test]
+    fn test_pane_selection_independence() {
+        let mut app = make_app_with_tasks(&["Task 1", "Task 2", "Task 3"]);
+        app.panes.push(Pane::new(1, "Work".to_string()));
+
+        // Manipulate selection in pane 0
+        {
+            let pane0 = &mut app.panes[0];
+            pane0.selected = 1;
+        }
+
+        // Switch to pane 1 and set different selection
+        app.focus_next_pane();
+        {
+            let pane1 = app.active_pane_mut();
+            pane1.display_rows = vec![DisplayRow::Task(0), DisplayRow::Task(1)];
+            pane1.selected = 0;
+        }
+
+        // Verify selections are independent
+        assert_eq!(app.panes[0].selected, 1);
+        assert_eq!(app.panes[1].selected, 0);
+
+        // Switch back and verify
+        app.focus_prev_pane();
+        assert_eq!(app.active_pane().selected, 1);
+    }
+
+    #[test]
+    fn startup_populates_non_active_panes_without_focus_change() {
+        let app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+
+        assert_eq!(app.panes.len(), 2, "expected two panes from config");
+        assert!(!app.panes[0].display_rows.is_empty(), "active pane should be populated at startup");
+        assert!(!app.panes[1].display_rows.is_empty(), "non-active pane should be populated at startup");
+    }
+
+    #[test]
+    fn pane_label_can_be_selected_with_up_from_top() {
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].selected = 0;
+        assert!(!app.panes[1].label_selected);
+
+        press_key(&mut app, KeyCode::Up);
+
+        assert!(app.panes[1].label_selected, "Up from top should select pane header");
+    }
+
+    #[test]
+    fn pane_label_edit_save_updates_label() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].label_selected = true;
+        assert_eq!(app.panes[1].label, "Work");
+
+        press_key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, AppMode::PaneLabelEditing { pane_idx: 1 });
+
+        app.editor = TextArea::default();
+        app.editor.insert_str("Errands");
+
+        app.handle_pane_label_edit_key(
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            },
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(app.panes[1].label, "Errands");
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn pane_label_edit_escape_cancels_changes() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        let mut app = make_two_pane_app(&["Task 1", "Task 2", "Task 3"]);
+        app.active_pane = 1;
+        app.panes[1].label_selected = true;
+        let original = app.panes[1].label.clone();
+
+        press_key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, AppMode::PaneLabelEditing { pane_idx: 1 });
+        app.editor = TextArea::default();
+        app.editor.insert_str("Temp");
+
+        app.handle_pane_label_edit_key(
+            KeyEvent {
+                code: KeyCode::Esc,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            },
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(app.panes[1].label, original);
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    // ── Phase 28: Per-pane FilterDefining FAIL-1 fix ──────────────────────────
+
+    /// Helper: create a two-pane App with the given tasks.
+    fn make_two_pane_app(task_lines: &[&str]) -> App {
+        let mut file = tempfile::NamedTempFile::new().expect("failed to create temp file");
+        for line in task_lines {
+            writeln!(file, "{}", line).unwrap();
+        }
+        let path = file.path().to_path_buf();
+        let task_list = TaskList::load(&path).expect("load failed");
+        let _ = file.keep();
+
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "All".to_string(), filter: String::new(), sort: PaneSort::default(), group: false },
+            PaneConfig { label: "Work".to_string(), filter: String::new(), sort: PaneSort::default(), group: false },
+        ];
+        App::new(task_list, path, config, None, Theme::Default, true)
+    }
+
+    #[test]
+    fn filter_defining_enter_writes_to_active_pane_not_global() {
+        // FAIL-1 regression test (Phase 28):
+        // Pressing Enter in FilterDefining mode must write the query to the active pane's
+        // filter_query, not to global self.filter_query.
+        let mut app = make_two_pane_app(&["task A +work", "task B"]);
+
+        // Confirm two panes exist and active pane is 0.
+        assert_eq!(app.panes.len(), 2);
+        assert_eq!(app.active_pane, 0);
+
+        // Set up FilterDefining state with "+work" in the active editor.
+        let mut active_editor = TextArea::default();
+        active_editor.insert_str("+work");
+        app.filter_defining_state = Some(FilterDefiningState {
+            active_editor,
+            preset_names: vec![],
+            preset_editors: vec![],
+            selected_row: 0,
+        });
+        app.mode = AppMode::FilterDefining;
+
+        // Press Enter.
+        let enter_key = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        app.handle_filter_defining_key(enter_key).unwrap();
+
+        // Active pane (0) must have "+work" as filter_query.
+        assert_eq!(
+            app.panes[0].filter_query, "+work",
+            "FAIL-1: active pane filter_query must be '+work' after Enter"
+        );
+        // Sibling pane (1) must be unchanged.
+        assert_eq!(
+            app.panes[1].filter_query, "",
+            "FAIL-1: sibling pane filter_query must be empty"
+        );
+        // Global self.filter_query must NOT be written to.
+        assert_eq!(
+            app.filter_query, "",
+            "FAIL-1: global filter_query must remain empty"
+        );
+        // Mode must return to Normal.
+        assert_eq!(app.mode, AppMode::Normal);
+        // filter_defining_state must be cleared.
+        assert!(app.filter_defining_state.is_none());
+    }
 }
+
+
+
+

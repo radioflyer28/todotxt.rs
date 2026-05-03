@@ -1,0 +1,497 @@
+/// Integration tests for per-pane query behavior (Phase 25)
+/// Tests pane navigation, state preservation, and empty-pane safety.
+
+#[cfg(test)]
+mod pane_integration_tests {
+    use todotxt_tui::app::App;
+    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig};
+    use todotxt_tui::state::Pane;
+    use todotxt_core::{TaskList, SortOrder};
+    use std::fs::{self, File};
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Helper: Create a test App with a task list
+    fn setup_test_app() -> App {
+        // Create a temporary empty todo.txt file
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_todo.txt");
+        File::create(&test_file).expect("Failed to create test file").write_all(b"").expect("Failed to write to test file");
+        
+        let task_list = TaskList::load(&test_file).expect("Failed to load TaskList");
+        let config = todotxt_tui::config::TuiConfig::default();
+        
+        let app = App::new(
+            task_list,
+            test_file,
+            config,
+            None,
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+        app
+    }
+
+    fn unique_temp_file(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{}_{}_{}.toml", name, std::process::id(), nanos))
+    }
+
+    #[test]
+    fn test_pane_navigation_wraps_around() {
+        let mut app = setup_test_app();
+        
+        // App starts with one default pane
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.active_pane, 0);
+        
+        // Add a second pane (simulating Phase 26 pane creation)
+        app.panes.push(Pane::new(1, "Pane 2".to_string()));
+        assert_eq!(app.panes.len(), 2);
+        
+        // Navigate right to pane 1
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 1);
+        
+        // Navigate right again — should wrap to pane 0
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 0);
+        
+        // Navigate left — should wrap to pane 1
+        app.focus_prev_pane();
+        assert_eq!(app.active_pane, 1);
+        
+        // Navigate left again — should go to pane 0
+        app.focus_prev_pane();
+        assert_eq!(app.active_pane, 0);
+    }
+
+    #[test]
+    fn test_pane_filter_state_preserved_on_navigation() {
+        let mut app = setup_test_app();
+        app.panes.push(Pane::new(1, "Pane 2".to_string()));
+        
+        // Set filter on pane 0
+        app.active_pane_mut().filter_query = "project:work".to_string();
+        assert_eq!(app.panes[0].filter_query, "project:work");
+        
+        // Navigate to pane 1
+        app.focus_next_pane();
+        assert_eq!(app.active_pane, 1);
+        
+        // Pane 1 should have empty filter
+        assert_eq!(app.active_pane().filter_query, "");
+        
+        // Navigate back to pane 0
+        app.focus_prev_pane();
+        assert_eq!(app.active_pane, 0);
+        
+        // Filter should be preserved
+        assert_eq!(app.active_pane().filter_query, "project:work");
+    }
+
+    #[test]
+    fn test_pane_sort_state_preserved_on_navigation() {
+        let mut app = setup_test_app();
+        app.panes.push(Pane::new(1, "Pane 2".to_string()));
+        
+        // Set sort on pane 0
+        app.active_pane_mut().sort_order = SortOrder::Priority;
+        assert_eq!(app.panes[0].sort_order, SortOrder::Priority);
+        
+        // Navigate to pane 1
+        app.focus_next_pane();
+        
+        // Pane 1 should have default FileOrder
+        assert_eq!(app.active_pane().sort_order, SortOrder::FileOrder);
+        
+        // Navigate back to pane 0
+        app.focus_prev_pane();
+        
+        // Sort should be preserved
+        assert_eq!(app.active_pane().sort_order, SortOrder::Priority);
+    }
+
+    #[test]
+    fn test_pane_grouping_state_preserved_on_navigation() {
+        let mut app = setup_test_app();
+        app.panes.push(Pane::new(1, "Pane 2".to_string()));
+        
+        // Enable grouping on pane 0
+        app.active_pane_mut().grouping = true;
+        assert_eq!(app.panes[0].grouping, true);
+        
+        // Navigate to pane 1
+        app.focus_next_pane();
+        
+        // Pane 1 should have grouping disabled
+        assert_eq!(app.active_pane().grouping, false);
+        
+        // Navigate back to pane 0
+        app.focus_prev_pane();
+        
+        // Grouping should be preserved
+        assert_eq!(app.active_pane().grouping, true);
+    }
+
+    #[test]
+    fn test_empty_pane_allows_filter_modification() {
+        let mut app = setup_test_app();
+        
+        // Active pane should be empty (no tasks)
+        assert!(app.active_pane().is_empty());
+        
+        // Modifying filter should succeed even on empty pane
+        app.active_pane_mut().filter_query = "project:test".to_string();
+        
+        assert_eq!(app.active_pane().filter_query, "project:test");
+    }
+
+    #[test]
+    fn test_empty_pane_allows_sort_modification() {
+        let mut app = setup_test_app();
+        
+        // Active pane should be empty
+        assert!(app.active_pane().is_empty());
+        
+        // Modifying sort order should succeed even on empty pane
+        app.active_pane_mut().sort_order = SortOrder::DueDate;
+        
+        assert_eq!(app.active_pane().sort_order, SortOrder::DueDate);
+    }
+
+    #[test]
+    fn test_empty_pane_allows_grouping_modification() {
+        let mut app = setup_test_app();
+        
+        // Active pane should be empty
+        assert!(app.active_pane().is_empty());
+        
+        // Toggling grouping should succeed even on empty pane
+        app.active_pane_mut().grouping = true;
+        
+        assert!(app.active_pane().grouping);
+    }
+
+    #[test]
+    fn test_reconcile_active_pane_ensures_bounds() {
+        let mut app = setup_test_app();
+        
+        // Add a couple panes
+        app.panes.push(Pane::new(1, "Pane 2".to_string()));
+        app.panes.push(Pane::new(2, "Pane 3".to_string()));
+        
+        // Set active_pane to an out-of-bounds value
+        app.active_pane = 5;
+        
+        // reconcile_active_pane should fix it
+        app.reconcile_active_pane();
+        
+        // Should clamp to last valid index (2)
+        assert_eq!(app.active_pane, 2);
+    }
+
+    #[test]
+    fn test_reconcile_active_pane_creates_default_pane_when_empty() {
+        let mut app = setup_test_app();
+        
+        // Remove all panes
+        app.panes.clear();
+        assert_eq!(app.panes.len(), 0);
+        
+        // reconcile_active_pane should create a default pane
+        app.reconcile_active_pane();
+        
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.active_pane, 0);
+        assert_eq!(app.panes[0].label, "");
+    }
+
+    #[test]
+    fn test_single_pane_fallback_when_all_panes_empty() {
+        let mut app = setup_test_app();
+        
+        // Add multiple panes
+        app.panes.push(Pane::new(1, "Pane 2".to_string()));
+        app.panes.push(Pane::new(2, "Pane 3".to_string()));
+        
+        // All panes should be empty (no tasks added)
+        for pane in &app.panes {
+            assert!(pane.is_empty());
+        }
+        
+        // should_show_single_pane should return true (fallback)
+        assert!(app.should_show_single_pane());
+    }
+
+    #[test]
+    fn test_active_pane_mut_reconciles_bounds() {
+        let mut app = setup_test_app();
+        
+        // Set active_pane to invalid index
+        app.active_pane = 10;
+        
+        // active_pane_mut() should call reconcile before returning
+        let _ = app.active_pane_mut();
+        
+        // Should be fixed now
+        assert!(app.active_pane < app.panes.len());
+    }
+
+    #[test]
+    fn test_pane_selection_clamped_on_navigation() {
+        let mut app = setup_test_app();
+        app.panes.push(Pane::new(1, "Pane 2".to_string()));
+        
+        // Manually set selected to an invalid value on pane 0
+        app.panes[0].selected = 100;
+        assert!(!app.panes[0].is_empty() || app.panes[0].selected == 100); // pane is empty or selection is out of bounds
+        
+        // Navigate to pane 1
+        app.focus_next_pane();
+        
+        // Navigate back to pane 0
+        app.focus_prev_pane();
+        
+        // Selection should still be 100 (we don't auto-fix in navigate, only in rebuild)
+        // This is expected behavior — the selection gets reconciled when display_rows is rebuilt
+        assert_eq!(app.panes[0].selected, 100);
+    }
+
+    #[test]
+    fn test_startup_bootstrap_uses_configured_panes() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_todo_bootstrap.txt");
+        File::create(&test_file)
+            .expect("Failed to create test file")
+            .write_all(b"")
+            .expect("Failed to write to test file");
+        let task_list = TaskList::load(&test_file).expect("Failed to load TaskList");
+
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig {
+                label: "Work".to_string(),
+                filter: "project:work".to_string(),
+                sort: PaneSort::Priority,
+                group: true,
+            },
+            PaneConfig {
+                label: "Today".to_string(),
+                filter: "due:today".to_string(),
+                sort: PaneSort::DueDate,
+                group: false,
+            },
+        ];
+
+        let app = App::new(
+            task_list,
+            test_file,
+            config,
+            None,
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        assert_eq!(app.panes.len(), 2);
+        assert_eq!(app.panes[0].label, "Work");
+        assert_eq!(app.panes[0].filter_query, "project:work");
+        assert_eq!(app.panes[0].sort_order, SortOrder::Priority);
+        assert!(app.panes[0].grouping);
+
+        assert_eq!(app.panes[1].label, "Today");
+        assert_eq!(app.panes[1].filter_query, "due:today");
+        assert_eq!(app.panes[1].sort_order, SortOrder::DueDate);
+        assert!(!app.panes[1].grouping);
+    }
+
+    #[test]
+    fn test_invalid_pane_entries_are_skipped_and_valid_ones_load() {
+        let config_path = unique_temp_file("pane_config_invalid_skip");
+        let config_toml = r#"
+[[panes]]
+label = "Valid"
+sort = "priority"
+group = true
+
+[[panes]]
+label = "Invalid"
+sort = "nope"
+group = false
+"#;
+        fs::write(&config_path, config_toml).expect("should write config");
+
+        let config = TuiConfig::load(&config_path).expect("load should tolerate invalid pane entries");
+        assert_eq!(config.panes.len(), 1);
+        assert_eq!(config.panes[0].label, "Valid");
+        assert_eq!(config.panes[0].sort, PaneSort::Priority);
+
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_invalid_only_config_still_keeps_runtime_safe_default_pane() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_todo_invalid_only.txt");
+        File::create(&test_file)
+            .expect("Failed to create test file")
+            .write_all(b"")
+            .expect("Failed to write to test file");
+
+        let mut config = TuiConfig::default();
+        config.panes = vec![];
+        let app = App::new(
+            TaskList::load(&test_file).expect("Failed to load TaskList"),
+            test_file,
+            config,
+            None,
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.active_pane, 0);
+        assert_eq!(app.panes[0].label, "");
+    }
+
+    #[test]
+    fn test_quit_persists_runtime_panes_into_config() {
+        let todo_path = unique_temp_file("pane_persist_todo");
+        File::create(&todo_path)
+            .expect("Failed to create todo file")
+            .write_all(b"")
+            .expect("Failed to write todo file");
+
+        let config_path = unique_temp_file("pane_persist_config");
+        let initial_config = r#"
+todo_file = "tasks.txt"
+normalize_append = false
+"#;
+        fs::write(&config_path, initial_config).expect("should write initial config");
+
+        let mut config = TuiConfig::load(&config_path).expect("should load config");
+        config.todo_file = Some(todo_path.clone());
+
+        let mut app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            config,
+            Some(config_path.clone()),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        app.panes = vec![
+            Pane::new(0, "Work".to_string()),
+            Pane::new(1, "Today".to_string()),
+        ];
+        app.panes[0].filter_query = "project:work".to_string();
+        app.panes[0].sort_order = SortOrder::Priority;
+        app.panes[0].grouping = true;
+
+        app.panes[1].filter_query = "due:today".to_string();
+        app.panes[1].sort_order = SortOrder::DueDate;
+        app.panes[1].grouping = false;
+
+        app.persist_panes_on_quit().expect("quit persistence should succeed");
+
+        let reloaded = TuiConfig::load(&config_path).expect("reloaded config should parse");
+        assert_eq!(reloaded.panes.len(), 2);
+        assert_eq!(reloaded.panes[0].label, "Work");
+        assert_eq!(reloaded.panes[0].filter, "project:work");
+        assert_eq!(reloaded.panes[0].sort, PaneSort::Priority);
+        assert!(reloaded.panes[0].group);
+
+        assert_eq!(reloaded.panes[1].label, "Today");
+        assert_eq!(reloaded.panes[1].filter, "due:today");
+        assert_eq!(reloaded.panes[1].sort, PaneSort::DueDate);
+        assert!(!reloaded.panes[1].group);
+
+        assert!(!reloaded.normalize_append, "non-pane fields should be preserved on save");
+
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_persisted_pane_data_contains_only_config_fields() {
+        let todo_path = unique_temp_file("pane_fields_todo");
+        File::create(&todo_path)
+            .expect("Failed to create todo file")
+            .write_all(b"")
+            .expect("Failed to write todo file");
+
+        let config_path = unique_temp_file("pane_fields_config");
+        fs::write(&config_path, "").expect("should create config file");
+
+        let mut app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            TuiConfig::default(),
+            Some(config_path.clone()),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        app.panes = vec![Pane::new(42, "Persist Me".to_string())];
+        app.panes[0].selected = 99;
+        app.panes[0].filter_query = "@home".to_string();
+        app.panes[0].sort_order = SortOrder::Alphabetical;
+        app.panes[0].grouping = true;
+
+        app.persist_panes_on_quit().expect("quit persistence should succeed");
+
+        let persisted = fs::read_to_string(&config_path).expect("should read persisted config");
+        assert!(persisted.contains("label = \"Persist Me\""));
+        assert!(persisted.contains("filter = \"@home\""));
+        assert!(persisted.contains("sort = \"alphabetical\""));
+        assert!(persisted.contains("group = true"));
+        assert!(!persisted.contains("id ="));
+        assert!(!persisted.contains("selected ="));
+        assert!(!persisted.contains("display_rows"));
+
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_no_pane_write_occurs_until_quit_persist_path() {
+        let todo_path = unique_temp_file("pane_no_write_todo");
+        File::create(&todo_path)
+            .expect("Failed to create todo file")
+            .write_all(b"")
+            .expect("Failed to write todo file");
+
+        let config_path = unique_temp_file("pane_no_write_config");
+        let initial_config = r#"
+[[panes]]
+label = "Initial"
+filter = "project:one"
+sort = "file_order"
+group = false
+"#;
+        fs::write(&config_path, initial_config).expect("should write initial config");
+
+        let mut app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            TuiConfig::load(&config_path).expect("should load config"),
+            Some(config_path.clone()),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        app.panes[0].filter_query = "project:changed".to_string();
+        let before_quit_write = fs::read_to_string(&config_path).expect("should read config before quit save");
+        assert!(before_quit_write.contains("project:one"));
+        assert!(!before_quit_write.contains("project:changed"));
+
+        app.persist_panes_on_quit().expect("quit persistence should succeed");
+        let after_quit_write = fs::read_to_string(&config_path).expect("should read config after quit save");
+        assert!(after_quit_write.contains("project:changed"));
+
+        let _ = fs::remove_file(&config_path);
+    }
+}

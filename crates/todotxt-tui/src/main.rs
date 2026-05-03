@@ -1,8 +1,10 @@
 #![deny(warnings)]
 
 mod app;
+mod components;
 mod config;
 mod event;
+mod state;
 mod theme;
 mod tui;
 
@@ -10,36 +12,62 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
+use clap::Parser;
 use color_eyre::eyre::eyre;
 use crossterm::event::{read, Event};
 use todotxt_core::{FileWatcher, TaskList};
 
 use app::App;
-use config::TuiConfig;
+use config::{resolve_startup_paths, CliPathOverrides, TuiConfig};
 use event::AppEvent;
 use tui::TerminalGuard;
+
+#[derive(Debug, Parser)]
+#[command(name = "todotxt-tui")]
+struct Args {
+    #[arg(short = 't', long = "todo", value_name = "PATH")]
+    todo: Option<std::path::PathBuf>,
+
+    #[arg(short = 'a', long = "archive", value_name = "PATH")]
+    archive: Option<std::path::PathBuf>,
+
+    #[arg(short = 'c', long = "config", value_name = "PATH")]
+    config: Option<std::path::PathBuf>,
+}
 
 fn main() -> color_eyre::Result<()> {
     // D-08: Install color-eyre FIRST.
     // The panic hook it registers restores the terminal before printing the panic message.
     color_eyre::install()?;
 
+    let args = Args::parse();
+
     // D-07: Resolve config path with portable mode support.
     let platform_path = TuiConfig::default_path()
         .ok_or_else(|| eyre!("Cannot determine config directory"))?;
-    let config_path = TuiConfig::resolve_path(&platform_path);
-    let config = TuiConfig::load(&config_path)?;
+    let config_path = if let Some(explicit) = args.config.as_ref() {
+        explicit.clone()
+    } else {
+        TuiConfig::resolve_path(&platform_path)
+    };
+    let mut config = TuiConfig::load(&config_path)?;
 
-    let todo_path = config.todo_file.clone().ok_or_else(|| {
-        eyre!(
-            "todo_file is not set in config.toml ({}).\nHint: add:  todo_file = \"/path/to/todo.txt\"",
-            config_path.display()
-        )
-    })?;
+    let overrides = CliPathOverrides {
+        todo: args.todo.clone(),
+        archive: args.archive.clone(),
+    };
+    let resolved_paths = resolve_startup_paths(&config, &overrides)?;
+    let todo_path = resolved_paths.todo_path;
+
+    config.todo_file = Some(todo_path.clone());
+    config.done_file = Some(resolved_paths.archive_path);
 
     if !todo_path.exists() {
         return Err(eyre!("todo.txt not found at: {}", todo_path.display()));
     }
+
+    std::fs::File::open(&todo_path)
+        .map_err(|e| eyre!("todo.txt is not readable at {}: {}", todo_path.display(), e))?;
 
     // Load initial task list.
     let task_list = TaskList::load(&todo_path)

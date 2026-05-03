@@ -9,6 +9,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use todotxt_core::SortOrder;
 use todotxt_core::resolve_config_path;
 
 /// Serde helper: returns `true` as the default value for normalization toggles.
@@ -32,6 +33,51 @@ pub struct TuiSection {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct TuiPreset {
     pub filter: Option<String>,
+}
+
+/// Persisted sort options for config-defined panes.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PaneSort {
+    Priority,
+    DueDate,
+    Alphabetical,
+    #[default]
+    FileOrder,
+}
+
+impl PaneSort {
+    pub fn to_sort_order(self) -> SortOrder {
+        match self {
+            PaneSort::Priority => SortOrder::Priority,
+            PaneSort::DueDate => SortOrder::DueDate,
+            PaneSort::Alphabetical => SortOrder::Alphabetical,
+            PaneSort::FileOrder => SortOrder::FileOrder,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_sort_order(sort: SortOrder) -> Self {
+        match sort {
+            SortOrder::Priority => PaneSort::Priority,
+            SortOrder::DueDate => PaneSort::DueDate,
+            SortOrder::Alphabetical => PaneSort::Alphabetical,
+            _ => PaneSort::FileOrder,
+        }
+    }
+}
+
+/// Persisted pane blueprint loaded from [[panes]] in config.toml.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+pub struct PaneConfig {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub filter: String,
+    #[serde(default)]
+    pub sort: PaneSort,
+    #[serde(default)]
+    pub group: bool,
 }
 
 /// Phase 9 config fields. Mirrors the CLI's top-level TOML fields exactly.
@@ -69,6 +115,60 @@ pub struct TuiConfig {
     /// Configs without a `[keymap]` section deserialize to an empty map.
     #[serde(default)]
     pub keymap: HashMap<String, String>,
+    /// Config-defined pane blueprints loaded at startup and persisted on quit.
+    #[serde(default)]
+    pub panes: Vec<PaneConfig>,
+}
+
+/// CLI-provided startup path overrides.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CliPathOverrides {
+    pub todo: Option<PathBuf>,
+    pub archive: Option<PathBuf>,
+}
+
+/// Final startup paths after applying config + CLI precedence rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupPaths {
+    pub todo_path: PathBuf,
+    pub archive_path: PathBuf,
+}
+
+fn default_archive_for_todo(todo_path: &Path) -> PathBuf {
+    todo_path
+        .parent()
+        .map(|parent| parent.join("done.txt"))
+        .unwrap_or_else(|| PathBuf::from("done.txt"))
+}
+
+/// Resolve startup todo/archive paths with deterministic precedence.
+///
+/// Precedence:
+/// - `--todo` overrides `todo_file`
+/// - `--archive` overrides `done_file`
+/// - When `--todo` is set and `--archive` is omitted, archive defaults to
+///   `{todo_dir}/done.txt`
+pub fn resolve_startup_paths(config: &TuiConfig, overrides: &CliPathOverrides) -> color_eyre::Result<StartupPaths> {
+    let todo_path = overrides.todo.clone().or_else(|| config.todo_file.clone()).ok_or_else(|| {
+        color_eyre::eyre::eyre!(
+            "todo_file is not set in config.toml. Hint: set todo_file or pass --todo"
+        )
+    })?;
+
+    let archive_path = if let Some(explicit_archive) = overrides.archive.clone() {
+        explicit_archive
+    } else if overrides.todo.is_some() {
+        default_archive_for_todo(&todo_path)
+    } else if let Some(config_archive) = config.done_file.clone() {
+        config_archive
+    } else {
+        default_archive_for_todo(&todo_path)
+    };
+
+    Ok(StartupPaths {
+        todo_path,
+        archive_path,
+    })
 }
 
 impl TuiConfig {
@@ -115,8 +215,48 @@ impl TuiConfig {
         if path.exists() {
             let content = std::fs::read_to_string(path)
                 .map_err(|e| color_eyre::eyre::eyre!("reading config {}: {}", path.display(), e))?;
-            toml::from_str(&content)
-                .map_err(|e| color_eyre::eyre::eyre!("parsing config {}: {}", path.display(), e))
+
+            // Parse through toml::Value so malformed [[panes]] entries can be skipped
+            // without failing startup for the whole config file.
+            let mut root: toml::Value = toml::from_str(&content)
+                .map_err(|e| color_eyre::eyre::eyre!("parsing config {}: {}", path.display(), e))?;
+
+            let panes_value = if let toml::Value::Table(table) = &mut root {
+                table.remove("panes")
+            } else {
+                None
+            };
+
+            let mut config: TuiConfig = root
+                .try_into()
+                .map_err(|e| color_eyre::eyre::eyre!("parsing config {}: {}", path.display(), e))?;
+
+            if let Some(value) = panes_value {
+                match value {
+                    toml::Value::Array(items) => {
+                        config.panes.clear();
+                        for (idx, item) in items.into_iter().enumerate() {
+                            match item.try_into::<PaneConfig>() {
+                                Ok(pane) => config.panes.push(pane),
+                                Err(e) => eprintln!(
+                                    "warning: skipping invalid [[panes]] entry {} in {}: {}",
+                                    idx + 1,
+                                    path.display(),
+                                    e
+                                ),
+                            }
+                        }
+                    }
+                    _ => {
+                        eprintln!(
+                            "warning: expected [[panes]] array-of-tables in {}, got non-array value; ignoring panes",
+                            path.display()
+                        );
+                    }
+                }
+            }
+
+            Ok(config)
         } else {
             Ok(TuiConfig::default())
         }
@@ -242,6 +382,10 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
     m.insert("help".into(),            (KeyCode::Char('?'), KeyModifiers::NONE));
     m.insert("clear_filter".into(),    (KeyCode::Char('0'), KeyModifiers::NONE));
     m.insert("reload".into(),          (KeyCode::Char('.'), KeyModifiers::NONE));
+    // Phase 26 pane lifecycle hotkeys (D-17, D-18, D-20)
+    m.insert("pane_add".into(),        (KeyCode::Char('n'), KeyModifiers::CONTROL));
+    m.insert("pane_delete".into(),     (KeyCode::Char('w'), KeyModifiers::CONTROL));
+    m.insert("pane_hide_toggle".into(), (KeyCode::Char('p'), KeyModifiers::CONTROL));
     m
 }
 
@@ -469,5 +613,39 @@ auto_creation_date = false
             Some(&(KeyCode::Char('x'), KeyModifiers::NONE)),
             "toggle_done should revert to default 'x'"
         );
+    }
+
+    #[test]
+    fn panes_default_to_empty_when_section_absent() {
+        let toml_str = r#"
+todo_file = "tasks.txt"
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert!(config.panes.is_empty(), "panes should default to empty vec when [[panes]] is absent");
+    }
+
+    #[test]
+    fn pane_entry_defaults_missing_fields() {
+        let toml_str = r#"
+[[panes]]
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.panes.len(), 1);
+        let pane = &config.panes[0];
+        assert_eq!(pane.label, "");
+        assert_eq!(pane.filter, "");
+        assert_eq!(pane.sort, PaneSort::FileOrder);
+        assert!(!pane.group);
+    }
+
+    #[test]
+    fn pane_sort_supports_snake_case_values() {
+        let toml_str = r#"
+[[panes]]
+sort = "due_date"
+"#;
+        let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.panes.len(), 1);
+        assert_eq!(config.panes[0].sort, PaneSort::DueDate);
     }
 }

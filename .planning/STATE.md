@@ -1,18 +1,19 @@
+---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Kanban-Style Vertical Panes
-current_phase: not-started
+milestone: v1.5
+milestone_name: Capture Flow + Bulk Safety + Clipboard + Undo
+current_phase: 33
 current_plan: none
-status: 🚧 MILESTONE v1.4 STARTED — defining requirements and roadmap
-milestone_status: in_progress
-milestone_version: v1.4
-next_action: /gsd-plan-phase 24
-last_updated: "2026-04-28T00:00:00.000Z"
-last_activity: 2026-04-28
+status: requirements_and_roadmap_defined
+milestone_status: active
+milestone_version: v1.5
+next_action: /gsd-plan-phase 33
+last_updated: "2026-04-29T23:59:00.000Z"
+last_activity: 2026-04-29
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 0
-  total_plans: 12
+  total_plans: 11
   completed_plans: 0
   percent: 0
 ---
@@ -21,21 +22,35 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-28)
+See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone v1.4 — Kanban-style vertical panes in TUI.
+**Current focus:** v1.5 kickoff — capture friction, bulk safety, clipboard, and undo
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: -
-Status: Defining requirements and roadmap for v1.4.
-Last activity: 2026-04-28
+Phase: Not started (planning complete)
+Plan: none
+Status: v1.5 initialized — requirements and roadmap defined
+Last activity: 2026-04-29 — milestone v1.5 created from user-approved scope
 
 ## Next Step
 
-Run /gsd-plan-phase 24 to start executing the first v1.4 phase.
+Run /gsd-plan-phase 33 to begin implementation for fast capture flow and property pickers (`s` due picker, `i` priority picker).
+
+## Deferred Items
+
+Items acknowledged and deferred at milestone close on 2026-04-29:
+
+| Category | Item | Status |
+| -------- | ---- | ------ |
+| verification_gap | Phase 19: 19-VERIFICATION.md | human_needed |
+| verification_gap | Phase 20: 20-VERIFICATION.md | human_needed |
+| verification_gap | Phase 21: 21-VERIFICATION.md | human_needed |
+| verification_gap | Phase 22: 22-VERIFICATION.md | human_needed |
+| seed | SEED-005: Add unit tests for Phase 22 manual-only validation gaps (mode transitions + filter mutations) | dormant |
+
+Known deferred items at close: 5 (verification gaps from v1.3 phases 19-22, dormant seed SEED-005)
 
 ## Pending Decisions
 

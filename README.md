@@ -111,6 +111,21 @@ Each command exits `0` on success, `1` if a task ID is not found, and `2` on val
 | `--no-color` | Disable ANSI color output |
 | `--quiet` | Suppress non-error output |
 
+### TUI startup path flags (v1.4)
+
+The `todotxt-tui` binary supports startup path overrides:
+
+| Flag | Description |
+|------|-------------|
+| `--todo <PATH>` | Override the todo file for this run |
+| `--archive <PATH>` | Override the archive (done) file for this run |
+| `--config <PATH>` | Load configuration from a specific config file |
+
+Path resolution semantics:
+
+- CLI flags take precedence over config values.
+- If `--todo` is provided and `--archive` is omitted, archive defaults to `done.txt` in the same directory as the selected todo path.
+
 ---
 
 ## 4. JSON Schema Documentation
@@ -213,7 +228,35 @@ preset = "default"     # Output preset: default | minimal | compact
 
 [behavior]
 auto_creation_date = false   # Prepend YYYY-MM-DD to new tasks automatically
+
+[tui]
+theme = "default"           # Optional: "default" or "light"
+
+[[panes]]
+label = "Work"
+filter = "project:work"
+sort = "priority"           # file_order | priority | due_date | alphabetical
+group = true
+
+[[panes]]
+label = "Today"
+filter = "due:today"
+sort = "due_date"
+group = false
 ```
+
+### Pane config (`[[panes]]`) (v1.4)
+
+Each `[[panes]]` entry is optional and supports these fields:
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `label` | string | empty string | UI may substitute a generated pane title when empty |
+| `filter` | string | empty string | Initial pane-scoped filter query |
+| `sort` | string | `file_order` | Allowed values: `file_order`, `priority`, `due_date`, `alphabetical` |
+| `group` | bool | `false` | Enables grouped rendering for that pane |
+
+Invalid pane entries are skipped safely with a warning while other panes continue to load.
 
 ---
 

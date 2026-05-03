@@ -6,71 +6,64 @@
 - ✅ v1.1 TUI Interface — shipped 2026-04-23 (archive: .planning/milestones/v1.1-ROADMAP.md)
 - ✅ v1.2 Compatibility + UX Alignment — shipped 2026-04-24 (archive: .planning/milestones/v1.2-ROADMAP.md)
 - ✅ v1.3 Feature/Hotkey Parity with todotxt.net — shipped 2026-04-28 (archive: .planning/milestones/v1.3-ROADMAP.md)
-- 🚧 v1.4 Kanban-Style Vertical Panes — active
+- ✅ v1.4 Kanban-Style Vertical Panes — shipped 2026-04-29 (archive: .planning/milestones/v1.4-ROADMAP.md)
+- 🚧 v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
 
 ## Active Milestone
 
-v1.4 Kanban-Style Vertical Panes
+v1.5 Capture Flow + Bulk Safety + Clipboard + Undo — active
 
-## v1.4 Scope
+## v1.5 Scope
 
-- Multi-pane Kanban-style vertical layout in the TUI
-- Per-pane sort/group/filter state and independent list view behavior
-- Pane lifecycle hotkeys for creation and deletion
-- One-key toggle to hide/show panes and restore default single-pane view
-- Config-defined panes in config.toml with per-pane defaults for sort/group/filter
-- CLI overrides for todo/archive/config file locations with deterministic fallback behavior
+- One fast capture flow with predictable keybindings and minimal mode switching
+- Quick context/project setters from normal mode (`@` and `+`) for active/selected tasks
+- Autocomplete pickers for `@`/`+` tokens with match list, arrow navigation, and tab completion
+- Date autocomplete for partial `due:`/`t:` tokens with month-valid day suggestions and weekday labels
+- Safe bulk actions with affected-count preview and explicit cancel behavior
+- Basic clipboard workflow: cut/copy selected tasks and paste to create new tasks
+- New-task entry supports paste to enable fast duplicate-and-tweak workflows
+- Short-horizon undo for destructive/high-impact actions
+- Preserve todo.txt-native metadata model while supporting hierarchical token conventions
+- Keep existing view flexibility (filter/sort/group) consistent across these flows
 
 ## Planned Phases
 
-- [x] **Phase 24: Pane Model + Layout Foundation**
-	- Introduce pane data model and active-pane focus mechanics
-	- Render vertical pane containers with robust fallback to single-pane view
-	- **Requirements:** PANE-01, PANE-02, VIEW-01
-	- **Plans:** 3 plans
-	- Plans:
-		- [x] 24-01-PLAN.md — Pane state model and focus selection behavior
-		- [x] 24-02-PLAN.md — Vertical pane layout rendering in TUI task view
-		- [x] 24-03-PLAN.md — Single-pane fallback path and layout safety guards
+- [ ] **Phase 33: Fast Capture + Property Pickers (`s` due, `i` priority)**
+  - Keep add/edit flows fast with predictable key behavior and minimal mode switching
+  - Add due-date and priority pickers with overwrite semantics for active or selected tasks
+  - Add quick context/project setters triggered by `@` and `+` in normal mode
+  - Add autocomplete match list with arrow-key navigation and tab-to-complete for context/project setters
+  - Add date autocomplete for partial `due:`/`t:` inputs, including valid day options and weekday labels, and align `s` picker suggestions
+  - **Requirements:** CAP-01, CAP-02, CAP-03, CAP-04, TAG-01, TAG-02, TAG-04, TAG-05, DATE-01, DATE-02, DATE-03, DATE-04
+  - **Plans:** 2 plans
+    - [ ] 33-01-PLAN.md — Date autocomplete and due-date picker
+    - [ ] 33-02-PLAN.md — Quick context/project setters with autocomplete
 
-- [ ] **Phase 25: Per-Pane Query Behavior (Sort/Group/Filter)**
-	- Track sort/group/filter independently for each pane
-	- Route existing query hotkeys to the active pane context
-	- **Requirements:** PANE-03, PANE-04
-	- **Plans:** 3 plans
-	- Plans:
-		- [ ] 25-01-PLAN.md — Pane-scoped filter query and preset application
-		- [ ] 25-02-PLAN.md — Pane-scoped sort/group state and rendering status
-		- [ ] 25-03-PLAN.md — Navigation and action safety across pane boundaries
+- [ ] **Phase 34: Bulk Action Safety + Metadata Preservation**
+  - Add affected-count preview and cancel path for high-impact actions
+  - Preserve non-target metadata, avoid duplicate tag tokens, and keep stable selection targeting in bulk operations
+  - **Requirements:** CAP-05, TAG-03, BULK-01, BULK-02, BULK-03
+  - **Plans:** 2 plans
 
-- [ ] **Phase 26: Pane Management + Quick Hide/Show**
-	- Add hotkeys for pane creation and deletion
-	- Add one-key global pane hide/show that restores default single-pane view
-	- **Requirements:** PANE-05, VIEW-02
-	- **Plans:** 3 plans
-	- Plans:
-		- [ ] 26-01-PLAN.md — Create/delete pane hotkeys and guardrails
-		- [ ] 26-02-PLAN.md — Global pane visibility toggle and restore semantics
-		- [ ] 26-03-PLAN.md — Help/status updates for pane controls and discoverability
+- [ ] **Phase 35: Basic Clipboard Workflows**
+  - Implement cut/copy selected task text and paste-as-new-task behavior
+  - Support paste during new-task entry (`n`) for duplicate-and-tweak workflows
+  - **Requirements:** CLIP-01, CLIP-02, CLIP-03, CLIP-04
+  - **Plans:** 2 plans
 
-- [ ] **Phase 27: Config-Defined Panes + Validation + Ship Readiness**
-	- Load pane definitions from config.toml with per-pane sort/group/filter defaults
-	- Add CLI file-path override flags and archive path defaulting for alternate todo.txt paths
-	- Validate config/path fallback behavior and ship-readiness docs/tests
-	- **Requirements:** CFG-01, CFG-02, CFG-03, PATH-01, PATH-02, PATH-03
-	- **Plans:** 3 plans
-	- Plans:
-		- [ ] 27-01-PLAN.md — Config schema updates for panes and CLI path override inputs
-		- [ ] 27-02-PLAN.md — CLI override resolution rules (todo/archive/config) and fallback behavior
-		- [ ] 27-03-PLAN.md — Verification, validation, and milestone close-out
+- [ ] **Phase 36: Recovery Path (Short-Horizon Undo)**
+  - Implement lightweight undo for destructive/high-impact actions
+  - Provide clear undo feedback and safe behavior when undo history is empty
+  - **Requirements:** UNDO-01, UNDO-02, UNDO-03
+  - **Plans:** 2 plans
+
+- [ ] **Phase 37: Metadata Flexibility + View Continuity**
+  - Keep metadata todo.txt-native while supporting hierarchical tag conventions
+  - Validate filter/sort/group behavior remains predictable across capture/bulk/clipboard/undo flows
+  - **Requirements:** META-01, META-02, VIEW-03
+  - **Plans:** 2 plans
 
 ## Backlog
 
 - GUI interface (native desktop)
 - CI/CD release pipeline and package distribution
-
-
-
-
-
-
