@@ -44,39 +44,59 @@ Built in Rust. Ships as a single static binary with no runtime dependencies.
 **Linux / macOS:**
 
 ```sh
+# TUI only (default)
 curl -fsSL https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.sh | sh
+
+# CLI only
+curl -fsSL https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.sh | sh -s -- --cli
+
+# Both TUI and CLI
+curl -fsSL https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.sh | sh -s -- --both
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
+# TUI only (default)
 irm https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.ps1 | iex
+
+# CLI only (save script first to pass flags)
+irm https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 --cli
+
+# Both TUI and CLI (using env var — works with piped iex)
+$env:INSTALL='both'; irm https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.ps1 | iex
 ```
 
-Both scripts download the correct binary for your platform, install it to a directory on
+All scripts download the correct binary for your platform, install to a directory on
 your `PATH`, and print the alias setup snippet to add to your shell profile.
 
 ### Manual download
 
-Go to the [Releases](../../releases) page and grab the file for your platform:
+Go to the [Releases](../../releases) page and grab the files for your platform:
 
-| Platform | File | Notes |
-|----------|------|-------|
-| Linux x86_64 | `todotxt-tui-linux-x86_64` | Fully static (musl); no libc dependency |
-| macOS (Apple Silicon + Intel) | `todotxt-tui-macos-universal` | Universal binary; runs natively on arm64 and x86_64 |
-| Windows x86_64 | `todotxt-tui-windows-x86_64.exe` | Static CRT; no VC++ redistributable required |
+| Platform | Binary | File |
+|----------|--------|------|
+| Linux x86_64 | TUI | `todotxt-tui-linux-x86_64` (fully static, musl) |
+| Linux x86_64 | CLI | `todotxt-linux-x86_64` (fully static, musl) |
+| macOS (Apple Silicon + Intel) | TUI | `todotxt-tui-macos-universal` (universal binary) |
+| macOS (Apple Silicon + Intel) | CLI | `todotxt-macos-universal` (universal binary) |
+| Windows x86_64 | TUI | `todotxt-tui-windows-x86_64.exe` (static CRT) |
+| Windows x86_64 | CLI | `todotxt-windows-x86_64.exe` (static CRT) |
 
 **Linux / macOS:**
 
 ```sh
-chmod +x todotxt-tui-linux-x86_64
+chmod +x todotxt-tui-linux-x86_64 todotxt-linux-x86_64
 sudo mv todotxt-tui-linux-x86_64 /usr/local/bin/todotxt-tui
+sudo mv todotxt-linux-x86_64 /usr/local/bin/todotxt
 ```
 
 **Windows:**
 
 ```powershell
 Move-Item todotxt-tui-windows-x86_64.exe "$env:USERPROFILE\bin\todotxt-tui.exe"
+Move-Item todotxt-windows-x86_64.exe     "$env:USERPROFILE\bin\todotxt.exe"
 ```
 
 ---

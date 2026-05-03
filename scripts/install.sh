@@ -1,19 +1,40 @@
 #!/usr/bin/env sh
-# install.sh — Download and install todotxt-tui for Linux or macOS.
+# install.sh — Download and install todotxt-tui (TUI) and/or todotxt (CLI) for Linux/macOS.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.sh | sh
-#   # or clone the repo and run:
-#   sh scripts/install.sh
+#   curl -fsSL ... | sh -s -- --cli    # CLI only
+#   curl -fsSL ... | sh -s -- --both   # TUI + CLI
+#   # or clone the repo and run directly:
+#   sh scripts/install.sh [--tui|--cli|--both]
+#
+# Options:
+#   --tui   Install todotxt-tui only (default)
+#   --cli   Install todotxt only
+#   --both  Install both todotxt-tui and todotxt
 #
 # Environment overrides:
-#   INSTALL_DIR   Installation directory (default: /usr/local/bin, or ~/bin if not writable)
-#   RELEASE_TAG   Specific release tag to install (default: latest)
+#   INSTALL_DIR   Installation directory (default: /usr/local/bin, or ~/.local/bin)
+#   RELEASE_TAG   Specific release tag (default: latest)
 
 set -e
 
 REPO="radioflyer28/todotxt.rs"
-BINARY_NAME="todotxt-tui"
+
+# ── Parse arguments ───────────────────────────────────────────────────────────
+
+INSTALL_TUI=1
+INSTALL_CLI=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --tui)  INSTALL_TUI=1; INSTALL_CLI=0 ;;
+        --cli)  INSTALL_TUI=0; INSTALL_CLI=1 ;;
+        --both) INSTALL_TUI=1; INSTALL_CLI=1 ;;
+        *) echo "Unknown option: $1. Use --tui (default), --cli, or --both." >&2; exit 1 ;;
+    esac
+    shift
+done
 
 # ── Detect OS and architecture ────────────────────────────────────────────────
 
@@ -21,86 +42,98 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "$OS" in
-  Linux)
-    case "$ARCH" in
-      x86_64) ASSET="${BINARY_NAME}-linux-x86_64" ;;
-      *)
-        echo "Unsupported Linux architecture: $ARCH" >&2
-        echo "Pre-built binaries are available for x86_64 only." >&2
-        echo "Build from source: https://github.com/${REPO}#10-building-from-source" >&2
+    Linux)
+        case "$ARCH" in
+            x86_64) SUFFIX="linux-x86_64" ;;
+            *)
+                echo "Unsupported Linux architecture: $ARCH" >&2
+                echo "Pre-built binaries are available for x86_64 only." >&2
+                echo "Build from source: https://github.com/${REPO}#10-building-from-source" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    Darwin)
+        # macOS ships universal binaries covering both arm64 and x86_64.
+        SUFFIX="macos-universal"
+        ;;
+    *)
+        echo "Unsupported OS: $OS" >&2
+        echo "For Windows, use: irm https://raw.githubusercontent.com/${REPO}/master/scripts/install.ps1 | iex" >&2
         exit 1
         ;;
-    esac
-    ;;
-  Darwin)
-    # macOS ships a universal binary covering both arm64 and x86_64.
-    ASSET="${BINARY_NAME}-macos-universal"
-    ;;
-  *)
-    echo "Unsupported OS: $OS" >&2
-    echo "For Windows, use: irm https://raw.githubusercontent.com/${REPO}/master/scripts/install.ps1 | iex" >&2
-    exit 1
-    ;;
 esac
 
 # ── Resolve install directory ─────────────────────────────────────────────────
 
 if [ -n "$INSTALL_DIR" ]; then
-  DEST_DIR="$INSTALL_DIR"
+    DEST_DIR="$INSTALL_DIR"
 elif [ -w "/usr/local/bin" ]; then
-  DEST_DIR="/usr/local/bin"
+    DEST_DIR="/usr/local/bin"
 else
-  DEST_DIR="$HOME/.local/bin"
-  mkdir -p "$DEST_DIR"
+    DEST_DIR="$HOME/.local/bin"
+    mkdir -p "$DEST_DIR"
 fi
 
-DEST="$DEST_DIR/$BINARY_NAME"
+# ── Download helper ───────────────────────────────────────────────────────────
 
-# ── Resolve download URL ──────────────────────────────────────────────────────
+download_binary() {
+    _asset="$1"
+    _dest="$2"
 
-if [ -n "$RELEASE_TAG" ]; then
-  URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
-else
-  URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+    if [ -n "$RELEASE_TAG" ]; then
+        _url="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${_asset}"
+    else
+        _url="https://github.com/${REPO}/releases/latest/download/${_asset}"
+    fi
+
+    echo "Downloading ${_asset} ..."
+    if command -v curl > /dev/null 2>&1; then
+        curl -fsSL --progress-bar -o "$_dest" "$_url"
+    elif command -v wget > /dev/null 2>&1; then
+        wget -q --show-progress -O "$_dest" "$_url"
+    else
+        echo "Error: curl or wget is required." >&2
+        exit 1
+    fi
+
+    chmod +x "$_dest"
+    echo "Installed: $_dest"
+    echo "Version:   $($_dest --version 2>/dev/null || echo 'unknown')"
+    echo ""
+}
+
+# ── Install requested binaries ────────────────────────────────────────────────
+
+if [ "$INSTALL_TUI" = "1" ]; then
+    download_binary "todotxt-tui-${SUFFIX}" "$DEST_DIR/todotxt-tui"
 fi
 
-# ── Download ──────────────────────────────────────────────────────────────────
-
-echo "Downloading ${ASSET} ..."
-
-if command -v curl > /dev/null 2>&1; then
-  curl -fsSL --progress-bar -o "$DEST" "$URL"
-elif command -v wget > /dev/null 2>&1; then
-  wget -q --show-progress -O "$DEST" "$URL"
-else
-  echo "Error: curl or wget is required." >&2
-  exit 1
+if [ "$INSTALL_CLI" = "1" ]; then
+    download_binary "todotxt-${SUFFIX}" "$DEST_DIR/todotxt"
 fi
-
-chmod +x "$DEST"
-
-echo ""
-echo "Installed: $DEST"
-echo "Version:   $($DEST --version 2>/dev/null || echo 'unknown')"
 
 # ── PATH check ────────────────────────────────────────────────────────────────
 
 case ":$PATH:" in
-  *":$DEST_DIR:"*) ;;
-  *)
-    echo ""
-    echo "WARNING: $DEST_DIR is not on your PATH."
-    echo "Add the following to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
-    echo ""
-    echo "  export PATH=\"\$PATH:$DEST_DIR\""
-    ;;
+    *":$DEST_DIR:"*) ;;
+    *)
+        echo "WARNING: $DEST_DIR is not on your PATH."
+        echo "Add the following to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
+        echo ""
+        echo "  export PATH=\"\$PATH:$DEST_DIR\""
+        echo ""
+        ;;
 esac
 
 # ── Alias suggestion ──────────────────────────────────────────────────────────
 
+echo "Tip: add short aliases to your shell profile:"
 echo ""
-echo "Tip: add a short alias to your shell profile:"
+if [ "$INSTALL_TUI" = "1" ]; then
+    echo "  alias todo='todotxt-tui'"
+fi
+if [ "$INSTALL_CLI" = "1" ]; then
+    echo "  alias td='todotxt'"
+fi
 echo ""
-echo "  alias todo='todotxt-tui'"
-echo ""
-echo "Then just run: todo"

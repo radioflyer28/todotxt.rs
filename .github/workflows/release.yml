@@ -23,18 +23,21 @@ jobs:
       - name: Install musl toolchain
         run: sudo apt-get install -y --no-install-recommends musl-tools
 
-      - name: Build static release binary
-        run: cargo build --release -p todotxt-tui --target x86_64-unknown-linux-musl
+      - name: Build static release binaries
+        run: |
+          cargo build --release -p todotxt-tui --target x86_64-unknown-linux-musl
+          cargo build --release -p todotxt-cli --target x86_64-unknown-linux-musl
 
-      - name: Prepare artifact
+      - name: Prepare artifacts
         run: |
           mkdir -p dist
           cp target/x86_64-unknown-linux-musl/release/todotxt-tui dist/todotxt-tui-linux-x86_64
+          cp target/x86_64-unknown-linux-musl/release/todotxt dist/todotxt-linux-x86_64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: todotxt-tui-linux-x86_64
-          path: dist/todotxt-tui-linux-x86_64
+          name: linux-x86_64
+          path: dist/
 
   build-macos:
     name: Build (macOS universal)
@@ -51,23 +54,31 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Build arm64
-        run: cargo build --release -p todotxt-tui --target aarch64-apple-darwin
+        run: |
+          cargo build --release -p todotxt-tui --target aarch64-apple-darwin
+          cargo build --release -p todotxt-cli --target aarch64-apple-darwin
 
       - name: Build x86_64
-        run: cargo build --release -p todotxt-tui --target x86_64-apple-darwin
+        run: |
+          cargo build --release -p todotxt-tui --target x86_64-apple-darwin
+          cargo build --release -p todotxt-cli --target x86_64-apple-darwin
 
-      - name: Create universal binary
+      - name: Create universal binaries
         run: |
           mkdir -p dist
           lipo -create \
             target/aarch64-apple-darwin/release/todotxt-tui \
             target/x86_64-apple-darwin/release/todotxt-tui \
             -output dist/todotxt-tui-macos-universal
+          lipo -create \
+            target/aarch64-apple-darwin/release/todotxt \
+            target/x86_64-apple-darwin/release/todotxt \
+            -output dist/todotxt-macos-universal
 
       - uses: actions/upload-artifact@v4
         with:
-          name: todotxt-tui-macos-universal
-          path: dist/todotxt-tui-macos-universal
+          name: macos-universal
+          path: dist/
 
   build-windows:
     name: Build (Windows x86_64 — static CRT)
@@ -80,18 +91,21 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build static release binary
-        run: cargo build --release -p todotxt-tui
+      - name: Build static release binaries
+        run: |
+          cargo build --release -p todotxt-tui
+          cargo build --release -p todotxt-cli
 
-      - name: Prepare artifact
+      - name: Prepare artifacts
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item target\release\todotxt-tui.exe dist\todotxt-tui-windows-x86_64.exe
+          Copy-Item target\release\todotxt.exe dist\todotxt-windows-x86_64.exe
 
       - uses: actions/upload-artifact@v4
         with:
-          name: todotxt-tui-windows-x86_64
-          path: dist/todotxt-tui-windows-x86_64.exe
+          name: windows-x86_64
+          path: dist/
 
   release:
     name: Create GitHub Release
