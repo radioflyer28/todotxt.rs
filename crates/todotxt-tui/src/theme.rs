@@ -19,6 +19,7 @@ pub enum Theme {
 impl Theme {
     /// Parse a theme name from config. Returns `Theme::Default` for `""`, `"default"`,
     /// `"dark"`, or any unrecognized value — never panics (D-03 in 13-CONTEXT.md).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         let normalized = s.trim().to_ascii_lowercase();
         match normalized.as_str() {

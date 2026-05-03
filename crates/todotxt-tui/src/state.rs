@@ -234,6 +234,12 @@ pub struct PriorityPickerState {
     pub focused: bool,
 }
 
+impl Default for PriorityPickerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PriorityPickerState {
     pub fn new() -> Self {
         let mut items: Vec<String> = ('A'..='Z').map(|c| c.to_string()).collect();
@@ -294,7 +300,7 @@ pub fn generate_date_suggestions(month_year: &str) -> Result<Vec<String>, String
     let month = month_str.parse::<u32>()
         .map_err(|_| "Invalid month".to_string())?;
 
-    if month < 1 || month > 12 {
+    if !(1..=12).contains(&month) {
         return Ok(Vec::new());
     }
 

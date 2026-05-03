@@ -43,7 +43,7 @@ impl PaneList {
     }
 
     /// Render a single pane into the given area
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::too_many_arguments)]
     pub fn render(
         frame: &mut Frame,
         area: Rect,
@@ -167,7 +167,7 @@ impl PaneList {
                                 // Completed tasks: DIM only, no color (D-01, D-06).
                                 Style::default().add_modifier(Modifier::DIM)
                             } else if show_deferred
-                                && t.threshold_date.map_or(false, |d| d > Local::now().date_naive())
+                                && t.threshold_date.is_some_and(|d| d > Local::now().date_naive())
                             {
                                 Style::default().add_modifier(Modifier::DIM)
                             } else if t.priority == Some('A') {

@@ -244,7 +244,7 @@ impl App {
     /// or may not report an implicit SHIFT modifier for uppercase input, so we accept either
     /// no modifier or SHIFT-only in that case.
     fn key_is_action(&self, key: crossterm::event::KeyEvent, action: &str) -> bool {
-        self.effective_keymap.get(action).map_or(false, |(code, mods)| {
+        self.effective_keymap.get(action).is_some_and(|(code, mods)| {
             if mods.is_empty() {
                 if key.code != *code {
                     return false;
@@ -348,8 +348,6 @@ impl App {
         }
         let focus_index = if self.active_pane > 0 {
             self.active_pane - 1
-        } else if self.panes.len() > 1 {
-            0
         } else {
             0
         };
@@ -1874,7 +1872,7 @@ impl App {
         
         // Fall back to token autocomplete (@/+)
         // Find last @ or + in the line.
-        let trigger_pos = line.rfind(|c: char| c == '@' || c == '+');
+        let trigger_pos = line.rfind(['@', '+']);
         if let Some(pos) = trigger_pos {
             let trigger = line.chars().nth(pos).unwrap();
             let prefix = &line[pos + 1..];
@@ -1920,14 +1918,14 @@ impl App {
                 if after_pattern.len() >= 7 {
                     let candidate = &after_pattern[..7]; // First 7 chars (YYYY-MM)
                     let parts: Vec<&str> = candidate.split('-').collect();
-                    if parts.len() == 2 {
-                        if parts[0].len() == 4 && parts[1].len() == 2 {
-                            if parts[0].chars().all(|c| c.is_ascii_digit()) &&
-                               parts[1].chars().all(|c| c.is_ascii_digit()) {
-                                // Valid YYYY-MM pattern
-                                return Some((candidate.to_string(), pos));
-                            }
-                        }
+                    if parts.len() == 2
+                        && parts[0].len() == 4
+                        && parts[1].len() == 2
+                        && parts[0].chars().all(|c| c.is_ascii_digit())
+                        && parts[1].chars().all(|c| c.is_ascii_digit())
+                    {
+                        // Valid YYYY-MM pattern
+                        return Some((candidate.to_string(), pos));
                     }
                 }
             }
@@ -2685,6 +2683,7 @@ impl App {
         };
         // Replace selection with only the tasks inside the [lo, hi] display range.
         self.selected_tasks.clear();
+        #[allow(clippy::needless_range_loop)]
         for row in lo..=hi {
             if let DisplayRow::Task(idx) = rows[row] {
                 self.selected_tasks.insert(idx);
@@ -3024,7 +3023,7 @@ impl App {
                             // Completed tasks: DIM only, no color (D-01, D-06).
                             Style::default().add_modifier(Modifier::DIM)
                         } else if self.show_deferred
-                            && t.threshold_date.map_or(false, |d| d > Local::now().date_naive())
+                            && t.threshold_date.is_some_and(|d| d > Local::now().date_naive())
                         {
                             Style::default().add_modifier(Modifier::DIM)
                         } else if t.priority == Some('A') {
@@ -3617,7 +3616,7 @@ impl App {
         };
 
         let suggestions_height = if dp.suggestions.is_empty() { 1 } else { dp.suggestions.len() as u16 };
-        let popup_height = suggestions_height.min(10).max(3).min(footer_area.y);
+        let popup_height = suggestions_height.clamp(3, 10).min(footer_area.y);
         if popup_height == 0 { return; }
 
         let title = if dp.day_input.is_empty() {

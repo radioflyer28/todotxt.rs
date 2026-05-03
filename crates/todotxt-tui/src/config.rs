@@ -346,7 +346,7 @@ pub(crate) fn parse_key_chord(s: &str) -> Option<(KeyCode, KeyModifiers)> {
         // F-keys: "f1"–"f12"
         s if s.starts_with('f') && s.len() > 1 => {
             if let Ok(n) = s[1..].parse::<u8>() {
-                if n >= 1 && n <= 12 {
+                if (1..=12).contains(&n) {
                     KeyCode::F(n)
                 } else {
                     return None;
