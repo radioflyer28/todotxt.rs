@@ -1,0 +1,28 @@
+[package]
+name = "todotxt-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "todotxt"
+path = "src/main.rs"
+
+[dependencies]
+todotxt-core = { path = "../todotxt-core" }
+clap = { workspace = true }
+clap_complete = { workspace = true }
+anyhow = { workspace = true }
+owo-colors = { workspace = true }
+comfy-table = { workspace = true }
+directories = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tempfile.workspace = true
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+assert_fs = { workspace = true }
+predicates = { workspace = true }
+tempfile = { workspace = true }
