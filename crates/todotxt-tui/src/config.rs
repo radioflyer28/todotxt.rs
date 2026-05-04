@@ -379,6 +379,7 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
     m.insert("bulk_delete".into(),     (KeyCode::Char('D'), KeyModifiers::NONE));
     m.insert("bulk_append".into(),     (KeyCode::Char('T'), KeyModifiers::NONE));
     m.insert("toggle_done".into(),     (KeyCode::Char('x'), KeyModifiers::NONE));
+    m.insert("archive".into(),         (KeyCode::Char('A'), KeyModifiers::NONE));
     m.insert("filter_open".into(),     (KeyCode::Char('f'), KeyModifiers::NONE));
     m.insert("filter_define".into(),   (KeyCode::Char('F'), KeyModifiers::NONE));
     m.insert("filter_toggle".into(),   (KeyCode::Char('f'), KeyModifiers::CONTROL));

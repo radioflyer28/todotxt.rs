@@ -34,6 +34,8 @@ pub enum AppMode {
     Editing { original_idx: usize },
     PaneLabelEditing { pane_idx: usize },
     DeleteConfirm,
+    /// Archive-confirm overlay: shows completed count before writing done.txt (Phase 39, ARCH-01/02/03).
+    ArchiveConfirm,
     Filtering,
     /// F-key preset definition panel (D-01 in 16-CONTEXT.md).
     FilterDefining,
@@ -614,6 +616,7 @@ impl App {
                     }
                     AppMode::AppendText => self.handle_append_text_key(key)?,
                     AppMode::DeleteConfirm => self.handle_delete_confirm_key(key)?,
+                    AppMode::ArchiveConfirm => self.handle_archive_confirm_key(key)?,
                     AppMode::Filtering => self.handle_filtering_key(key)?,
                     AppMode::FilterDefining => self.handle_filter_defining_key(key)?,
                     AppMode::KeymapErrors => self.handle_keymap_errors_key(key)?,
@@ -830,6 +833,15 @@ impl App {
 
             _ if display_count > 0 && self.key_is_action(key, "toggle_done") => {
                 self.pane_toggle_done();
+            }
+
+            _ if self.key_is_action(key, "archive") => {
+                let count = self.task_list.tasks().iter().filter(|t| t.completed).count();
+                if count > 0 {
+                    self.mode = AppMode::ArchiveConfirm;
+                } else {
+                    self.push_runtime_warning("No completed tasks to archive.");
+                }
             }
 
             _ if self.key_is_action(key, "add") => {
@@ -2037,6 +2049,122 @@ impl App {
         Ok(())
     }
 
+    // ── Archive confirm key handler (Phase 39, ARCH-01/02/03) ──────────────────
+
+    /// Return the path to done.txt: from config if set, otherwise sibling of todo_path.
+    fn archive_path(&self) -> PathBuf {
+        self.config
+            .done_file
+            .clone()
+            .unwrap_or_else(|| {
+                self.todo_path
+                    .parent()
+                    .unwrap_or(std::path::Path::new("."))
+                    .join("done.txt")
+            })
+    }
+
+    /// Atomically append completed tasks to done.txt (write-first), then remove them from
+    /// task_list. Pushes a single undo entry before any mutation so Ctrl+Z restores todo.txt.
+    /// Returns the number of tasks archived, or an error if the file write fails.
+    fn archive_tasks(&mut self) -> color_eyre::Result<usize> {
+        use std::io::Write;
+        let done_path = self.archive_path();
+
+        let completed: Vec<_> = self
+            .task_list
+            .tasks()
+            .iter()
+            .filter(|t| t.completed)
+            .cloned()
+            .collect();
+        let count = completed.len();
+        if count == 0 {
+            return Ok(0);
+        }
+
+        // Ensure done.txt parent exists.
+        if let Some(parent) = done_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Build done.txt content: existing + newly archived tasks.
+        let existing = if done_path.exists() {
+            std::fs::read_to_string(&done_path)?
+        } else {
+            String::new()
+        };
+        let appended = completed
+            .iter()
+            .map(|t| t.to_raw())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let new_done = if existing.is_empty() {
+            format!("{appended}\n")
+        } else {
+            let base = existing.trim_end_matches('\n');
+            format!("{base}\n{appended}\n")
+        };
+
+        // Write done.txt atomically (write-first: crash safety — done.txt written before
+        // task_list is mutated so no data loss on crash between the two writes).
+        let done_parent = done_path.parent().unwrap_or(std::path::Path::new("."));
+        let mut temp_done = tempfile::NamedTempFile::new_in(done_parent)?;
+        temp_done.write_all(new_done.as_bytes())?;
+        temp_done.flush()?;
+        temp_done.as_file().sync_all()?;
+        temp_done
+            .persist(&done_path)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to write done.txt: {}", e.error))?;
+
+        // Only after done.txt succeeds: snapshot undo state and remove completed from task_list.
+        self.push_undo_entry();
+        let mut completed_indices: Vec<usize> = self
+            .task_list
+            .tasks()
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.completed)
+            .map(|(i, _)| i)
+            .collect();
+        // Delete in descending order to avoid index shift.
+        completed_indices.sort_unstable_by(|a, b| b.cmp(a));
+        for idx in completed_indices {
+            self.task_list
+                .delete(idx)
+                .map_err(|e| color_eyre::eyre::eyre!("Failed to delete archived task {}: {}", idx, e))?;
+        }
+
+        self.selected_tasks.clear();
+        self.rebuild_all_panes();
+        self.rebuild_and_reanchor();
+        Ok(count)
+    }
+
+    fn handle_archive_confirm_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> color_eyre::Result<()> {
+        if key.code == KeyCode::Char('y') {
+            match self.archive_tasks() {
+                Ok(count) if count > 0 => {
+                    self.runtime_warnings.push(format!(
+                        "Archived {} task(s)  (Ctrl+Z to restore to todo.txt)",
+                        count
+                    ));
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    self.runtime_warnings.push(format!("Archive failed: {e}"));
+                }
+            }
+        }
+        // Any key returns to Normal.
+        self.mode = AppMode::Normal;
+        self.apply_pending_reload()?;
+        Ok(())
+    }
+
     // ── Append text confirm key handler (count preview, D-06) ──────────────────
 
     fn handle_append_text_confirm_key(
@@ -2876,6 +3004,14 @@ impl App {
                 self.render_delete_confirm(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
+            AppMode::ArchiveConfirm => {
+                // Three-row split: task list | archive confirm panel | status bar (Phase 39, ARCH-01).
+                let chunks =
+                    Layout::vertical([Min(0), Length(1), Length(1)]).split(frame.area());
+                self.render_panes(frame, chunks[0]);
+                self.render_archive_confirm(frame, chunks[1]);
+                self.render_status_bar(frame, chunks[2]);
+            }
             AppMode::Adding | AppMode::Editing { .. } => {
                 // Two-row split: task list | inline editor in footer row (D-02).
                 let chunks =
@@ -3476,6 +3612,18 @@ impl App {
             Block::bordered().title(" Error Log — Esc/q: close "),
         );
         frame.render_widget(list, popup_area);
+    }
+
+    /// Render the one-row archive confirmation panel (Phase 39, ARCH-01/02).
+    fn render_archive_confirm(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        use ratatui::text::{Line, Span};
+        use ratatui::widgets::Paragraph;
+        let count = self.task_list.tasks().iter().filter(|t| t.completed).count();
+        let text = format!(
+            "Archive {} completed task(s) to done.txt?  y=confirm  any=cancel",
+            count
+        );
+        frame.render_widget(Paragraph::new(Line::from(Span::raw(text))), area);
     }
 
     /// Render the one-row delete confirmation panel (D-06, D-07).
@@ -5385,6 +5533,114 @@ mod tests {
         // Undo via Ctrl+Z
         press_ctrl_key(&mut app, KeyCode::Char('z'));
         assert_eq!(app.task_list.tasks()[0].completed, was_completed, "Ctrl+Z should restore original completion state");
+    }
+
+    // ── Phase 39 Plan 01: Archive workflow tests ──────────────────────────────
+
+    #[allow(dead_code)]
+    fn make_app_with_done_file(task_lines: &[&str]) -> (App, NamedTempFile, NamedTempFile) {
+        let mut todo_file = NamedTempFile::new().expect("todo tempfile");
+        for line in task_lines {
+            writeln!(todo_file, "{}", line).unwrap();
+        }
+        todo_file.flush().unwrap();
+        let todo_path = todo_file.path().to_path_buf();
+        let done_file = NamedTempFile::new().expect("done tempfile");
+        let done_path = done_file.path().to_path_buf();
+        let task_list = TaskList::load(&todo_path).expect("load");
+        let _ = todo_file.keep();
+        let mut config = TuiConfig::default();
+        config.done_file = Some(done_path);
+        let app = App::new(task_list, todo_path, config, None, Theme::Default, true);
+        (app, NamedTempFile::new().unwrap(), done_file)
+    }
+
+    #[test]
+    fn archive_tasks_moves_completed_to_done_txt() {
+        let mut todo_file = NamedTempFile::new().unwrap();
+        writeln!(todo_file, "x 2026-01-01 done task").unwrap();
+        writeln!(todo_file, "incomplete task").unwrap();
+        todo_file.flush().unwrap();
+        let todo_path = todo_file.path().to_path_buf();
+        let _ = todo_file.keep();
+        // Use a temp dir for done.txt — no open file handle (Windows: can't rename over open handle).
+        let done_dir = tempfile::tempdir().unwrap();
+        let done_path = done_dir.path().join("done.txt");
+        let task_list = TaskList::load(&todo_path).unwrap();
+        let mut config = TuiConfig::default();
+        config.done_file = Some(done_path.clone());
+        let mut app = App::new(task_list, todo_path, config, None, Theme::Default, true);
+
+        let count = app.archive_tasks().unwrap();
+        assert_eq!(count, 1, "should archive 1 completed task");
+        assert_eq!(app.task_list.len(), 1, "one incomplete task remains");
+        assert!(!app.task_list.tasks()[0].completed, "remaining task is incomplete");
+        let done_content = std::fs::read_to_string(&done_path).unwrap();
+        assert!(done_content.contains("done task"), "done.txt must contain archived task");
+    }
+
+    #[test]
+    fn archive_tasks_pushes_undo_entry() {
+        let mut todo_file = NamedTempFile::new().unwrap();
+        writeln!(todo_file, "x 2026-01-01 done task").unwrap();
+        todo_file.flush().unwrap();
+        let todo_path = todo_file.path().to_path_buf();
+        let _ = todo_file.keep();
+        let done_dir = tempfile::tempdir().unwrap();
+        let done_path = done_dir.path().join("done.txt");
+        let task_list = TaskList::load(&todo_path).unwrap();
+        let mut config = TuiConfig::default();
+        config.done_file = Some(done_path);
+        let mut app = App::new(task_list, todo_path, config, None, Theme::Default, true);
+        assert!(app.undo_entry.is_none(), "no undo before archive");
+        app.archive_tasks().unwrap();
+        assert!(app.undo_entry.is_some(), "undo_entry must be set after archive");
+    }
+
+    #[test]
+    fn archive_tasks_appends_to_existing_done_txt() {
+        let mut todo_file = NamedTempFile::new().unwrap();
+        writeln!(todo_file, "x 2026-01-01 new done").unwrap();
+        todo_file.flush().unwrap();
+        let todo_path = todo_file.path().to_path_buf();
+        let _ = todo_file.keep();
+        let done_dir = tempfile::tempdir().unwrap();
+        let done_path = done_dir.path().join("done.txt");
+        // Pre-populate done.txt with no open handle (Windows-safe).
+        std::fs::write(&done_path, "x 2026-01-01 old done\n").unwrap();
+        let task_list = TaskList::load(&todo_path).unwrap();
+        let mut config = TuiConfig::default();
+        config.done_file = Some(done_path.clone());
+        let mut app = App::new(task_list, todo_path, config, None, Theme::Default, true);
+
+        app.archive_tasks().unwrap();
+        let done_content = std::fs::read_to_string(&done_path).unwrap();
+        assert!(done_content.contains("old done"), "existing done.txt content must be preserved");
+        assert!(done_content.contains("new done"), "newly archived task must be appended");
+    }
+
+    #[test]
+    fn archive_confirm_cancel_leaves_tasks_unchanged() {
+        let mut todo_file = NamedTempFile::new().unwrap();
+        writeln!(todo_file, "x 2026-01-01 done task").unwrap();
+        todo_file.flush().unwrap();
+        let todo_path = todo_file.path().to_path_buf();
+        let _ = todo_file.keep();
+        let done_dir = tempfile::tempdir().unwrap();
+        let done_path = done_dir.path().join("done.txt");
+        // Pre-create empty done.txt with no open handle so we can assert its content after cancel.
+        std::fs::write(&done_path, "").unwrap();
+        let task_list = TaskList::load(&todo_path).unwrap();
+        let mut config = TuiConfig::default();
+        config.done_file = Some(done_path.clone());
+        let mut app = App::new(task_list, todo_path, config, None, Theme::Default, true);
+        app.mode = AppMode::ArchiveConfirm;
+        let esc = crossterm::event::KeyEvent::new(KeyCode::Esc, crossterm::event::KeyModifiers::NONE);
+        app.handle_archive_confirm_key(esc).unwrap();
+        assert_eq!(app.task_list.len(), 1, "task must remain after cancel");
+        assert_eq!(app.mode, AppMode::Normal);
+        let done_content = std::fs::read_to_string(&done_path).unwrap();
+        assert!(done_content.is_empty(), "done.txt must not be written on cancel");
     }
 }
 
