@@ -1,3 +1,221 @@
+# Architecture Research — v1.6
+
+**Researched:** 2026-05-04
+
+## Summary
+
+The v1.6 feature set is TUI-local: all ten seeds touch `crates/todotxt-tui/` and none require new public API in `todotxt-core`. The widest structural impact is SEED-008 (decouple GroupBy), which adds a new enum and replaces the `grouping: bool` field on `Pane` — every feature that reads or writes pane state must be built or reviewed after that change. View state persistence (SEED-007) sits at the end of the dependency chain because it must serialize whatever schema GroupBy and FilterHistory land on.
+
+---
+
+## Component Impact Map
+
+| Feature (Seed) | Crate | Files Changed | New Types | Integration Point |
+|----------------|-------|---------------|-----------|-------------------|
+| SEED-006 TUI archive | todotxt-tui | `app.rs`, `config.rs` | — | Add `App::archive()` method using in-memory `task_list` + `config.done_file`; register `"archive"` action in `default_keymap()` |
+| SEED-007 View state | todotxt-tui | `app.rs`, `config.rs`, new `view_state.rs` | `ViewState`, `PaneViewState` | Load in `App::new()`; save on quit alongside `persist_panes_on_quit()` |
+| SEED-008 Decouple GroupBy | todotxt-tui | `app.rs`, `state.rs`, `config.rs` | `GroupBy` enum | Replace `Pane.grouping: bool` with `Pane.group_by: GroupBy`; replace `PaneConfig.group: bool` with `PaneConfig.group_by: GroupBy`; add `"group_cycle"` action to keymap |
+| SEED-009 Bulk mark-done | todotxt-tui | `app.rs` | — | Extend `pane_toggle_done()` to check `selected_tasks` first; mirror `bulk_delete` dispatch pattern at line 855 |
+| SEED-011 Filter history | todotxt-tui | `state.rs`, `app.rs` | `FilterHistory` struct | Embed in `FilteringState`; persist in `tui-state.toml` (SEED-007) |
+| SEED-012 Open in $EDITOR | todotxt-tui | `app.rs`, `tui.rs` | — | `Tui::suspend()` / `Tui::resume()`; call `std::process::Command` to exec `$EDITOR`; trigger reload via `FileChanged` on return |
+| SEED-013 Fix `+` autocomplete | todotxt-tui | `app.rs` | — | `collect_tokens()` dedup is case-naive (`sort+dedup`) vs `get_existing_projects()` in `state.rs` (case-insensitive HashMap); align them |
+| SEED-014 Autocomplete in filter | todotxt-tui | `app.rs` | — | New `update_filter_autocomplete()` + `accept_filter_completion()` methods; call from `handle_filtering_key()` |
+| SEED-015 Expand presets | todotxt-tui | `config.rs`, `app.rs` | extended `TuiPreset` fields | Add `sort`, `group_by`, `label` to `TuiPreset`; apply all fields in the `'1'..='9'` arm of `handle_filtering_key()` |
+| SEED-005 Phase 22 tests | todotxt-tui | `app.rs` (test module) | extended `make_app_with_tasks` | Add builder variants: `make_app_with_config()`, `make_app_with_panes()` to support new field combinations |
+
+---
+
+## New Components Required
+
+### `GroupBy` enum — `crates/todotxt-tui/src/state.rs`
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupBy {
+    #[default]
+    None,
+    Priority,
+    Project,
+    Context,
+    DueDate,
+    Status,       // completed vs active
+}
+```
+
+**Location rationale:** `todotxt-tui` only. Grouping is a display concern; `SortOrder` in `todotxt-core` governs data order. `GroupBy` governs visual bucketing. Mixing them in `todotxt-core` would pollute the library with rendering semantics.
+
+`group_key_for(task, sort)` in `app.rs` becomes `group_key_for(task, group_by: GroupBy)` — decoupled from sort order. The boolean `pane.grouping` flag is removed; `GroupBy::None` is the "off" state.
+
+`PaneConfig.group: bool` → `PaneConfig.group_by: GroupBy`. This is a **breaking config change** — add a migration shim in `TuiConfig::load()` that detects `group = true` with no `group_by` key and defaults to the previous behavior (group by sort order). Practically: default `GroupBy::None`; if old `group = true` was set, map it to `GroupBy::Priority` as the conservative fallback.
+
+---
+
+### `FilterHistory` struct — `crates/todotxt-tui/src/state.rs`
+
+```rust
+pub struct FilterHistory {
+    pub entries: Vec<String>,   // most-recent last
+    pub cursor: Option<usize>,  // None = not navigating
+    pub max: usize,             // cap at 50
+}
+```
+
+Embed inside `FilteringState` so history is active only while the filter panel is open. On `Enter` (filter applied): push the non-empty query to history. Use a dedicated key (e.g., `Ctrl+P`/`Ctrl+N`) to navigate history — do NOT reuse `Up`/`Down` which already navigates the preset list. Persist in `tui-state.toml` across sessions (SEED-007).
+
+---
+
+### `ViewState` + `tui-state.toml` — new `crates/todotxt-tui/src/view_state.rs`
+
+```rust
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct ViewState {
+    pub active_pane: usize,
+    pub filter_history: Vec<String>,   // FilterHistory.entries serialized
+}
+```
+
+**Why separate from `config.toml`?** `config.toml` is user-edited; `tui-state.toml` is machine-written session state. Mixing them creates merge conflicts and user confusion. `persist_panes_on_quit()` already writes pane layouts to `config.toml`; `tui-state.toml` carries ephemeral runtime state that shouldn't pollute config.
+
+**Path resolution:** Same directory as `config.toml`, named `tui-state.toml`. Use the existing `resolve_config_path()` from `todotxt-core::portable` — identical to how `config_path` is resolved in `main.rs`. Add `ViewState::path_from_config(config_path: &Path) -> PathBuf` helper.
+
+---
+
+### Extended `TuiPreset` — `crates/todotxt-tui/src/config.rs`
+
+```rust
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TuiPreset {
+    pub filter:   Option<String>,
+    pub sort:     Option<PaneSort>,
+    pub group_by: Option<GroupBy>,   // added after SEED-008
+    pub label:    Option<String>,    // status bar label while preset is active
+}
+```
+
+The `'1'..='9'` arm in `handle_filtering_key()` currently only applies `filter`. Extend it to also set `pane.sort_order` and `pane.group_by` if the preset specifies them — making presets act as complete "view snapshots."
+
+---
+
+### `Tui::suspend()` / `Tui::resume()` — `crates/todotxt-tui/src/tui.rs`
+
+For SEED-012 (open in `$EDITOR`), the TUI must restore the terminal to cooked mode, exec the editor, and re-enter raw mode on return:
+
+```rust
+impl Tui {
+    pub fn suspend(&mut self) -> color_eyre::Result<()> {
+        crossterm::terminal::disable_raw_mode()?;
+        crossterm::execute!(self.terminal.backend_mut(),
+            crossterm::terminal::LeaveAlternateScreen)?;
+        Ok(())
+    }
+    pub fn resume(&mut self) -> color_eyre::Result<()> {
+        crossterm::terminal::enable_raw_mode()?;
+        crossterm::execute!(self.terminal.backend_mut(),
+            crossterm::terminal::EnterAlternateScreen)?;
+        self.terminal.clear()?;
+        Ok(())
+    }
+}
+```
+
+After editor exits, send a synthetic `AppEvent::FileChanged` so `App` reloads `task_list` from disk (the editor may have changed any task, not just the selected one).
+
+---
+
+## Suggested Build Order
+
+```
+Wave 1 — No deps, self-contained
+  1. SEED-013  Fix + project autocomplete   (collect_tokens dedup alignment)
+  2. SEED-012  Open in $EDITOR              (tui.rs suspend/resume, independent)
+  3. SEED-009  Bulk mark-done               (toggle_done + selected_tasks check)
+  4. SEED-006  TUI archive hotkey           (App::archive(), keymap entry)
+
+Wave 2 — Structural (must land together or in order)
+  5. SEED-008  Decouple GroupBy             (GroupBy enum, Pane.group_by replaces .grouping)
+  6. SEED-005  Extend test helper           (add make_app_with_config/panes after GroupBy is real)
+
+Wave 3 — Builds on GroupBy
+  7. SEED-015  Expand numeric presets       (TuiPreset gains sort/group_by; requires GroupBy)
+  8. SEED-011  Filter history               (FilterHistory in state.rs; needed by SEED-014)
+
+Wave 4 — Builds on history + fixed autocomplete
+  9. SEED-014  Autocomplete in filter       (requires SEED-013 fix + SEED-011 history)
+
+Wave 5 — Serializes everything
+  10. SEED-007  View state persistence      (serializes GroupBy from SEED-008, FilterHistory from SEED-011)
+```
+
+**Dependency rationale:**
+- SEED-008 before SEED-015: `TuiPreset.group_by: Option<GroupBy>` can't compile until `GroupBy` exists.
+- SEED-008 before SEED-007: `ViewState` schema depends on whether `GroupBy` is a field in `Pane`.
+- SEED-011 before SEED-014: history navigation in filter panel must be designed before autocomplete adds another key consumer.
+- SEED-013 before SEED-014: filter autocomplete calls the same `collect_tokens` machinery; fix the data layer first.
+- SEED-005 after SEED-008: test helper creating a `Pane` must construct `group_by` correctly.
+
+---
+
+## Key Architectural Decisions
+
+### 1. Archive logic: TUI-local, not moved to `todotxt-core`
+
+**Decision:** Implement `App::archive()` in `app.rs`. Do NOT move `run_archive()` to `todotxt-core`.
+
+**Rationale:** `run_archive()` in the CLI takes `&Config` (CLI-only) and `&Renderer` (CLI-only). The TUI already has `task_list` loaded in memory and `config.done_file` resolved — its archive method is ~35 lines of atomic file I/O, simpler than the CLI version (no JSON renderer, no reload). Code duplication is minimal and the two callers have different contracts.
+
+### 2. GroupBy lives in `todotxt-tui`, not `todotxt-core`
+
+**Decision:** `GroupBy` enum in `todotxt-tui/src/state.rs`. `SortOrder` stays in `todotxt-core`.
+
+**Rationale:** Grouping is a rendering strategy (how to draw visual buckets). `SortOrder` controls query-time data ordering — a library concern. `GroupBy` added to `todotxt-core` would introduce rendering semantics into a library with no other TUI consumers.
+
+### 3. `tui-state.toml` is a separate sidecar from `config.toml`
+
+**Decision:** Session/runtime state in `~/.todotxt.rs/tui-state.toml`; user config stays in `config.toml`.
+
+**Rationale:** `config.toml` is intentionally user-editable; writing machine state into it creates noise in diffs. `persist_panes_on_quit()` already writes pane layouts to config — that's intentional (user-visible preference). Filter history and active pane index are runtime artifacts, not preferences.
+
+### 4. `accept_completion` is NOT generalized — two methods
+
+**Decision:** Add `accept_filter_completion()` targeting `filter_state.editor`. Keep `accept_completion()` targeting `self.editor`.
+
+**Rationale:** Rust's borrow checker makes a shared helper require passing `&mut TextArea` + `&mut Option<AutocompleteState>` separately, which is more awkward than two ~30-line methods. The filter completion may also diverge (e.g., no date autocomplete in filter mode).
+
+### 5. `collect_tokens` dedup is the SEED-013 bug root cause
+
+`collect_tokens()` uses `vec.sort() + vec.dedup()` which is byte-exact — `"Work"` and `"work"` appear as two entries. `get_existing_projects()` in `state.rs` uses a case-insensitive HashMap. **Fix:** replace `collect_tokens` internals to call `get_existing_contexts`/`get_existing_projects` from `state.rs`, then pass through `rank_matches()` for ordering. This unifies dedup logic to one implementation across the codebase.
+
+---
+
+## Risks & Warnings
+
+### Risk 1: `GroupBy` config migration (SEED-008) — HIGH
+
+`PaneConfig.group: bool` → `PaneConfig.group_by: GroupBy` is a breaking TOML schema change. Any `config.toml` with `group = true` under a `[[panes]]` block will fail to deserialize. **Mitigation:** Keep `group: bool` as a deprecated `#[serde(default)]` field; in `panes_from_config()` map `group = true` → `GroupBy::Priority` (the pre-SEED-008 behavior when sort was Priority) before the new field takes over.
+
+### Risk 2: `persist_panes_on_quit` + `tui-state.toml` write race (SEED-007)
+
+Both writes happen on quit in `App::run()`. If one fails, the other has already been committed. Ensure both use temp-file rename (atomic) and run both even if one fails — don't use `?` between them; capture both results and return the first error after both have attempted.
+
+### Risk 3: `$EDITOR` suspension corrupts terminal on error (SEED-012)
+
+If the editor crashes or `resume()` fails, the terminal is left in a bad state. Wrap the edit-in-editor call in a guard that calls `resume()` even on `Err`. The existing `color_eyre` panic hook restores the terminal for panics; extend the same pattern for editor errors.
+
+### Risk 4: Filter history vs. preset navigation key conflict (SEED-011 + SEED-014)
+
+`handle_filtering_key()` already uses `Up`/`Down` to navigate the preset list. History navigation MUST use a different key (e.g., `Ctrl+P`/`Ctrl+N`). Lock this decision before SEED-014 implementation to avoid re-doing the key handler when autocomplete is added.
+
+### Risk 5: `make_app_with_tasks` leaks temp files (SEED-005)
+
+The helper calls `file.keep()` to prevent deletion while `TaskList` holds the path. Each test leaks a temp file. Fix in SEED-005 when extending the helper: wrap in a struct that implements `Drop` and deletes the file.
+
+### Risk 6: `TuiPreset` expansion + `persist_panes_on_quit` (SEED-015)
+
+When a preset is applied (sort + group_by + filter all set), `persist_panes_on_quit` will write those values back to `PaneConfig`. On next load the pane starts with the preset's values, which may not be desired. **Decision needed before SEED-015:** preset application is session-only (reset on quit) or persistent (written to config). Leaving it ambiguous will cause user confusion.
+
+---
+
 # Architecture Research — v1.3 Parity Work
 
 **Researched:** 2026-04-24
