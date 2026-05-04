@@ -5888,6 +5888,80 @@ mod tests {
         #[cfg(not(target_os = "windows"))]
         assert_eq!(result, Some("vi".to_string()));
     }
+
+    // ── AC-01 autocomplete verification tests (Phase 39, Plan 04) ────────────
+
+    #[test]
+    fn project_autocomplete_shows_popup_on_plus() {
+        let mut app = make_app_with_tasks(&["task +work", "task +home"]);
+        app.mode = AppMode::Adding;
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("+");
+        app.update_autocomplete();
+        assert!(app.autocomplete.is_some(), "autocomplete must appear after typing '+'");
+    }
+
+    #[test]
+    fn project_autocomplete_items_are_bare_names() {
+        let mut app = make_app_with_tasks(&["task +work", "task +home"]);
+        app.mode = AppMode::Adding;
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("+");
+        app.update_autocomplete();
+        let ac = app.autocomplete.as_ref().expect("autocomplete must be Some");
+        assert!(
+            ac.items.iter().all(|item| !item.starts_with('+')),
+            "autocomplete items must be bare names without '+' prefix, got: {:?}", ac.items
+        );
+        assert!(ac.items.contains(&"work".to_string()), "items must include 'work'");
+        assert!(ac.items.contains(&"home".to_string()), "items must include 'home'");
+    }
+
+    #[test]
+    fn project_autocomplete_narrows_on_typing() {
+        let mut app = make_app_with_tasks(&["task +work", "task +home"]);
+        app.mode = AppMode::Adding;
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("+h");
+        app.update_autocomplete();
+        let ac = app.autocomplete.as_ref().expect("autocomplete must be Some after '+h'");
+        assert_eq!(ac.items, vec!["home".to_string()], "'+h' must narrow to only 'home', got: {:?}", ac.items);
+        assert!(!ac.items.contains(&"work".to_string()), "'work' must not appear after '+h'");
+    }
+
+    #[test]
+    fn project_autocomplete_accept_inserts_correctly_no_prefix_typed() {
+        // User types "+" and accepts "work" — result must be "+work" not "++work".
+        let mut app = make_app_with_tasks(&["task +work"]);
+        app.mode = AppMode::Adding;
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("+");
+        app.update_autocomplete();
+        assert!(app.autocomplete.is_some(), "autocomplete must be active");
+        app.accept_completion();
+        let line = app.editor.lines().first().cloned().unwrap_or_default();
+        assert_eq!(
+            line, "+work",
+            "accepting '+' completion of 'work' must produce '+work', got: {:?}", line
+        );
+    }
+
+    #[test]
+    fn project_autocomplete_accept_replaces_typed_prefix() {
+        // User types "+wo" and accepts "work" — result must be "+work" not "+wowork".
+        let mut app = make_app_with_tasks(&["task +work"]);
+        app.mode = AppMode::Adding;
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("+wo");
+        app.update_autocomplete();
+        assert!(app.autocomplete.is_some(), "autocomplete must be active after '+wo'");
+        app.accept_completion();
+        let line = app.editor.lines().first().cloned().unwrap_or_default();
+        assert_eq!(
+            line, "+work",
+            "accepting completion after typing prefix '+wo' must produce '+work', got: {:?}", line
+        );
+    }
 }
 
 
