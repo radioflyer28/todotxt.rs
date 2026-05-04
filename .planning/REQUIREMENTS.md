@@ -110,22 +110,23 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01, ARCH-02, ARCH-03 | TBD | Pending |
-| BDONE-01, BDONE-02 | TBD | Pending |
-| XEDIT-01, XEDIT-02, XEDIT-03 | TBD | Pending |
-| AC-01, AC-02, AC-03, AC-04 | TBD | Pending |
-| FHIST-01, FHIST-02, FHIST-03 | TBD | Pending |
-| PRSV-01, PRSV-02, PRSV-03 | TBD | Pending |
-| GRP-01, GRP-02, GRP-03, GRP-04 | TBD | Pending |
-| PRST-01, PRST-02 | TBD | Pending |
-| PMOVE-01, PMOVE-02, PMOVE-03 | TBD | Pending |
-| TST-01, TST-02 | TBD | Pending |
+| ARCH-01, ARCH-02, ARCH-03 | Phase 39 | Pending |
+| BDONE-01, BDONE-02 | Phase 39 | Pending |
+| XEDIT-01, XEDIT-02, XEDIT-03 | Phase 39 | Pending |
+| AC-01 | Phase 39 | Pending |
+| AC-02, AC-03, AC-04 | Phase 42 | Pending |
+| FHIST-01, FHIST-02, FHIST-03 | Phase 41 | Pending |
+| PRSV-01, PRSV-02, PRSV-03 | Phase 43 | Pending |
+| GRP-01, GRP-02, GRP-03, GRP-04 | Phase 40 | Pending |
+| PRST-01, PRST-02 | Phase 41 | Pending |
+| PMOVE-01, PMOVE-02, PMOVE-03 | Phase 41 | Pending |
+| TST-01, TST-02 | Phase 40 | Pending |
 
 Coverage:
 
 - v1 requirements: 29 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 29
+- Mapped to phases: 29
+- Unmapped: 0
 
 ---
 Requirements defined: 2026-05-04

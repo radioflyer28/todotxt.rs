@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-05-04T00:00:00.000Z"
 last_activity: 2026-05-04 -- v1.6 milestone planning started
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 Phase: 38 (last completed — v1.5)
 Plan: complete
-Status: v1.6 in planning — requirements and roadmap being defined
-Last activity: 2026-05-04 -- v1.6 milestone planning started
+Status: v1.6 roadmap defined — ready to execute Phase 39
+Last activity: 2026-05-04 -- v1.6 roadmap created (phases 39-43)
 
 ## Next Step
 
-Define REQUIREMENTS.md and ROADMAP.md for v1.6. Then begin execution with Phase 39.
+Execute Phase 39 (Quick Wins — archive, bulk mark-done, external editor, AC-01 fix).
 
 ## Deferred Items
 
