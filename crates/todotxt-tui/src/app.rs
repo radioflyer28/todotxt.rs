@@ -147,6 +147,53 @@ pub struct App {
     pub undo_entry: Option<crate::state::UndoEntry>,
 }
 
+// ── External editor support (Phase 39, XEDIT-01/02) ──────────────────────────
+
+/// RAII guard that suspends TUI terminal state while an external process runs.
+///
+/// Construction: leaves raw mode + alternate screen (restores normal terminal).
+/// Drop: re-enters alternate screen + raw mode (restores TUI state).
+struct RawModeGuard;
+
+impl RawModeGuard {
+    fn new() -> Self {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen
+        );
+        RawModeGuard
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::EnterAlternateScreen
+        );
+        let _ = crossterm::terminal::enable_raw_mode();
+    }
+}
+
+/// Resolves the external editor to use: $VISUAL → $EDITOR → platform fallback.
+fn resolve_editor() -> Option<String> {
+    if let Ok(visual) = std::env::var("VISUAL") {
+        if !visual.trim().is_empty() {
+            return Some(visual);
+        }
+    }
+    if let Ok(editor) = std::env::var("EDITOR") {
+        if !editor.trim().is_empty() {
+            return Some(editor);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    return Some("notepad.exe".to_string());
+    #[cfg(not(target_os = "windows"))]
+    return Some("vi".to_string());
+}
+
 impl App {
     fn panes_from_config(config: &TuiConfig) -> Vec<Pane> {
         let mut panes: Vec<Pane> = config
@@ -275,6 +322,60 @@ impl App {
             tasks: self.task_list.tasks().to_vec(),
             selected: self.selected,
         });
+    }
+
+    /// Open todo.txt in the user's preferred external editor (Ctrl+E, XEDIT-01/02/03).
+    ///
+    /// Suspends TUI with RawModeGuard (XEDIT-A), waits for editor to exit, then reloads
+    /// the task list and re-renders (XEDIT-C). Pushes undo_entry before opening.
+    fn launch_external_editor(&mut self) -> color_eyre::Result<()> {
+        let Some(editor) = resolve_editor() else {
+            self.runtime_warnings
+                .push("No editor found. Set $EDITOR or $VISUAL.".to_string());
+            return Ok(());
+        };
+
+        self.push_undo_entry();
+
+        // Suspend TUI: disable raw mode + leave alternate screen.
+        let _guard = RawModeGuard::new();
+
+        let status = std::process::Command::new(&editor)
+            .arg(&self.todo_path)
+            .status();
+
+        // Guard drops here, restoring TUI terminal state before we do any further work.
+        drop(_guard);
+
+        match status {
+            Ok(exit) => {
+                match TaskList::load(&self.todo_path) {
+                    Ok(new_list) => {
+                        self.task_list = new_list;
+                        self.rebuild_all_panes();
+                        self.rebuild_and_reanchor();
+                        if exit.success() {
+                            self.runtime_warnings.push(format!(
+                                "Reloaded todo.txt after editing with {editor}"
+                            ));
+                        } else {
+                            self.runtime_warnings
+                                .push("Editor exited with error; reloaded todo.txt".to_string());
+                        }
+                    }
+                    Err(e) => {
+                        self.runtime_warnings
+                            .push(format!("Failed to reload todo.txt after editing: {e}"));
+                    }
+                }
+            }
+            Err(e) => {
+                self.runtime_warnings.push(format!(
+                    "Failed to launch editor '{editor}': {e}. Set $EDITOR or $VISUAL."
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Restore the task list from the undo entry, if one exists (Phase 36, D-04, UNDO-01/02/03).
@@ -675,6 +776,11 @@ impl App {
             // Must precede any plain 'z' arm. Silent no-op when history empty (D-08/D-10).
             KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.apply_undo()?;
+            }
+
+            // ── Ctrl+E: open external editor (Phase 39, XEDIT-01) ────────────
+            KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.launch_external_editor()?;
             }
 
             // ── Esc: clear selection / exit disjoint mode (not overridable) ──
@@ -5734,8 +5840,55 @@ mod tests {
         assert!(app.task_list.tasks()[0].completed);
         assert!(app.task_list.tasks()[1].completed);
     }
-}
 
+    // ── External editor tests (Phase 39, Plan 03) ─────────────────────────────
+
+    // Serialize env-var tests — Rust test threads run in parallel by default.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn resolve_editor_prefers_visual_over_editor() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let orig_visual = std::env::var("VISUAL").ok();
+        let orig_editor = std::env::var("EDITOR").ok();
+        std::env::set_var("VISUAL", "emacs");
+        std::env::set_var("EDITOR", "vim");
+        let result = resolve_editor();
+        match orig_visual { Some(v) => std::env::set_var("VISUAL", v), None => std::env::remove_var("VISUAL") }
+        match orig_editor { Some(v) => std::env::set_var("EDITOR", v), None => std::env::remove_var("EDITOR") }
+        assert_eq!(result, Some("emacs".to_string()), "VISUAL must take precedence over EDITOR");
+    }
+
+    #[test]
+    fn resolve_editor_falls_back_to_editor_when_visual_unset() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let orig_visual = std::env::var("VISUAL").ok();
+        let orig_editor = std::env::var("EDITOR").ok();
+        std::env::remove_var("VISUAL");
+        std::env::set_var("EDITOR", "nano");
+        let result = resolve_editor();
+        match orig_visual { Some(v) => std::env::set_var("VISUAL", v), None => {} }
+        match orig_editor { Some(v) => std::env::set_var("EDITOR", v), None => std::env::remove_var("EDITOR") }
+        assert_eq!(result, Some("nano".to_string()));
+    }
+
+    #[test]
+    fn resolve_editor_falls_back_to_platform_default() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let orig_visual = std::env::var("VISUAL").ok();
+        let orig_editor = std::env::var("EDITOR").ok();
+        std::env::remove_var("VISUAL");
+        std::env::remove_var("EDITOR");
+        let result = resolve_editor();
+        match orig_visual { Some(v) => std::env::set_var("VISUAL", v), None => {} }
+        match orig_editor { Some(v) => std::env::set_var("EDITOR", v), None => {} }
+        assert!(result.is_some(), "platform fallback must always return Some");
+        #[cfg(target_os = "windows")]
+        assert_eq!(result, Some("notepad.exe".to_string()));
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(result, Some("vi".to_string()));
+    }
+}
 
 
 
