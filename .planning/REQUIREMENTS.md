@@ -5,6 +5,7 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 ## Scope Decision Summary
 
+- **Pane task movement:** Move selected task(s) between panes via tag mutation — IN SCOPE
 - **Validation debt:** SEED-005 Phase 22 tests — IN SCOPE
 - **Quick wins:** SEED-006 archive, SEED-009 bulk done, SEED-012 $EDITOR, SEED-013 autocomplete fix — IN SCOPE
 - **Autocomplete & Filter UX:** SEED-014 coverage + narrowing, SEED-011 filter history — IN SCOPE
@@ -77,6 +78,12 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 - [ ] **TST-01**: All 11 Phase 22 manual-only validation gaps (KEY-01, KEY-02, PAR-01, PAR-02 test cases covering mode transitions, key dispatch, filter mutations, preset application, and help overlay behavior) are covered by automated unit tests in the `todotxt-tui` crate
 - [ ] **TST-02**: A `make_app_with_keymap` (or equivalent) test helper exists that constructs an `App` instance with a custom keymap config, enabling isolated testing of keymap-dependent behavior
 
+### Move Tasks Between Panes
+
+- [ ] **PMOVE-01**: User can move the cursor task (or all tasks in the current multi-selection) to an adjacent pane with `Ctrl+Left` / `Ctrl+Right` (default, configurable via keymap)
+- [ ] **PMOVE-02**: When moving a task between two filter-based panes where each pane's filter is a single tag token (e.g., `@waiting`, `+project`), the move operation removes the source pane's filter token from the task and appends the destination pane's filter token — making the task disappear from the source pane and appear in the destination pane
+- [ ] **PMOVE-03**: If the source or destination pane has no filter, or its filter is not a single tag token (e.g., a compound query like `due:today @work`), the move is declined and the status bar explains why; no task data is modified
+
 ---
 
 ## Future Requirements (Deferred)
@@ -111,13 +118,14 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | PRSV-01, PRSV-02, PRSV-03 | TBD | Pending |
 | GRP-01, GRP-02, GRP-03, GRP-04 | TBD | Pending |
 | PRST-01, PRST-02 | TBD | Pending |
+| PMOVE-01, PMOVE-02, PMOVE-03 | TBD | Pending |
 | TST-01, TST-02 | TBD | Pending |
 
 Coverage:
 
-- v1 requirements: 26 total
+- v1 requirements: 29 total
 - Mapped to phases: 0 (pending roadmap)
-- Unmapped: 26
+- Unmapped: 29
 
 ---
 Requirements defined: 2026-05-04
