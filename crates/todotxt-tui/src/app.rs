@@ -5642,6 +5642,70 @@ mod tests {
         let done_content = std::fs::read_to_string(&done_path).unwrap();
         assert!(done_content.is_empty(), "done.txt must not be written on cancel");
     }
+
+    // ── Bulk mark-done tests (Phase 39, Plan 02) ─────────────────────────────
+
+    #[test]
+    fn bulk_mark_done_marks_incomplete_tasks() {
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.bulk_mark_done();
+        assert!(app.task_list.tasks()[0].completed, "task 0 must be completed");
+        assert!(app.task_list.tasks()[1].completed, "task 1 must be completed");
+        assert!(!app.task_list.tasks()[2].completed, "task 2 must remain incomplete");
+    }
+
+    #[test]
+    fn bulk_mark_done_skips_already_done_tasks() {
+        let mut app = make_app_with_tasks(&["x 2026-01-01 already done", "incomplete task"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        let was_done = app.task_list.tasks()[0].completed;
+        app.bulk_mark_done();
+        assert!(was_done, "task 0 was already done");
+        assert!(app.task_list.tasks()[0].completed, "already-done task must remain done");
+        assert!(app.task_list.tasks()[1].completed, "incomplete task must become done");
+    }
+
+    #[test]
+    fn bulk_mark_done_pushes_single_undo_entry() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        assert!(app.undo_entry.is_none(), "no undo before bulk_mark_done");
+        app.bulk_mark_done();
+        assert!(app.undo_entry.is_some(), "exactly one undo_entry after bulk_mark_done");
+    }
+
+    #[test]
+    fn bulk_mark_done_clears_selection_after() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.bulk_mark_done();
+        assert!(app.selected_tasks.is_empty(), "selected_tasks must be cleared after bulk_mark_done");
+    }
+
+    #[test]
+    fn bulk_mark_done_posts_status_message() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.bulk_mark_done();
+        let has_msg = app.runtime_warnings.iter().any(|w| w.contains("Marked") && w.contains("done"));
+        assert!(has_msg, "status message must mention 'Marked' and 'done'");
+    }
+
+    #[test]
+    fn toggle_done_routes_to_bulk_when_selection_nonempty() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        app.selected_tasks.insert(0);
+        app.selected_tasks.insert(1);
+        app.bulk_mark_done();
+        assert!(app.task_list.tasks()[0].completed);
+        assert!(app.task_list.tasks()[1].completed);
+    }
 }
 
 
