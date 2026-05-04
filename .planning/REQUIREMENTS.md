@@ -63,14 +63,14 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 ### Group-by Decoupling (SEED-008)
 
 - [ ] **GRP-01**: Each TUI pane has an independent group-by category (Project, Context, Priority, DueDate) that is separate from the intra-group sort order; the two can be configured independently
-- [ ] **GRP-02**: User can cycle through group-by categories with `G` (Shift+g) by default (configurable); `g` continues to toggle grouping on/off; `o` continues to cycle intra-group sort order
+- [ ] **GRP-02**: User can toggle grouping on/off with `G` (Shift+g) by default (configurable); `g` cycles through group-by categories; `o` continues to cycle intra-group sort order
 - [ ] **GRP-03**: The status bar displays both the active group-by category and the active sort order simultaneously when grouping is enabled
 - [ ] **GRP-04**: Group-by category can be defined per pane in `config.toml` (e.g., `group_by = "project"`) and is respected at startup independently from sort order
 
 ### Full View Presets (SEED-015)
 
-- [ ] **PRST-01**: Numeric preset config blocks (`[presets.f1]` … `[presets.f9]`) can optionally declare `sort` and `group` fields in addition to `filter`; all new fields are optional and existing filter-only presets continue to work without modification
-- [ ] **PRST-02**: Pressing a preset key (1–9) applies all defined preset dimensions (filter, sort, grouping) atomically to the active pane in a single operation
+- [ ] **PRST-01**: Numeric preset config blocks (`[presets.f1]` … `[presets.f9]`) can optionally declare `sort`, `group`, `group_by`, `panes` (count and layout), and per-pane settings in addition to `filter`; all new fields are optional and existing filter-only presets continue to work without modification
+- [ ] **PRST-02**: Pressing a preset key (1–9) applies all defined preset dimensions atomically — including filter, sort, grouping, group-by category, active pane count, pane positions, and per-pane view settings — in a single operation
 
 ### Test Coverage Debt (SEED-005)
 
