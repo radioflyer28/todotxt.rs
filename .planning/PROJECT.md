@@ -13,16 +13,20 @@ Milestone archives:
 - .planning/milestones/v1.4-ROADMAP.md
 - .planning/milestones/v1.5-ROADMAP.md
 
+**v1.6 is now in planning.** Focus: TUI fixes and power user improvements — archive workflow, bulk mark-done, `$EDITOR` escape, autocomplete fixes and coverage, filter history, view state persistence, group-by decoupling, full numeric presets, and Phase 22 test coverage debt.
+
 ## Current Milestone
 
-No active milestone is in execution. Next step is to define v1.6 via /gsd-new-milestone and generate a fresh .planning/REQUIREMENTS.md.
+**v1.6 — TUI Fixes and Power User Improvements** (in planning)
 
-## Next Milestone Goals
-
-- Complete runtime manual validation debt recorded in v1.5 audit (clipboard runtime checks).
-- Decide whether to keep or replace UNDO-03 silent-feedback override behavior.
-- Improve Nyquist validation coverage for phases with missing or partial validation artifacts.
-- Define and prioritize post-v1.5 product goals (GUI track, release automation, or focused TUI/CLI hardening).
+Focus areas:
+- Autocomplete fixes: `+` project bug (SEED-013) and coverage gaps — filter input, edit mode, incremental narrowing (SEED-014)
+- Archive workflow: TUI archive hotkey to move completed tasks to done.txt (SEED-006)
+- Bulk actions: bulk mark-done via multi-selection (SEED-009)
+- External editor: open task in `$EDITOR` escape hatch (SEED-012)
+- Filter UX: filter input history ring with `Ctrl+H` recall (SEED-011)
+- View & presets: expand numeric presets to sort+group+filter (SEED-015), persist view state across restarts (SEED-007), decouple group-by from sort order (SEED-008)
+- Validation debt: automate Phase 22's 11 manual-only tests (SEED-005)
 
 ---
 
