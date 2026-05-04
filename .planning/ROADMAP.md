@@ -35,7 +35,11 @@
 3. User presses `Ctrl+E` on a cursor task and the task opens in `$VISUAL` / `$EDITOR` / platform fallback; TUI suspends ratatui rendering and raw mode before launch and fully restores terminal state after exit — including on editor crash
 4. If no editor is found or the editor exits with an error, a status bar error message appears and the TUI continues operating without data loss
 5. Typing `+` in the task editor (Add or Edit mode) shows an autocomplete popup with existing project tags, and the popup narrows as additional characters are typed
-**Plans:** TBD
+**Plans:** 4 plans
+- [ ] 39-01-PLAN.md — Archive workflow: AppMode::ArchiveConfirm, A key, archive_tasks(), write-first atomic done.txt
+- [ ] 39-02-PLAN.md — Bulk mark-done (TDD): bulk_mark_done(), x key routing with selection guard
+- [ ] 39-03-PLAN.md — External editor: RawModeGuard, resolve_editor(), launch_external_editor(), Ctrl+E
+- [ ] 39-04-PLAN.md — AC-01 autocomplete verify (TDD): + project tag correctness tests, fix if needed
 
 ### Phase 40: Group-By Decoupling + Test Coverage
 **Goal:** Group-by category and sort order become fully independent controls per pane, and Phase 22 manual validation gaps are closed with automated tests
