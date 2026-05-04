@@ -832,7 +832,11 @@ impl App {
             }
 
             _ if display_count > 0 && self.key_is_action(key, "toggle_done") => {
-                self.pane_toggle_done();
+                if !self.selected_tasks.is_empty() {
+                    self.bulk_mark_done();
+                } else {
+                    self.pane_toggle_done();
+                }
             }
 
             _ if self.key_is_action(key, "archive") => {
@@ -2874,6 +2878,30 @@ impl App {
             eprintln!("toggle_done error: {e}");
         }
         self.rebuild_all_panes();
+    }
+
+    /// Mark all incomplete tasks in `selected_tasks` as done in one batch.
+    /// Pushes a single undo entry before the loop, clears selection afterwards.
+    fn bulk_mark_done(&mut self) {
+        self.push_undo_entry();
+        let indices: Vec<usize> = self.selected_tasks.iter().copied().collect();
+        let mut marked = 0usize;
+        for idx in &indices {
+            if let Some(task) = self.task_list.tasks().get(*idx) {
+                if !task.completed {
+                    let updated = task.clone().with_completed(true);
+                    if let Err(e) = self.task_list.update(*idx, updated) {
+                        eprintln!("bulk_mark_done error on idx {idx}: {e}");
+                    } else {
+                        marked += 1;
+                    }
+                }
+            }
+        }
+        self.selected_tasks.clear();
+        self.runtime_warnings.push(format!("Marked {} task(s) done", marked));
+        self.rebuild_all_panes();
+        self.rebuild_and_reanchor();
     }
 
     /// Delete either the single selected task or the active cursor task immediately.
