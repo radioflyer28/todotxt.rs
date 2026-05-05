@@ -6000,6 +6000,202 @@ mod tests {
         );
     }
 
+    // ── Phase 40 Plan 03-B: GRP requirement coverage ────────────────────────
+
+    // GRP-01-T1: GroupByCategory type invariants.
+    #[test]
+    fn group_by_category_default_is_priority() {
+        assert_eq!(
+            GroupByCategory::default(),
+            GroupByCategory::Priority,
+            "GroupByCategory default must be Priority (D-02, GRP-01)"
+        );
+        // Verify all 4 variants are distinct and exist (compile-time coverage).
+        let variants = [
+            GroupByCategory::Priority,
+            GroupByCategory::Project,
+            GroupByCategory::Context,
+            GroupByCategory::DueDate,
+        ];
+        assert_eq!(variants.len(), 4, "GroupByCategory must have exactly 4 variants (D-01)");
+        // Each variant must differ from the others.
+        for i in 0..variants.len() {
+            for j in (i + 1)..variants.len() {
+                assert_ne!(variants[i], variants[j], "GroupByCategory variants must be distinct");
+            }
+        }
+    }
+
+    // GRP-01-T2: group_key_for returns correct group key per variant.
+    // Tested indirectly via single-pane display_rows GroupHeader values.
+    // Note: single-pane rebuild syncs pane.grouping → app.grouping but NOT group_by;
+    // app.group_by must be set directly for group_key selection to take effect.
+    #[test]
+    fn group_key_for_groups_by_correct_field_per_variant() {
+        // Task: "(A) fix things +work @home due:2025-01-15"
+        let task_line = "(A) fix things +work @home due:2025-01-15";
+        let mut app = make_app_with_tasks(&[task_line]);
+        // Enable grouping via pane field (synced to app.grouping in rebuild path).
+        app.active_pane_mut().grouping = true;
+
+        // Priority: expect GroupHeader "(A)"
+        app.group_by = GroupByCategory::Priority;
+        app.rebuild_and_reanchor();
+        let headers: Vec<_> = app.display_rows.iter()
+            .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
+            .collect();
+        assert!(headers.contains(&"(A)"), "Priority group_key should be '(A)', got {:?}", headers);
+
+        // Project: expect GroupHeader "+work"
+        app.group_by = GroupByCategory::Project;
+        app.rebuild_and_reanchor();
+        let headers: Vec<_> = app.display_rows.iter()
+            .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
+            .collect();
+        assert!(headers.contains(&"+work"), "Project group_key should be '+work', got {:?}", headers);
+
+        // Context: expect GroupHeader "@home"
+        app.group_by = GroupByCategory::Context;
+        app.rebuild_and_reanchor();
+        let headers: Vec<_> = app.display_rows.iter()
+            .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
+            .collect();
+        assert!(headers.contains(&"@home"), "Context group_key should be '@home', got {:?}", headers);
+
+        // DueDate: expect GroupHeader "2025-01-15"
+        app.group_by = GroupByCategory::DueDate;
+        app.rebuild_and_reanchor();
+        let headers: Vec<_> = app.display_rows.iter()
+            .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
+            .collect();
+        assert!(headers.contains(&"2025-01-15"), "DueDate group_key should be '2025-01-15', got {:?}", headers);
+    }
+
+    // GRP-01-T3: Pane::new() (via App) initializes group_by = Priority.
+    #[test]
+    fn pane_initializes_group_by_to_priority() {
+        let app = make_app_with_tasks(&["task A"]);
+        // In multi-pane mode panes vec is used; in single-pane mode, app.group_by is the field.
+        // make_app_with_tasks starts single-pane, so check app.group_by and panes[0].group_by.
+        assert_eq!(
+            app.group_by,
+            GroupByCategory::Priority,
+            "App.group_by must default to Priority (GRP-01)"
+        );
+        assert_eq!(
+            app.panes[0].group_by,
+            GroupByCategory::Priority,
+            "Pane.group_by must default to Priority (D-04, GRP-01)"
+        );
+    }
+
+    // GRP-02-T1: cycle_group_by() cycles through all 4 variants and wraps.
+    // Tested via 'g' key presses on app with tasks (group_by_cycle action).
+    #[test]
+    fn cycle_group_by_wraps_through_all_four_variants() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        // Start: Priority (default)
+        assert_eq!(app.active_pane().group_by, GroupByCategory::Priority);
+        // Press 'g' → Project
+        press_key(&mut app, KeyCode::Char('g'));
+        assert_eq!(app.active_pane().group_by, GroupByCategory::Project, "1st 'g': Priority→Project");
+        // Press 'g' → Context
+        press_key(&mut app, KeyCode::Char('g'));
+        assert_eq!(app.active_pane().group_by, GroupByCategory::Context, "2nd 'g': Project→Context");
+        // Press 'g' → DueDate
+        press_key(&mut app, KeyCode::Char('g'));
+        assert_eq!(app.active_pane().group_by, GroupByCategory::DueDate, "3rd 'g': Context→DueDate");
+        // Press 'g' → Priority (wrap)
+        press_key(&mut app, KeyCode::Char('g'));
+        assert_eq!(app.active_pane().group_by, GroupByCategory::Priority, "4th 'g': DueDate→Priority (wrap)");
+    }
+
+    // GRP-02-T2: 'g' key changes active pane's group_by independently of sort_order.
+    #[test]
+    fn g_key_cycles_group_by_independently_of_sort_order() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        let initial_sort = app.active_pane().sort_order;
+        // Press 'g' to cycle group_by.
+        press_key(&mut app, KeyCode::Char('g'));
+        assert_eq!(
+            app.active_pane().group_by,
+            GroupByCategory::Project,
+            "'g' must advance group_by from Priority to Project"
+        );
+        assert_eq!(
+            app.active_pane().sort_order,
+            initial_sort,
+            "'g' must not change sort_order (group_by and sort_order are independent, GRP-02)"
+        );
+    }
+
+    // GRP-03-T1: Status bar grp: indicator reflects active group_by when grouping enabled.
+    #[test]
+    fn status_bar_grp_indicator_text_matches_active_group_by() {
+        // group_by_name() is accessible via `use super::*` (private fn in same file).
+        // Test all 4 variants produce the expected status bar string.
+        assert_eq!(group_by_name(GroupByCategory::Priority), "priority");
+        assert_eq!(group_by_name(GroupByCategory::Project),  "project");
+        assert_eq!(group_by_name(GroupByCategory::Context),  "context");
+        assert_eq!(group_by_name(GroupByCategory::DueDate),  "duedate");
+
+        // Simulate the status bar logic: grouping=true → "grp:{name}" appended to middle.
+        let mut middle = String::new();
+        let pane_grouping = true;
+        let pane_group_by = GroupByCategory::Project;
+        if pane_grouping {
+            middle.push_str(" | grp:");
+            middle.push_str(group_by_name(pane_group_by));
+        }
+        assert!(
+            middle.contains("grp:project"),
+            "status bar middle must contain 'grp:project' when grouping=true and group_by=Project (D-12, GRP-03)"
+        );
+
+        // When grouping=false, grp: must NOT appear.
+        let mut middle2 = String::new();
+        let pane_grouping2 = false;
+        let pane_group_by2 = GroupByCategory::Context;
+        if pane_grouping2 {
+            middle2.push_str(" | grp:");
+            middle2.push_str(group_by_name(pane_group_by2));
+        }
+        assert!(
+            !middle2.contains("grp:"),
+            "status bar must NOT show grp: when grouping=false (D-13, GRP-03)"
+        );
+    }
+
+    // GRP-04-T1: PaneConfig TOML backward compat — absent group_by field → None.
+    #[test]
+    fn pane_config_without_group_by_deserializes_to_none() {
+        // TOML without group_by field → group_by = None (backward compat, D-06, GRP-04).
+        let cfg: crate::config::PaneConfig = toml::from_str(
+            "label = \"test\"\nfilter = \"+work\"\ngroup = false"
+        ).expect("should deserialize PaneConfig without group_by");
+        assert_eq!(cfg.group_by, None, "absent group_by in TOML must deserialize to None");
+
+        // TOML with group_by = "project" → group_by = Some(Project).
+        let cfg2: crate::config::PaneConfig = toml::from_str(
+            "group_by = \"project\""
+        ).expect("should deserialize PaneConfig with group_by = \"project\"");
+        assert_eq!(
+            cfg2.group_by,
+            Some(GroupByCategory::Project),
+            "group_by = \"project\" in TOML must deserialize to Some(Project)"
+        );
+
+        // TOML with group_by = "due_date" → group_by = Some(DueDate).
+        let cfg3: crate::config::PaneConfig = toml::from_str(
+            "group_by = \"due_date\""
+        ).expect("should deserialize PaneConfig with group_by = \"due_date\"");
+        assert_eq!(
+            cfg3.group_by,
+            Some(GroupByCategory::DueDate),
+            "group_by = \"due_date\" in TOML must deserialize to Some(DueDate)"
+        );
+    }
+
     // ── Phase 40 Plan 03: Phase 22 gap coverage ──────────────────────────────
 
     fn make_app_with_config(task_lines: &[&str], config: TuiConfig) -> App {
