@@ -5841,6 +5841,20 @@ mod tests {
         assert!(app.task_list.tasks()[1].completed);
     }
 
+    // BDONE-01 gap: verify empty selection means bulk_mark_done touches nothing.
+    // (When selected_tasks is empty, handle_normal_key routes to pane_toggle_done instead.)
+    #[test]
+    fn bulk_mark_done_empty_selection_marks_nothing() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        // selected_tasks intentionally left empty
+        app.bulk_mark_done();
+        assert!(!app.task_list.tasks()[0].completed, "task A must stay incomplete with empty selection");
+        assert!(!app.task_list.tasks()[1].completed, "task B must stay incomplete with empty selection");
+        // Status bar should report 0 (not an error)
+        let has_msg = app.runtime_warnings.iter().any(|w| w.contains("Marked 0"));
+        assert!(has_msg, "status must report 'Marked 0' for empty selection");
+    }
+
     // ── External editor tests (Phase 39, Plan 03) ─────────────────────────────
 
     // Serialize env-var tests — Rust test threads run in parallel by default.
