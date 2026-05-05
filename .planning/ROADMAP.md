@@ -51,7 +51,10 @@
 3. When grouping is enabled the status bar displays both the active group-by category and the active sort order simultaneously
 4. A `group_by` field in a pane's `config.toml` block is respected at startup independently from sort order
 5. All 11 previously manual-only Phase 22 test cases pass as automated unit tests; a `make_app_with_keymap` (or equivalent) test helper exists in the `todotxt-tui` crate for constructing an `App` with a custom keymap
-**Plans:** TBD
+**Plans:** 3 plans
+- [ ] 40-01-PLAN.md — GroupByCategory type + Pane.group_by + PaneConfig.group_by + group_key_for refactor
+- [ ] 40-02-PLAN.md — Key bindings (g→group_by_cycle, G→group_toggle) + action handler + status bar
+- [ ] 40-03-PLAN.md — make_app_with_config test helper + all 11 Phase 22 automated tests
 
 ### Phase 41: Full Presets, Filter History, Pane Task Movement
 **Goal:** Power users can activate multi-dimensional view presets with one key, recall recent filter expressions, and move tasks between filter-based panes via tag mutation
