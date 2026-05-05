@@ -34,6 +34,18 @@ pub struct TuiPreset {
     pub filter: Option<String>,
 }
 
+/// Group-by dimension for a pane — independent from sort order (GRP-01, Phase 40).
+/// Only 4 semantic grouping dimensions are offered; SortOrder is NOT reused (D-01).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupByCategory {
+    #[default]
+    Priority,
+    Project,
+    Context,
+    DueDate,
+}
+
 /// Persisted sort options for config-defined panes.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -77,6 +89,10 @@ pub struct PaneConfig {
     pub sort: PaneSort,
     #[serde(default)]
     pub group: bool,
+    /// Optional per-pane group-by category (GRP-04, Phase 40).
+    /// Absent in TOML → runtime default GroupByCategory::Priority.
+    #[serde(default)]
+    pub group_by: Option<GroupByCategory>,
 }
 
 /// Phase 9 config fields. Mirrors the CLI's top-level TOML fields exactly.

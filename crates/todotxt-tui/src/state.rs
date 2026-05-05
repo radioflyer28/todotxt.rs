@@ -4,6 +4,7 @@ use todotxt_core::{SortOrder, TaskList};
 use chrono::NaiveDate;
 use chrono::Datelike;
 use std::collections::{HashMap, HashSet};
+use crate::config::GroupByCategory;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayRow {
@@ -49,6 +50,9 @@ pub struct Pane {
     #[allow(dead_code)]
     pub grouping: bool,
 
+    /// Group-by dimension for this pane — independent of sort_order (GRP-01, Phase 40).
+    pub group_by: GroupByCategory,
+
     /// Name/label for the pane (e.g., "Work", "Personal")
     #[allow(dead_code)]
     pub label: String,
@@ -67,6 +71,7 @@ impl Pane {
             filter_query: String::new(),
             sort_order: SortOrder::FileOrder,
             grouping: false,
+            group_by: GroupByCategory::Priority,
             label,
             label_selected: false,
         }

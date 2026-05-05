@@ -24,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: 38 (last completed — v1.5)
-Plan: complete
-Status: v1.6 roadmap defined — ready to execute Phase 39
-Last activity: 2026-05-04 -- v1.6 roadmap created (phases 39-43)
+Phase: 40 (in-progress — group-by-decoupling-test-coverage)
+Plan: in-progress (40-01 of 3)
+Status: executing — Wave 1 (GroupByCategory type + pane decoupling)
+Last activity: 2026-05-05 -- Phase 40 execution started (3 plans across 3 waves)
 
 ## Next Step
 
-Execute Phase 39 (Quick Wins — archive, bulk mark-done, external editor, AC-01 fix).
+Complete Phase 40 execution (Wave 1: GroupByCategory type; Wave 2: group_by_cycle action; Wave 3: Phase 22 tests).
 
 ## Deferred Items
 

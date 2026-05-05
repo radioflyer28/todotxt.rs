@@ -279,12 +279,14 @@ mod pane_integration_tests {
                 filter: "project:work".to_string(),
                 sort: PaneSort::Priority,
                 group: true,
+                group_by: None,
             },
             PaneConfig {
                 label: "Today".to_string(),
                 filter: "due:today".to_string(),
                 sort: PaneSort::DueDate,
                 group: false,
+                group_by: None,
             },
         ];
 

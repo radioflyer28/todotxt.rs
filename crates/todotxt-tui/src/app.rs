@@ -14,7 +14,7 @@ use ratatui::Frame;
 use todotxt_core::{Filter, SortOrder, Task, TaskList, normalize_append, normalize_line};
 use tui_textarea::TextArea;
 
-use crate::config::{PaneConfig, PaneSort, TuiConfig, resolve_keymap};
+use crate::config::{GroupByCategory, PaneConfig, PaneSort, TuiConfig, resolve_keymap};
 use crate::event::AppEvent;
 use crate::theme as theme_module;
 use theme_module::{StyleSheet, Theme};
@@ -84,6 +84,8 @@ pub struct App {
     pub display_indices: Vec<usize>,
     /// Toggle grouped rendering with non-selectable header rows.
     pub grouping: bool,
+    /// Group-by dimension for single-pane mode — independent of sort_order (GRP-01, Phase 40).
+    pub group_by: GroupByCategory,
     /// Rendered rows for list/navigation; includes group headers when grouping is enabled.
     pub display_rows: Vec<DisplayRow>,
     /// Current display sort order (FileOrder = no sort applied).
@@ -211,6 +213,7 @@ impl App {
                 pane.filter_query = pane_cfg.filter.clone();
                 pane.sort_order = pane_cfg.sort.to_sort_order();
                 pane.grouping = pane_cfg.group;
+                pane.group_by = pane_cfg.group_by.unwrap_or(GroupByCategory::Priority);
                 pane
             })
             .collect();
@@ -249,6 +252,7 @@ impl App {
             append_confirm_count: 0,
             display_indices: Vec::new(),
             grouping: false,
+            group_by: GroupByCategory::Priority,
             display_rows: Vec::new(),
             sort_order: SortOrder::FileOrder,
             show_deferred: false,
@@ -562,9 +566,10 @@ impl App {
         let rows: Vec<DisplayRow> = if pane.grouping && !filtered_tasks.is_empty() {
             let mut display_rows: Vec<DisplayRow> = Vec::new();
             let mut last_key: Option<String> = None;
+            let group_by = pane.group_by;
             
             for (source_index, task) in &filtered_tasks {
-                let key = group_key_for(task, &pane.sort_order);
+                let key = group_key_for(task, &group_by);
                 if last_key.as_deref() != Some(&key) {
                     display_rows.push(DisplayRow::GroupHeader(key.clone()));
                     last_key = Some(key);
@@ -599,6 +604,7 @@ impl App {
             let filter_query = self.panes[idx].filter_query.clone();
             let sort_order = self.panes[idx].sort_order;
             let grouping = self.panes[idx].grouping;
+            let group_by = self.panes[idx].group_by;
 
             // Build new display rows. Use a sub-block so `filtered` (which holds &Task refs
             // from self.task_list) is dropped before we mutably borrow self.panes[idx].
@@ -618,7 +624,7 @@ impl App {
                     let mut rows: Vec<DisplayRow> = Vec::new();
                     let mut last_key: Option<String> = None;
                     for (source_index, task) in &filtered {
-                        let key = group_key_for(task, &sort_order);
+                        let key = group_key_for(task, &group_by);
                         if last_key.as_deref() != Some(&key) {
                             rows.push(DisplayRow::GroupHeader(key.clone()));
                             last_key = Some(key);
@@ -681,6 +687,7 @@ impl App {
                 filter: pane.filter_query.clone(),
                 sort: PaneSort::from_sort_order(pane.sort_order),
                 group: pane.grouping,
+                group_by: Some(pane.group_by),
             })
             .collect();
 
@@ -2730,21 +2737,22 @@ impl App {
 
         if self.grouping && !self.display_indices.is_empty() {
             let tasks = self.task_list.tasks();
-            let sort_order = self.sort_order;
+            let _sort_order = self.sort_order;
+            let group_by = self.group_by;
             // Stable-sort by group key so same-key tasks are always adjacent.
             // This fixes cases where the primary sort interleaves groups (e.g., Alphabetical
             // sorts by raw string including priority prefix, but group_key_for uses body).
             // stable_sort preserves primary sort order within each group.
             self.display_indices.sort_by(|&a, &b| {
-                let ka = group_key_for(&tasks[a], &sort_order);
-                let kb = group_key_for(&tasks[b], &sort_order);
+                let ka = group_key_for(&tasks[a], &group_by);
+                let kb = group_key_for(&tasks[b], &group_by);
                 ka.cmp(&kb)
             });
             let mut rows: Vec<DisplayRow> = Vec::new();
             let mut last_key: Option<String> = None;
             for &idx in &self.display_indices {
                 let task = &tasks[idx];
-                let key = group_key_for(task, &self.sort_order);
+                let key = group_key_for(task, &group_by);
                 if last_key.as_deref() != Some(&key) {
                     rows.push(DisplayRow::GroupHeader(key.clone()));
                     last_key = Some(key);
@@ -4148,42 +4156,26 @@ fn sort_name(order: SortOrder) -> &'static str {
     }
 }
 
-fn group_key_for(task: &Task, sort: &SortOrder) -> String {
-    match sort {
-        SortOrder::Priority => task
+fn group_key_for(task: &Task, group_by: &GroupByCategory) -> String {
+    match group_by {
+        GroupByCategory::Priority => task
             .priority
             .map(|p| format!("({})", p))
             .unwrap_or_else(|| "none".to_string()),
-        SortOrder::Project => task
+        GroupByCategory::Project => task
             .projects
             .first()
             .map(|p| format!("+{}", p))
             .unwrap_or_else(|| "none".to_string()),
-        SortOrder::Context => task
+        GroupByCategory::Context => task
             .contexts
             .first()
             .map(|c| format!("@{}", c))
             .unwrap_or_else(|| "none".to_string()),
-        SortOrder::DueDate => task
+        GroupByCategory::DueDate => task
             .due_date
             .map(|d| d.to_string())
             .unwrap_or_else(|| "no due date".to_string()),
-        SortOrder::Alphabetical => task
-            .body
-            .chars()
-            .next()
-            .map(|c| c.to_uppercase().to_string())
-            .unwrap_or_else(|| "none".to_string()),
-        SortOrder::FileOrder => "all tasks".to_string(),
-        SortOrder::CompletedDate => task
-            .completion_date
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "no completion date".to_string()),
-        SortOrder::CreationDate => task
-            .creation_date
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "no creation date".to_string()),
-        _ => "unknown".to_string(),
     }
 }
 
@@ -5488,8 +5480,8 @@ mod tests {
 
         let mut config = TuiConfig::default();
         config.panes = vec![
-            PaneConfig { label: "All".to_string(), filter: String::new(), sort: PaneSort::default(), group: false },
-            PaneConfig { label: "Work".to_string(), filter: String::new(), sort: PaneSort::default(), group: false },
+            PaneConfig { label: "All".to_string(), filter: String::new(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Work".to_string(), filter: String::new(), sort: PaneSort::default(), group: false, group_by: None },
         ];
         App::new(task_list, path, config, None, Theme::Default, true)
     }
