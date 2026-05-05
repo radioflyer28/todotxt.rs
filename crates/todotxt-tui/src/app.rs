@@ -5999,6 +5999,216 @@ mod tests {
             "accepting completion after typing prefix '+wo' must produce '+work', got: {:?}", line
         );
     }
+
+    // ── Phase 40 Plan 03: Phase 22 gap coverage ──────────────────────────────
+
+    fn make_app_with_config(task_lines: &[&str], config: TuiConfig) -> App {
+        let mut file = NamedTempFile::new().expect("failed to create temp file");
+        for line in task_lines {
+            writeln!(file, "{}", line).unwrap();
+        }
+        let path = file.path().to_path_buf();
+        let task_list = TaskList::load(&path).expect("load failed");
+        let _ = file.keep();
+        App::new(task_list, path, config, None, Theme::Default, true)
+    }
+
+    // 22-01-G01: App::new initializes effective_keymap and keymap_warnings from config.
+    #[test]
+    fn app_new_initializes_effective_keymap_from_config() {
+        let app = make_app_with_tasks(&["task A"]);
+        // Default config → effective_keymap should be populated (at least "help" action present).
+        assert!(
+            app.effective_keymap.contains_key("help"),
+            "effective_keymap must contain 'help' action after App::new"
+        );
+        // Default config has no invalid entries → warnings should be empty.
+        assert!(
+            app.keymap_warnings.is_empty(),
+            "keymap_warnings must be empty with default config"
+        );
+    }
+
+    // 22-01-G02: handle_normal_key dispatches default action keys through dynamic dispatch.
+    #[test]
+    fn handle_normal_key_default_dispatch_works() {
+        let mut app = make_app_with_tasks(&["task A", "task B"]);
+        // Default 'n' key → AddingMode (add action)
+        press_key(&mut app, KeyCode::Char('n'));
+        assert_eq!(
+            app.mode,
+            AppMode::Adding,
+            "default 'n' key must transition to AppMode::Adding via effective_keymap dispatch"
+        );
+    }
+
+    // 22-02-G01: Status bar error_log_count reflects keymap warnings.
+    #[test]
+    fn error_log_count_reflects_keymap_warnings() {
+        let mut cfg = TuiConfig::default();
+        // Insert an invalid action to generate a keymap warning.
+        cfg.keymap.insert("nonexistent_action_xyz".into(), "a".into());
+        let app = make_app_with_config(&["task A"], cfg);
+        assert!(
+            app.error_log_count() > 0,
+            "error_log_count must be > 0 when keymap_warnings is non-empty"
+        );
+        assert!(
+            !app.keymap_warnings.is_empty(),
+            "keymap_warnings must be non-empty after invalid action in config"
+        );
+    }
+
+    // 22-02-G02: Clean status bar when no warnings.
+    #[test]
+    fn error_log_count_zero_with_clean_config() {
+        let app = make_app_with_tasks(&["task A"]);
+        assert_eq!(
+            app.error_log_count(),
+            0,
+            "error_log_count must be 0 with default config (no warnings)"
+        );
+    }
+
+    // 22-02-G03: '!' in Normal mode → AppMode::KeymapErrors.
+    #[test]
+    fn bang_key_enters_keymap_errors_mode() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        assert_eq!(app.mode, AppMode::Normal);
+        press_key(&mut app, KeyCode::Char('!'));
+        assert_eq!(
+            app.mode,
+            AppMode::KeymapErrors,
+            "'!' must transition to AppMode::KeymapErrors"
+        );
+    }
+
+    // 22-02-G04: Esc from KeymapErrors → AppMode::Normal.
+    #[test]
+    fn esc_from_keymap_errors_returns_to_normal() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        app.mode = AppMode::KeymapErrors;
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        let esc = KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_keymap_errors_key(esc).unwrap();
+        assert_eq!(
+            app.mode,
+            AppMode::Normal,
+            "Esc from KeymapErrors must return to AppMode::Normal"
+        );
+    }
+
+    // 22-03-G01: '0' clears filter_query.
+    #[test]
+    fn zero_key_clears_filter_query() {
+        let mut app = make_app_with_tasks(&["task A +work", "task B +home"]);
+        app.active_pane_mut().filter_query = "+work".to_string();
+        app.rebuild_and_reanchor();
+        press_key(&mut app, KeyCode::Char('0'));
+        assert_eq!(
+            app.active_pane().filter_query,
+            "",
+            "'0' must clear active pane filter_query"
+        );
+    }
+
+    // 22-03-G02: '1'-'9' applies preset filter when slot is defined; no-op if slot empty.
+    #[test]
+    fn number_keys_apply_preset_filter() {
+        let mut cfg = TuiConfig::default();
+        cfg.presets.insert(
+            "f1".into(),
+            crate::config::TuiPreset { filter: Some("+work".into()) },
+        );
+        let mut app = make_app_with_config(&["task A +work", "task B +home"], cfg);
+        // '1' should apply preset f1 filter.
+        press_key(&mut app, KeyCode::Char('1'));
+        assert_eq!(
+            app.active_pane().filter_query,
+            "+work",
+            "'1' must apply preset f1 filter to active pane"
+        );
+        // '2' with no preset defined → no-op (filter unchanged).
+        press_key(&mut app, KeyCode::Char('2'));
+        assert_eq!(
+            app.active_pane().filter_query,
+            "+work",
+            "'2' with no preset must be a no-op (filter unchanged)"
+        );
+    }
+
+    // 22-03-G03: '.' calls task_list.reload() — verify via round-trip with temp file.
+    #[test]
+    fn dot_key_triggers_reload() {
+        let mut file = NamedTempFile::new().expect("failed to create temp file");
+        writeln!(file, "task A").unwrap();
+        let path = file.path().to_path_buf();
+        let task_list = TaskList::load(&path).expect("load failed");
+        let path_clone = path.clone();
+        let _ = file.keep();
+        let mut app = App::new(task_list, path_clone, TuiConfig::default(), None, Theme::Default, true);
+        assert_eq!(app.task_list.tasks().len(), 1);
+        // Append a task to the file on disk.
+        {
+            let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+            writeln!(f, "task B").unwrap();
+        }
+        // Press '.' to reload.
+        press_key(&mut app, KeyCode::Char('.'));
+        assert_eq!(
+            app.task_list.tasks().len(),
+            2,
+            "'.' must reload task list from disk (task B should appear after reload)"
+        );
+    }
+
+    // 22-03-G04: '?' → AppMode::Help.
+    #[test]
+    fn question_mark_enters_help_mode() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        assert_eq!(app.mode, AppMode::Normal);
+        press_key(&mut app, KeyCode::Char('?'));
+        assert_eq!(
+            app.mode,
+            AppMode::Help,
+            "'?' must transition to AppMode::Help"
+        );
+    }
+
+    // 22-03-G05: Esc/q from Help → AppMode::Normal.
+    #[test]
+    fn esc_and_q_from_help_return_to_normal() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+
+        // Esc closes Help.
+        let mut app = make_app_with_tasks(&["task A"]);
+        app.mode = AppMode::Help;
+        let esc = KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_help_key(esc).unwrap();
+        assert_eq!(app.mode, AppMode::Normal, "Esc must close Help overlay");
+
+        // 'q' closes Help.
+        let mut app2 = make_app_with_tasks(&["task A"]);
+        app2.mode = AppMode::Help;
+        let q_key = KeyEvent {
+            code: KeyCode::Char('q'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app2.handle_help_key(q_key).unwrap();
+        assert_eq!(app2.mode, AppMode::Normal, "'q' must close Help overlay");
+    }
 }
 
 
