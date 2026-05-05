@@ -400,7 +400,8 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
     m.insert("filter_define".into(),   (KeyCode::Char('F'), KeyModifiers::NONE));
     m.insert("filter_toggle".into(),   (KeyCode::Char('f'), KeyModifiers::CONTROL));
     m.insert("sort_cycle".into(),      (KeyCode::Char('o'), KeyModifiers::NONE));
-    m.insert("group_toggle".into(),    (KeyCode::Char('g'), KeyModifiers::NONE));
+    m.insert("group_toggle".into(),    (KeyCode::Char('G'), KeyModifiers::NONE));
+    m.insert("group_by_cycle".into(),  (KeyCode::Char('g'), KeyModifiers::NONE));
     m.insert("deferred_toggle".into(), (KeyCode::Char('h'), KeyModifiers::NONE));
     m.insert("theme_cycle".into(),     (KeyCode::Char('t'), KeyModifiers::NONE));
     m.insert("disjoint_select".into(), (KeyCode::Char('v'), KeyModifiers::NONE));

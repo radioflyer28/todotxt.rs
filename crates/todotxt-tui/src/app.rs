@@ -1107,6 +1107,13 @@ impl App {
                 self.rebuild_and_reanchor();
             }
 
+            _ if display_count > 0 && self.key_is_action(key, "group_by_cycle") => {
+                // Cycle the active pane's group-by category (GRP-02, Phase 40).
+                let current = self.active_pane().group_by;
+                self.active_pane_mut().group_by = cycle_group_by(current);
+                self.rebuild_and_reanchor();
+            }
+
             _ if display_count > 0 && self.key_is_action(key, "deferred_toggle") => {
                 self.show_deferred = !self.show_deferred;
                 self.rebuild_display_indices();
@@ -3455,12 +3462,13 @@ impl App {
         let mut middle = String::new();
 
         // Per-pane query state (Phase 25): Show active pane's filter/sort/group state
-        let (pane_filter, pane_sort, pane_grouping) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
+        let (pane_filter, pane_sort, pane_grouping, pane_group_by) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
             let pane = &self.panes[self.active_pane];
             (
                 pane.filter_query.clone(),
                 pane.sort_order,
                 pane.grouping,
+                pane.group_by,
             )
         } else {
             // Fallback to global state when showing single pane
@@ -3468,6 +3476,7 @@ impl App {
                 self.filter_query.clone(),
                 self.sort_order,
                 self.grouping,
+                self.group_by,
             )
         };
 
@@ -3481,13 +3490,14 @@ impl App {
             middle.push_str(sort_name(pane_sort));
         }
         if pane_grouping {
-            middle.push_str(" | group: on");
+            middle.push_str(" | grp:");
+            middle.push_str(group_by_name(pane_group_by));
         }
         if self.show_deferred {
             middle.push_str(" [+deferred]");
         }
 
-        let right = "  q quit | n add | u edit | d/Del/Bksp del | D bulk del (confirm) | T bulk app | @ context | + project | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | g group | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
+        let right = "  q quit | n add | u edit | d/Del/Bksp del | D bulk del (confirm) | T bulk app | @ context | + project | v sel | Shift+nav range | x done | j/k nav | f filter | ^f filt on/off | F define | o sort | G group | g grp-by | h deferred | t theme | 0 clear filter | 1-9 preset | . reload | ? help";
         let total_width = area.width as usize;
         let left_len = left.len();
         let middle_len = middle.len();
@@ -3617,7 +3627,7 @@ impl App {
                 "filter_open", "filter_define", "filter_toggle", "clear_filter",
             ]),
             ("View", "View", &[
-                "sort_cycle", "group_toggle", "deferred_toggle", "theme_cycle", "reload",
+                "sort_cycle", "group_toggle", "group_by_cycle", "deferred_toggle", "theme_cycle", "reload",
             ]),
             ("Select", "Select", &[
                 "disjoint_select", "disjoint_mark",
@@ -3643,6 +3653,7 @@ impl App {
             ("clear_filter", "Clear filter"),
             ("sort_cycle", "Cycle sort"),
             ("group_toggle", "Toggle grouping"),
+            ("group_by_cycle", "Cycle group-by"),
             ("deferred_toggle", "Toggle deferred"),
             ("theme_cycle", "Cycle theme"),
             ("reload", "Reload file"),
@@ -4153,6 +4164,26 @@ fn sort_name(order: SortOrder) -> &'static str {
         SortOrder::Priority      => "priority",
         SortOrder::Project       => "project",
         _                        => "?",
+    }
+}
+
+/// Advance to the next group-by category in the fixed cycle (GRP-02, Phase 40).
+fn cycle_group_by(current: GroupByCategory) -> GroupByCategory {
+    match current {
+        GroupByCategory::Priority => GroupByCategory::Project,
+        GroupByCategory::Project  => GroupByCategory::Context,
+        GroupByCategory::Context  => GroupByCategory::DueDate,
+        GroupByCategory::DueDate  => GroupByCategory::Priority,
+    }
+}
+
+/// Human-readable name for a group-by category, shown in the status bar (GRP-03, Phase 40).
+fn group_by_name(g: GroupByCategory) -> &'static str {
+    match g {
+        GroupByCategory::Priority => "priority",
+        GroupByCategory::Project  => "project",
+        GroupByCategory::Context  => "context",
+        GroupByCategory::DueDate  => "duedate",
     }
 }
 
