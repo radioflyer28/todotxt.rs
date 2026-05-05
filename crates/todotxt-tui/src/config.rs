@@ -28,10 +28,38 @@ pub struct TuiSection {
     pub theme: String,
 }
 
-/// A named filter preset from the [presets] TOML section.
+/// Filter-only preset from [presets.filter.*] TOML section (Phase 41, D-01).
+/// Applies to the active pane's filter_query only (D-05).
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub struct TuiPreset {
+pub struct FilterPreset {
     pub filter: Option<String>,
+}
+
+/// Full pane-layout preset from [presets.panes.*] TOML section (Phase 41, D-01, D-04).
+/// Applying this preset replaces all current panes with those defined here (D-04).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PaneLayoutPreset {
+    /// Pane definitions to apply atomically. Each entry uses the same PaneConfig
+    /// schema as [[panes]] in config.toml.
+    #[serde(default)]
+    pub panes: Vec<PaneConfig>,
+}
+
+/// Preset namespace wrapper for [presets.*] in config.toml (Phase 41, D-01).
+///
+/// - [presets.filter.1] through [presets.filter.9] → filter presets (1-9 keys)
+/// - [presets.panes.name] → pane layout presets (Ctrl+1-9 positional keys)
+///
+/// Old [presets.f1]-style blocks are NOT read — they map to neither sub-key
+/// and are silently dropped by serde (D-02).
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct PresetsConfig {
+    /// Filter-only presets keyed by slot name (e.g. "1", "2", "work").
+    #[serde(default)]
+    pub filter: HashMap<String, FilterPreset>,
+    /// Full layout presets keyed by name (e.g. "inbox", "focus").
+    #[serde(default)]
+    pub panes: HashMap<String, PaneLayoutPreset>,
 }
 
 /// Group-by dimension for a pane — independent from sort order (GRP-01, Phase 40).
@@ -119,9 +147,11 @@ pub struct TuiConfig {
     /// lifted to canonical field positions on save.
     #[serde(default = "default_true")]
     pub normalize_edit: bool,
-    /// Named filter presets. Keys are preset names (e.g. "work", "today").
+    /// Preset namespaces: [presets.filter.*] for filter presets (1-9 keys) and
+    /// [presets.panes.*] for full layout presets (Ctrl+1-9 keys) (Phase 41, D-01).
+    /// Old [presets.f1]-style entries are silently dropped (D-02).
     #[serde(default)]
-    pub presets: HashMap<String, TuiPreset>,
+    pub presets: PresetsConfig,
     /// TUI-specific settings from the `[tui]` TOML subsection.
     #[serde(default)]
     pub tui: TuiSection,
@@ -416,6 +446,9 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
     m.insert("pane_add".into(),        (KeyCode::Char('n'), KeyModifiers::CONTROL));
     m.insert("pane_delete".into(),     (KeyCode::Char('w'), KeyModifiers::CONTROL));
     m.insert("pane_hide_toggle".into(), (KeyCode::Char('p'), KeyModifiers::CONTROL));
+    // Phase 41 pane task movement (D-07, PMOVE-01)
+    m.insert("pane_move_left".into(),  (KeyCode::Left,  KeyModifiers::CONTROL));
+    m.insert("pane_move_right".into(), (KeyCode::Right, KeyModifiers::CONTROL));
     m
 }
 
