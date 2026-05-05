@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: TUI Fixes and Power User Improvements
-status: planning
-last_updated: "2026-05-04T00:00:00.000Z"
-last_activity: 2026-05-04 -- v1.6 milestone planning started
+status: in-progress
+last_updated: "2026-05-05T00:00:00.000Z"
+last_activity: 2026-05-05 -- Phase 41 complete
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 2
+  total_plans: 7
+  completed_plans: 7
+  percent: 40
 ---
 
 # Project State
@@ -24,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: 40 (complete — group-by-decoupling-test-coverage)
-Plan: 3/3 complete
-Status: phase complete — all 3 plans executed, 161 tests passing
-Last activity: 2026-05-05 -- Phase 40 complete (commits: e04679d, 2861696, 85dff6a)
+Phase: 41 (complete — full-presets-filter-history-pane-task-movement)
+Plan: 4/4 complete
+Status: phase complete — all 4 plans executed, 182+ tests passing
+Last activity: 2026-05-05 -- Phase 41 complete (commits: d992972, 447a1e3, 8177d3b, 3b312fd)
 
 ## Next Step
 
-Complete Phase 40 execution (Wave 1: GroupByCategory type; Wave 2: group_by_cycle action; Wave 3: Phase 22 tests).
+Begin Phase 42: Filter Autocomplete Coverage (AC-02, AC-03, AC-04).
 
 ## Deferred Items
 

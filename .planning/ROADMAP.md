@@ -17,7 +17,7 @@
 
 - [ ] **Phase 39: Quick Wins** — Archive workflow, bulk mark-done, external editor escape hatch, and `+` autocomplete bug fix
 - [x] **Phase 40: Group-By Decoupling + Test Coverage** — Independent group-by controls per pane and automated Phase 22 test coverage
-- [ ] **Phase 41: Full Presets, Filter History, Pane Task Movement** — Multi-dimensional view presets, session filter history, and tag-mutation pane moves
+- [x] **Phase 41: Full Presets, Filter History, Pane Task Movement** — Multi-dimensional view presets, session filter history, and tag-mutation pane moves
 - [ ] **Phase 42: Filter Autocomplete Coverage** — Autocomplete in the filter input with incremental narrowing
 - [ ] **Phase 43: View State Persistence** — Save and restore TUI view state across restarts
 
@@ -68,10 +68,10 @@
 5. If the source or destination pane has no filter or a compound filter, the move is declined and the status bar explains why; no task data is modified
 **Plans:** 4 plans
 Plans:
-- [ ] 41-01-PLAN.md — config.rs: PresetsConfig type system + pane_move_left/right keymap defaults
-- [ ] 41-02-PLAN.md — state.rs: AutocompleteMode::FilterHistory variant + new_filter_history constructor
-- [ ] 41-03-PLAN.md — app.rs: preset loading (filter + pane), filter history ring, Ctrl+R cycling, inline history suggestions
-- [ ] 41-04-PLAN.md — app.rs: pane_move_task, is_single_tag_token, Ctrl+Left/Right key handlers
+- [x] 41-01-PLAN.md — config.rs: PresetsConfig type system + pane_move_left/right keymap defaults
+- [x] 41-02-PLAN.md — state.rs: AutocompleteMode::FilterHistory variant + new_filter_history constructor
+- [x] 41-03-PLAN.md — app.rs: preset loading (filter + pane), filter history ring, Ctrl+R cycling, inline history suggestions
+- [x] 41-04-PLAN.md — app.rs: pane_move_task, is_single_tag_token, Ctrl+Left/Right key handlers
 **UI hint**: yes
 
 ### Phase 42: Filter Autocomplete Coverage
