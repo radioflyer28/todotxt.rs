@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: 40 (in-progress — group-by-decoupling-test-coverage)
-Plan: in-progress (40-01 of 3)
-Status: executing — Wave 1 (GroupByCategory type + pane decoupling)
-Last activity: 2026-05-05 -- Phase 40 execution started (3 plans across 3 waves)
+Phase: 40 (complete — group-by-decoupling-test-coverage)
+Plan: 3/3 complete
+Status: phase complete — all 3 plans executed, 161 tests passing
+Last activity: 2026-05-05 -- Phase 40 complete (commits: e04679d, 2861696, 85dff6a)
 
 ## Next Step
 
