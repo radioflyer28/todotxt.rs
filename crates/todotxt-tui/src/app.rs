@@ -287,6 +287,121 @@ impl App {
         self.filter_history_cursor = None;
     }
 
+    /// Returns true if `filter` is a single @/+ tag token with no spaces (Phase 41, PMOVE-01, D-15).
+    ///
+    /// Valid: "@work", "+project", "@home-office". Invalid: "@work @home", "due:today", "".
+    fn is_single_tag_token(filter: &str) -> bool {
+        if filter.is_empty() {
+            return false;
+        }
+        let trimmed = filter.trim();
+        (trimmed.starts_with('@') || trimmed.starts_with('+'))
+            && !trimmed.contains(char::is_whitespace)
+    }
+
+    /// Move task(s) from the active pane to an adjacent pane by tag mutation (Phase 41, PMOVE-02).
+    ///
+    /// `direction` is +1 (right) or -1 (left). Wraps at boundaries using rem_euclid.
+    ///
+    /// Validation (PMOVE-03, D-15): source and dest pane must each have a single-token
+    /// @/+ filter. Otherwise pushes a status message and returns without mutating.
+    ///
+    /// Mutation per task (D-16): removes the source token from task raw text (if present),
+    /// then appends the dest token (if not already present).
+    ///
+    /// After mutation (D-17, D-18): pushes undo entry BEFORE mutation, saves, rebuilds,
+    /// and jumps active_pane to the dest pane index.
+    fn pane_move_task(&mut self, direction: isize) -> color_eyre::Result<()> {
+        let pane_count = self.panes.len();
+        if pane_count < 2 {
+            self.push_runtime_warning("Need at least 2 panes to move tasks.".to_string());
+            return Ok(());
+        }
+
+        let src_idx = self.active_pane;
+        let dest_idx = ((src_idx as isize + direction).rem_euclid(pane_count as isize)) as usize;
+
+        let src_filter = self.panes[src_idx].filter_query.trim().to_string();
+        let dest_filter = self.panes[dest_idx].filter_query.trim().to_string();
+
+        if !Self::is_single_tag_token(&src_filter) {
+            self.push_runtime_warning(format!(
+                "Cannot move: source pane filter '{}' is not a single @/+ tag.",
+                src_filter
+            ));
+            return Ok(());
+        }
+        if !Self::is_single_tag_token(&dest_filter) {
+            self.push_runtime_warning(format!(
+                "Cannot move: destination pane filter '{}' is not a single @/+ tag.",
+                dest_filter
+            ));
+            return Ok(());
+        }
+
+        // Collect global task indices: selected_tasks if non-empty, else cursor task in active pane.
+        let task_indices: Vec<usize> = if !self.selected_tasks.is_empty() {
+            self.selected_tasks.iter().cloned().collect()
+        } else {
+            let pane = &self.panes[src_idx];
+            match pane.display_rows.get(pane.selected) {
+                Some(DisplayRow::Task(idx)) => vec![*idx],
+                _ => {
+                    self.push_runtime_warning("No task selected to move.".to_string());
+                    return Ok(());
+                }
+            }
+        };
+
+        if task_indices.is_empty() {
+            return Ok(());
+        }
+
+        // Snapshot undo BEFORE mutation (D-17).
+        self.push_undo_entry();
+
+        // Mutate each task: remove src_filter token, append dest_filter token.
+        for &task_idx in &task_indices {
+            if task_idx >= self.task_list.tasks().len() {
+                continue;
+            }
+            let raw = self.task_list.tasks()[task_idx].to_raw().to_string();
+
+            // Remove source filter token (word-by-word, case-sensitive exact match).
+            let filtered_tokens: Vec<&str> = raw
+                .split_whitespace()
+                .filter(|&t| t != src_filter)
+                .collect();
+            let mut new_raw = filtered_tokens.join(" ");
+
+            // Append dest filter token if not already present.
+            let already_has_dest = new_raw
+                .split_whitespace()
+                .any(|t| t == dest_filter);
+            if !already_has_dest {
+                if !new_raw.is_empty() {
+                    new_raw.push(' ');
+                }
+                new_raw.push_str(&dest_filter);
+            }
+
+            let new_task = todotxt_core::Task::parse(&new_raw);
+            if let Err(e) = self.task_list.update(task_idx, new_task) {
+                self.push_runtime_warning(format!("pane_move_task: update failed: {e}"));
+                return Ok(());
+            }
+        }
+
+        // Jump to dest pane, clear selection, rebuild (D-18).
+        self.selected_tasks.clear();
+        self.selection_anchor = None;
+        self.active_pane = dest_idx;
+        self.rebuild_all_panes();
+        self.rebuild_display_indices();
+
+        Ok(())
+    }
+
     pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, palette: Theme, no_color: bool) -> Self {
         // Build sorted filter presets vec from [presets.filter.*] (Phase 41, PRST-01).
         let mut presets: Vec<(String, String)> = config
@@ -1266,6 +1381,15 @@ impl App {
             _ if self.key_is_action(key, "pane_hide_toggle") => {
                 self.pane_hide_toggle();
                 self.rebuild_and_reanchor();
+            }
+
+            // Ctrl+Left/Right moves task to adjacent pane (Phase 41, PMOVE-02).
+            _ if self.key_is_action(key, "pane_move_left") => {
+                self.pane_move_task(-1)?;
+            }
+
+            _ if self.key_is_action(key, "pane_move_right") => {
+                self.pane_move_task(1)?;
             }
 
             // 's' opens the date picker for setting due dates (Phase 33, Plan 01)
@@ -3783,6 +3907,8 @@ impl App {
             ("pane_add", "Create pane"),
             ("pane_delete", "Delete pane"),
             ("pane_hide_toggle", "Toggle panes"),
+            ("pane_move_left", "Move task to left pane"),
+            ("pane_move_right", "Move task to right pane"),
             ("help", "Show help"),
             ("quit", "Quit"),
         ].into_iter().collect();
@@ -6630,6 +6756,77 @@ mod tests {
         let preset = crate::config::PaneLayoutPreset { panes: vec![] };
         app.apply_pane_layout_preset(&preset);
         assert_eq!(app.panes.len(), initial_pane_count, "empty preset must be a no-op");
+    }
+
+    // ── Phase 41 Plan 04: pane task movement ─────────────────────────────────
+
+    // PMOVE-01 / 41-04-T01: is_single_tag_token accepts valid single tokens.
+    #[test]
+    fn is_single_tag_token_valid() {
+        assert!(App::is_single_tag_token("@work"), "@work should be valid");
+        assert!(App::is_single_tag_token("+project"), "+project should be valid");
+        assert!(App::is_single_tag_token("@home-office"), "@home-office should be valid");
+    }
+
+    // PMOVE-01 / 41-04-T02: is_single_tag_token rejects invalid tokens.
+    #[test]
+    fn is_single_tag_token_invalid() {
+        assert!(!App::is_single_tag_token("@work @home"), "compound @work @home must be invalid");
+        assert!(!App::is_single_tag_token("due:today"), "due:today has no @/+ prefix");
+        assert!(!App::is_single_tag_token(""), "empty string must be invalid");
+        assert!(!App::is_single_tag_token("@work +personal"), "compound @work +personal must be invalid");
+    }
+
+    // PMOVE-02 / 41-04-T03: pane_move_task swaps tags correctly.
+    #[test]
+    fn pane_move_task_tag_swap() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo @work task"], config);
+        assert_eq!(app.active_pane, 0);
+        // Cursor is on the @work task in pane 0.
+        app.pane_move_task(1).unwrap();
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(!raw.contains("@work"), "src token not removed: {}", raw);
+        assert!(raw.contains("@home"), "dest token not added: {}", raw);
+        assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
+    }
+
+    // PMOVE-03 / 41-04-T04: pane_move_task is declined when src filter is compound.
+    #[test]
+    fn pane_move_task_declined_compound_filter() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Compound".into(), filter: "@work +project".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo @work +project task"], config);
+        let was_none = app.undo_entry.is_none();
+        app.pane_move_task(1).unwrap();
+        // Declined: undo_entry unchanged, active pane unchanged.
+        assert_eq!(app.undo_entry.is_none(), was_none, "undo entry must not be pushed on declined move");
+        assert_eq!(app.active_pane, 0, "active pane must not change on declined move");
+    }
+
+    // PMOVE-02 / 41-04-T05: pane_move_task wraps at boundary.
+    #[test]
+    fn pane_move_task_wraps_at_boundary() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo @work task"], config);
+        app.active_pane = 0;
+        // Move left from pane 0 → should wrap to last pane (index 1).
+        app.pane_move_task(-1).unwrap();
+        assert_eq!(app.active_pane, 1, "move left from pane 0 must wrap to last pane");
     }
 }
 
