@@ -98,8 +98,16 @@ pub struct App {
     pub toggled_filter_query: Option<String>,
     /// Filter panel state, or `None` when panel is closed (Plan 02).
     pub filter_state: Option<FilteringState>,
-    /// Named filter presets from `[presets]` in config (Plan 02).
+    /// Named filter presets from `[presets.filter]` in config (Phase 41, PRST-01).
     pub presets: Vec<(String, String)>,
+    /// Full pane layout presets from `[presets.panes]` in config (Phase 41, PRST-02).
+    /// Sorted alphabetically by name; Ctrl+N applies preset at index N-1.
+    pub pane_presets: Vec<(String, crate::config::PaneLayoutPreset)>,
+    /// Session filter history ring (Phase 41, FHIST-01/02/03).
+    /// Most-recently-applied filters at front. Capped at 50. Session-only.
+    pub filter_history: std::collections::VecDeque<String>,
+    /// Ctrl+R cycling cursor into filter_history. None = not currently cycling.
+    pub filter_history_cursor: Option<usize>,
     /// Full TUI config (needed for preset definition panel save, D-04).
     pub config: TuiConfig,
     /// Config file path, used by TuiConfig::save() in the definition panel.
@@ -225,14 +233,77 @@ impl App {
         panes
     }
 
+    /// Apply a full pane layout preset atomically (Phase 41, PRST-02, D-04).
+    ///
+    /// Replaces all current panes with those defined in the preset. Each PaneConfig entry
+    /// in the preset becomes a Pane with the configured label, filter, sort, group, group_by.
+    /// Active pane is reset to 0. All panes are rebuilt immediately.
+    /// Empty presets are a no-op (preserve existing panes).
+    fn apply_pane_layout_preset(&mut self, preset: &crate::config::PaneLayoutPreset) {
+        if preset.panes.is_empty() {
+            return;
+        }
+        let new_panes: Vec<Pane> = preset
+            .panes
+            .iter()
+            .enumerate()
+            .map(|(i, cfg)| {
+                let label = if cfg.label.trim().is_empty() {
+                    format!("Pane {}", i + 1)
+                } else {
+                    cfg.label.clone()
+                };
+                let mut pane = Pane::new(i, label);
+                pane.filter_query = cfg.filter.clone();
+                pane.sort_order = cfg.sort.to_sort_order();
+                pane.grouping = cfg.group;
+                pane.group_by = cfg.group_by.unwrap_or(GroupByCategory::Priority);
+                pane
+            })
+            .collect();
+        self.panes = new_panes;
+        self.active_pane = 0;
+        self.selected_tasks.clear();
+        self.selection_anchor = None;
+        self.rebuild_all_panes();
+        self.rebuild_display_indices();
+    }
+
+    /// Push a filter expression to the session history ring (Phase 41, FHIST-01/03, D-10).
+    ///
+    /// - Empty strings are ignored.
+    /// - Duplicate entries are removed before pushing to front (dedup, FHIST-03).
+    /// - Ring is capped at 50 entries; oldest entry is dropped when cap exceeded (D-10).
+    fn push_filter_history(&mut self, expr: &str) {
+        if expr.is_empty() {
+            return;
+        }
+        self.filter_history.retain(|e| e != expr);
+        self.filter_history.push_front(expr.to_string());
+        while self.filter_history.len() > 50 {
+            self.filter_history.pop_back();
+        }
+        // Reset Ctrl+R cursor (new push invalidates any active cycling position).
+        self.filter_history_cursor = None;
+    }
+
     pub fn new(task_list: TaskList, todo_path: PathBuf, config: TuiConfig, config_path: Option<PathBuf>, palette: Theme, no_color: bool) -> Self {
-        // Build sorted presets vec from config for quick filter selection (Plan 02).
+        // Build sorted filter presets vec from [presets.filter.*] (Phase 41, PRST-01).
         let mut presets: Vec<(String, String)> = config
             .presets
+            .filter
             .iter()
             .filter_map(|(name, p)| p.filter.as_ref().map(|f| (name.clone(), f.clone())))
             .collect();
         presets.sort_by(|(a, _), (b, _)| a.cmp(b));
+        // Build sorted pane layout presets vec from [presets.panes.*] (Phase 41, PRST-02).
+        let mut pane_presets: Vec<(String, crate::config::PaneLayoutPreset)> = config
+            .presets
+            .panes
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        pane_presets.sort_by(|(a, _), (b, _)| a.cmp(b));
         // Resolve keymap at startup — applies user overrides, collects warnings (D-04, Phase 22).
         let (effective_keymap, keymap_warnings) = resolve_keymap(&config);
         let panes = Self::panes_from_config(&config);
@@ -260,6 +331,9 @@ impl App {
             toggled_filter_query: None,
             filter_state: None,
             presets,
+            pane_presets,
+            filter_history: std::collections::VecDeque::new(),
+            filter_history_cursor: None,
             config,
             config_path,
             filter_defining_state: None,
@@ -1060,6 +1134,7 @@ impl App {
                 let highest_existing_slot = self
                     .config
                     .presets
+                    .filter
                     .keys()
                     .filter_map(|name| parse_preset_slot(name))
                     .max()
@@ -1073,6 +1148,7 @@ impl App {
                         let filter = self
                             .config
                             .presets
+                            .filter
                             .get(&name)
                             .and_then(|p| p.filter.clone())
                             .unwrap_or_default();
@@ -1138,16 +1214,25 @@ impl App {
                 self.rebuild_and_reanchor();
             }
 
-            // '1'-'9' applies a preset filter by slot (D-11, Phase 22; not overridable)
+            // '1'-'9' applies a preset filter by slot (Phase 41, PRST-01; not overridable)
             KeyCode::Char(c @ '1'..='9') if key.modifiers == KeyModifiers::NONE => {
-                let slot = format!("f{}", c);
-                if let Some(preset) = self.config.presets.get(&slot) {
+                let slot = c.to_string();  // "1" through "9"
+                if let Some(preset) = self.config.presets.filter.get(&slot) {
                     if let Some(filter_str) = preset.filter.as_ref() {
                         // Per-pane: apply preset filter to active pane (Phase 25)
                         self.active_pane_mut().filter_query = filter_str.clone();
                         self.toggled_filter_query = None;
                         self.rebuild_and_reanchor();
                     }
+                }
+            }
+
+            // Ctrl+1-9 applies a full pane layout preset by positional index (Phase 41, PRST-02, D-07).
+            KeyCode::Char(c @ '1'..='9') if key.modifiers == KeyModifiers::CONTROL => {
+                let idx = (c as usize) - ('1' as usize);  // 0-8
+                if idx < self.pane_presets.len() {
+                    let preset = self.pane_presets[idx].1.clone();
+                    self.apply_pane_layout_preset(&preset);
                 }
             }
 
@@ -1671,6 +1756,8 @@ impl App {
                 let snapshot = self.filter_state.as_ref().map(|s| s.snapshot.clone()).unwrap_or_default();
                 self.active_pane_mut().filter_query = snapshot;
                 self.filter_state = None;
+                self.autocomplete = None;
+                self.filter_history_cursor = None;
                 self.mode = AppMode::Normal;
                 self.rebuild_and_reanchor();
                 self.apply_pending_reload()?;
@@ -1679,12 +1766,33 @@ impl App {
                 // Apply filter to active pane
                 if let Some(state) = self.filter_state.take() {
                     let filter_text = state.editor.lines().join("").trim().to_string();
+                    // Push to filter history before applying (Phase 41, FHIST-01).
+                    self.push_filter_history(&filter_text);
                     self.active_pane_mut().filter_query = filter_text;
                 }
+                self.autocomplete = None;
+                self.filter_history_cursor = None;
                 self.mode = AppMode::Normal;
                 self.toggled_filter_query = None;
                 self.rebuild_and_reanchor();
                 self.apply_pending_reload()?;
+            }
+            // Ctrl+R cycles backward through filter history (Phase 41, FHIST-02, D-09).
+            KeyCode::Char('r') if key.modifiers == KeyModifiers::CONTROL => {
+                if !self.filter_history.is_empty() {
+                    let next_cursor = match self.filter_history_cursor {
+                        None => 0,
+                        Some(c) => (c + 1).rem_euclid(self.filter_history.len()),
+                    };
+                    self.filter_history_cursor = Some(next_cursor);
+                    let hist_entry = self.filter_history[next_cursor].clone();
+                    if let Some(ref mut state) = self.filter_state {
+                        state.editor = tui_textarea::TextArea::default();
+                        state.editor.insert_str(&hist_entry);
+                    }
+                    self.active_pane_mut().filter_query = hist_entry;
+                    self.rebuild_and_reanchor();
+                }
             }
             KeyCode::Down => {
                 let preset_count = self.presets.len();
@@ -1737,8 +1845,17 @@ impl App {
                         .first()
                         .cloned()
                         .unwrap_or_default();
-                    // Per-pane: update active pane's filter as user types (D-04, Phase 25)
-                    self.active_pane_mut().filter_query = filter_text;
+                    // Per-pane: update active pane's filter as user types (D-04, Phase 25).
+                    // Reset Ctrl+R cursor when user types manually (FHIST-02, D-09).
+                    self.filter_history_cursor = None;
+                    self.active_pane_mut().filter_query = filter_text.clone();
+                    // Show inline history suggestions matching the current prefix (Phase 41, FHIST-02).
+                    let history_items: Vec<String> = self.filter_history.iter().cloned().collect();
+                    if !history_items.is_empty() {
+                        self.autocomplete = Some(AutocompleteState::new_filter_history(filter_text, history_items));
+                    } else {
+                        self.autocomplete = None;
+                    }
                 }
                 self.rebuild_and_reanchor();
             }
@@ -1784,21 +1901,21 @@ impl App {
                         .unwrap_or_default()
                 };
 
-                // Update config.presets from editors.
+                // Update config.presets.filter from editors.
                 for (i, name) in state.preset_names.iter().enumerate() {
                     let filter_str = state.preset_editors[i].lines().join("").trim().to_string();
                     if filter_str.is_empty() {
                         // Remove empty/cleared presets — do not write blank slots to config.
-                        self.config.presets.remove(name);
+                        self.config.presets.filter.remove(name);
                     } else {
-                        self.config.presets.entry(name.clone())
+                        self.config.presets.filter.entry(name.clone())
                             .and_modify(|p| p.filter = Some(filter_str.clone()))
-                            .or_insert_with(|| crate::config::TuiPreset { filter: Some(filter_str) });
+                            .or_insert_with(|| crate::config::FilterPreset { filter: Some(filter_str) });
                     }
                 }
 
-                // Rebuild presets vec from updated config (D-05: only preset strings persisted).
-                let mut updated: Vec<(String, String)> = self.config.presets.iter()
+                // Rebuild presets vec from updated config.presets.filter.
+                let mut updated: Vec<(String, String)> = self.config.presets.filter.iter()
                     .filter_map(|(k, v)| v.filter.as_ref().map(|f| (k.clone(), f.clone())))
                     .collect();
                 updated.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -3215,6 +3332,8 @@ impl App {
                     Layout::vertical([Min(0), Length(panel_height), Length(1)]).split(frame.area());
                 self.render_panes(frame, chunks[0]);
                 self.render_filter_panel(frame, chunks[1]);
+                // Render inline history suggestions popup if available (Phase 41, FHIST-02).
+                self.render_autocomplete_popup(frame, chunks[1]);
                 self.render_status_bar(frame, chunks[2]);
             }
             AppMode::FilterDefining => {
@@ -6317,17 +6436,17 @@ mod tests {
     #[test]
     fn number_keys_apply_preset_filter() {
         let mut cfg = TuiConfig::default();
-        cfg.presets.insert(
-            "f1".into(),
-            crate::config::TuiPreset { filter: Some("+work".into()) },
+        cfg.presets.filter.insert(
+            "1".into(),
+            crate::config::FilterPreset { filter: Some("+work".into()) },
         );
         let mut app = make_app_with_config(&["task A +work", "task B +home"], cfg);
-        // '1' should apply preset f1 filter.
+        // '1' should apply preset filter "1".
         press_key(&mut app, KeyCode::Char('1'));
         assert_eq!(
             app.active_pane().filter_query,
             "+work",
-            "'1' must apply preset f1 filter to active pane"
+            "'1' must apply preset filter '1' to active pane"
         );
         // '2' with no preset defined → no-op (filter unchanged).
         press_key(&mut app, KeyCode::Char('2'));
@@ -6404,6 +6523,113 @@ mod tests {
         };
         app2.handle_help_key(q_key).unwrap();
         assert_eq!(app2.mode, AppMode::Normal, "'q' must close Help overlay");
+    }
+
+    // ── Phase 41: Filter history, preset loading, pane layout presets ─────────
+
+    // FHIST-01 / 41-03-T01: push_filter_history deduplicates and caps at 50.
+    #[test]
+    fn push_filter_history_dedup_and_cap() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        // Push same entry twice → only one in history.
+        app.push_filter_history("+work");
+        app.push_filter_history("+work");
+        assert_eq!(app.filter_history.len(), 1, "duplicate push must not grow history");
+        assert_eq!(app.filter_history[0], "+work");
+
+        // Push a different entry → 2 entries, newest at front.
+        app.push_filter_history("+home");
+        assert_eq!(app.filter_history.len(), 2);
+        assert_eq!(app.filter_history[0], "+home", "newest entry must be at front");
+
+        // Re-push "+work" → moved to front, deduplicated.
+        app.push_filter_history("+work");
+        assert_eq!(app.filter_history.len(), 2, "dedup must not grow history on re-push");
+        assert_eq!(app.filter_history[0], "+work", "re-pushed entry must move to front");
+
+        // Cap at 50.
+        for i in 0..50 {
+            app.push_filter_history(&format!("entry-{}", i));
+        }
+        assert_eq!(app.filter_history.len(), 50, "filter_history must be capped at 50 entries");
+    }
+
+    // FHIST-01 / 41-03-T02: Empty string is ignored by push_filter_history.
+    #[test]
+    fn push_filter_history_ignores_empty() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        app.push_filter_history("");
+        assert!(app.filter_history.is_empty(), "empty string must not be added to filter history");
+    }
+
+    // FHIST-01 / 41-03-T03: push_filter_history resets filter_history_cursor.
+    #[test]
+    fn push_filter_history_resets_cursor() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        app.push_filter_history("+work");
+        app.filter_history_cursor = Some(0);
+        // Push new entry → cursor reset.
+        app.push_filter_history("+home");
+        assert!(app.filter_history_cursor.is_none(), "push must reset filter_history_cursor");
+    }
+
+    // PRST-01 / 41-03-T04: App::new loads filter presets from config.presets.filter.
+    #[test]
+    fn app_new_loads_filter_presets_from_config() {
+        let mut cfg = TuiConfig::default();
+        cfg.presets.filter.insert(
+            "1".to_string(),
+            crate::config::FilterPreset { filter: Some("+work".to_string()) },
+        );
+        cfg.presets.filter.insert(
+            "2".to_string(),
+            crate::config::FilterPreset { filter: Some("+home".to_string()) },
+        );
+        let app = make_app_with_config(&["task A"], cfg);
+        // Both presets must be loaded and sorted by key.
+        assert_eq!(app.presets.len(), 2, "must load 2 filter presets");
+        assert_eq!(app.presets[0].0, "1");
+        assert_eq!(app.presets[0].1, "+work");
+    }
+
+    // PRST-02 / 41-03-T05: apply_pane_layout_preset replaces panes atomically.
+    #[test]
+    fn apply_pane_layout_preset_replaces_panes() {
+        let mut app = make_app_with_tasks(&["task A +work", "task B +home"]);
+        assert_eq!(app.panes.len(), 1, "default: single pane");
+
+        let preset = crate::config::PaneLayoutPreset {
+            panes: vec![
+                crate::config::PaneConfig {
+                    label: "Work".to_string(),
+                    filter: "+work".to_string(),
+                    sort: crate::config::PaneSort::default(),
+                    group: false,
+                    group_by: None,
+                },
+                crate::config::PaneConfig {
+                    label: "Home".to_string(),
+                    filter: "+home".to_string(),
+                    sort: crate::config::PaneSort::default(),
+                    group: false,
+                    group_by: None,
+                },
+            ],
+        };
+        app.apply_pane_layout_preset(&preset);
+        assert_eq!(app.panes.len(), 2, "preset must replace panes with 2 new panes");
+        assert_eq!(app.panes[0].label, "Work");
+        assert_eq!(app.active_pane, 0, "active pane must be reset to 0");
+    }
+
+    // PRST-02 / 41-03-T06: apply_pane_layout_preset with empty panes is a no-op.
+    #[test]
+    fn apply_pane_layout_preset_empty_is_noop() {
+        let mut app = make_app_with_tasks(&["task A"]);
+        let initial_pane_count = app.panes.len();
+        let preset = crate::config::PaneLayoutPreset { panes: vec![] };
+        app.apply_pane_layout_preset(&preset);
+        assert_eq!(app.panes.len(), initial_pane_count, "empty preset must be a no-op");
     }
 }
 
