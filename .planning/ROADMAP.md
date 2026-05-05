@@ -66,7 +66,12 @@
 3. User presses `Ctrl+Left` or `Ctrl+Right` to move the cursor task (or all tasks in an active multi-selection) to an adjacent pane
 4. When both source and destination panes have single-token tag filters, the move operation removes the source tag and appends the destination tag — the task disappears from the source pane and appears in the destination pane
 5. If the source or destination pane has no filter or a compound filter, the move is declined and the status bar explains why; no task data is modified
-**Plans:** TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 41-01-PLAN.md — config.rs: PresetsConfig type system + pane_move_left/right keymap defaults
+- [ ] 41-02-PLAN.md — state.rs: AutocompleteMode::FilterHistory variant + new_filter_history constructor
+- [ ] 41-03-PLAN.md — app.rs: preset loading (filter + pane), filter history ring, Ctrl+R cycling, inline history suggestions
+- [ ] 41-04-PLAN.md — app.rs: pane_move_task, is_single_tag_token, Ctrl+Left/Right key handlers
 **UI hint**: yes
 
 ### Phase 42: Filter Autocomplete Coverage
