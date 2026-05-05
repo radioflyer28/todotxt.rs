@@ -22,6 +22,8 @@ pub enum AutocompleteMode {
     QuickSetter(char),
     /// Date autocomplete (special trigger)
     DateAutocomplete,
+    /// Inline filter history suggestions in the filter input (Phase 41, FHIST-01, D-12).
+    FilterHistory,
 }
 
 /// Represents a single pane view with independent state.
@@ -143,6 +145,30 @@ impl AutocompleteState {
             trigger,
             prefix,
             all_items,
+            items,
+            selected: 0,
+            focused: false,
+        }
+    }
+
+    /// Create autocomplete state for filter history suggestions (Phase 41, FHIST-01).
+    ///
+    /// `prefix` is the current text in the filter input.
+    /// `history_items` is the full history ring as a Vec<String> (most recent first).
+    /// Items are prefix-filtered case-insensitively at construction time.
+    /// When prefix is empty, all history items are shown.
+    pub fn new_filter_history(prefix: String, history_items: Vec<String>) -> Self {
+        let lower = prefix.to_lowercase();
+        let items: Vec<String> = history_items
+            .iter()
+            .filter(|s| lower.is_empty() || s.to_lowercase().starts_with(&lower))
+            .cloned()
+            .collect();
+        AutocompleteState {
+            mode: AutocompleteMode::FilterHistory,
+            trigger: '\0',  // no trigger char for history mode
+            prefix,
+            all_items: history_items,
             items,
             selected: 0,
             focused: false,
@@ -683,5 +709,31 @@ mod tests {
         assert_eq!(ac.mode, AutocompleteMode::QuickSetter('@'));
         assert_eq!(ac.trigger, '@');
         assert_eq!(ac.prefix, "");
+    }
+
+    // ── Phase 41 Plan 02: filter history autocomplete ──────────────────────────
+
+    #[test]
+    fn filter_history_autocomplete_prefix_filters() {
+        let items = vec!["@work".to_string(), "@home".to_string(), "due:today".to_string()];
+        let ac = AutocompleteState::new_filter_history("@w".to_string(), items.clone());
+        assert_eq!(ac.mode, AutocompleteMode::FilterHistory);
+        assert_eq!(ac.items, vec!["@work".to_string()]);
+        assert_eq!(ac.selected, 0);
+        assert!(!ac.focused);
+    }
+
+    #[test]
+    fn filter_history_autocomplete_empty_prefix_shows_all() {
+        let items = vec!["@work".to_string(), "@home".to_string()];
+        let ac = AutocompleteState::new_filter_history(String::new(), items.clone());
+        assert_eq!(ac.items.len(), 2);
+    }
+
+    #[test]
+    fn filter_history_autocomplete_case_insensitive() {
+        let items = vec!["@Work".to_string(), "@home".to_string()];
+        let ac = AutocompleteState::new_filter_history("@w".to_string(), items);
+        assert_eq!(ac.items, vec!["@Work".to_string()]);
     }
 }
