@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Verification Backfill
-status: executing
-last_updated: "2026-05-06T20:49:41.156Z"
-last_activity: 2026-05-06 -- Phase 44 complete — BUG-41-01 fixed, 215 tests pass
+status: complete
+last_updated: "2026-05-06T00:00:00.000Z"
+last_activity: 2026-05-06 -- Phase 45 complete — all v1.6 phases have VERIFICATION.md, Phase 39/41 ROADMAP fixed, 215 tests pass
 progress:
   total_phases: 7
-  completed_phases: 6
-  total_plans: 16
-  completed_plans: 16
-  percent: 97
+  completed_phases: 7
+  total_plans: 18
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
@@ -20,18 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-04)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 45 — v1.6-verification-backfill
+**Current focus:** Phase 45 complete — all v1.6 phases verified
 
 ## Current Position
 
-Phase: 44 (pane-move-key-dispatch-fix) — COMPLETE
-Plan: 1 of 1
-Status: Phase 44 complete — BUG-41-01 fixed, PMOVE-01/02/03 satisfied
-Last activity: 2026-05-06 -- Phase 44 complete
+Phase: 45 (v1.6-verification-backfill) — COMPLETE
+Plan: 2 of 2
+Status: All 7 phases complete, 18/18 plans done
+Last activity: 2026-05-06 -- Phase 45 complete
 
 ## Next Step
 
-Run `/gsd-plan-phase 45` then `/gsd-execute-phase 45` to write VERIFICATION.md files for phases 39/40/41/43, then `/gsd-audit-milestone` to confirm all v1.6 gaps closed.
+Run `/gsd-audit-milestone` to confirm all v1.6 gaps closed, then `/gsd-complete-milestone v1.6`.
 
 ## Deferred Items
 

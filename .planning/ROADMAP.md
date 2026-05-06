@@ -21,6 +21,8 @@
 - [x] **Phase 42: Filter Autocomplete Coverage** — Autocomplete in the filter input with incremental narrowing
  (completed 2026-05-06)
 - [x] **Phase 43: View State Persistence** — Save and restore TUI view state across restarts
+- [x] **Phase 44: Pane Move Key Dispatch Fix** — TDD bug fix for BUG-41-01 Ctrl+Left/Right key dispatch (completed 2026-05-06)
+- [x] **Phase 45: v1.6 Verification Backfill** — VERIFICATION.md sign-offs for all v1.6 phases (completed 2026-05-06)
 
 ---
 
@@ -122,9 +124,9 @@ Plans:
 3. `41-VERIFICATION.md` exists and shows status: passed for PRST-01/02, FHIST-01/02/03, PMOVE-01/02/03
 4. `43-VERIFICATION.md` exists and shows status: passed for PRSV-01/02/03
 5. Phase 39 is marked `[x]` complete in ROADMAP.md with all 4 plan checkboxes checked
-**Plans:** 2 plans
-- [ ] 45-01-PLAN.md — Write 39-VERIFICATION.md + 40-VERIFICATION.md; fix Phase 39 ROADMAP tracking (Wave 1)
-- [ ] 45-02-PLAN.md — Write 41-VERIFICATION.md + 43-VERIFICATION.md (Wave 1, parallel)
+**Plans:** 2/2 plans complete
+- [x] 45-01-PLAN.md — Write 39-VERIFICATION.md + 40-VERIFICATION.md; fix Phase 39 ROADMAP tracking (Wave 1)
+- [x] 45-02-PLAN.md — Write 41-VERIFICATION.md + 43-VERIFICATION.md (Wave 1, parallel)
 
 ---
 
@@ -138,7 +140,7 @@ Plans:
 | 42 | Filter Autocomplete Coverage | 2/2 | Complete   | 2026-05-06 |
 | 43 | View State Persistence | 2/2 | Complete | 2026-05-07 |
 | 44 | Pane Move Key Dispatch Fix | 1/1 | Complete   | 2026-05-06 |
-| 45 | v1.6 Verification Backfill | 0/2 | Not started | - |
+| 45 | v1.6 Verification Backfill | 2/2 | Complete | 2026-05-06 |
 
 ---
 
