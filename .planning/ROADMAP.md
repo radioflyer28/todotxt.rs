@@ -123,8 +123,8 @@ Plans:
 4. `43-VERIFICATION.md` exists and shows status: passed for PRSV-01/02/03
 5. Phase 39 is marked `[x]` complete in ROADMAP.md with all 4 plan checkboxes checked
 **Plans:** 2 plans
-- [ ] 45-01-PLAN.md — Write 39-VERIFICATION.md and 40-VERIFICATION.md; mark Phase 39 complete
-- [ ] 45-02-PLAN.md — Write 41-VERIFICATION.md and 43-VERIFICATION.md
+- [ ] 45-01-PLAN.md — Write 39-VERIFICATION.md + 40-VERIFICATION.md; fix Phase 39 ROADMAP tracking (Wave 1)
+- [ ] 45-02-PLAN.md — Write 41-VERIFICATION.md + 43-VERIFICATION.md (Wave 1, parallel)
 
 ---
 
