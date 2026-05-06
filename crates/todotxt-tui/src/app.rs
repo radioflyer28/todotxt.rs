@@ -155,6 +155,8 @@ pub struct App {
     /// Single-level undo entry: snapshot of task list + cursor before the last mutating action
     /// (Phase 36, UNDO-01/02, D-02/D-04). `None` = no undo available.
     pub undo_entry: Option<crate::state::UndoEntry>,
+    /// Snapshot of pane config taken at startup — compare-on-quit to skip write if unchanged (D-06, Phase 43).
+    pub startup_pane_snapshot: Vec<crate::config::PaneConfig>,
 }
 
 // ── External editor support (Phase 39, XEDIT-01/02) ──────────────────────────
@@ -422,6 +424,7 @@ impl App {
         // Resolve keymap at startup — applies user overrides, collects warnings (D-04, Phase 22).
         let (effective_keymap, keymap_warnings) = resolve_keymap(&config);
         let panes = Self::panes_from_config(&config);
+        let startup_pane_snapshot = config.panes.clone();
         let pane_counter = panes.len() + 1;
         let mut app = App {
             should_quit: false,
@@ -468,6 +471,7 @@ impl App {
             panes_hidden: false,
             clipboard: None,
             undo_entry: None,
+            startup_pane_snapshot,
         };
         // Hydrate every pane immediately so non-active panes are populated on first render.
         app.rebuild_all_panes();
@@ -861,14 +865,14 @@ impl App {
         }
 
         if self.should_quit {
-            self.persist_panes_on_quit()?;
+            self.save_view_state()?;
         }
 
         Ok(())
     }
 
-    pub fn persist_panes_on_quit(&mut self) -> color_eyre::Result<()> {
-        self.config.panes = self
+    pub fn save_view_state(&self) -> color_eyre::Result<()> {
+        let current: Vec<crate::config::PaneConfig> = self
             .panes
             .iter()
             .map(|pane| PaneConfig {
@@ -880,8 +884,14 @@ impl App {
             })
             .collect();
 
-        if let Some(path) = self.config_path.clone() {
-            self.config.save(&path)?;
+        // D-06 / Phase 43: skip write entirely when pane config is unchanged.
+        if current == self.startup_pane_snapshot {
+            return Ok(());
+        }
+
+        if let Some(path) = &self.config_path {
+            let state_path = crate::config::state_file_path(path);
+            crate::config::TuiStateFile { panes: current }.save(&state_path)?;
         }
 
         Ok(())

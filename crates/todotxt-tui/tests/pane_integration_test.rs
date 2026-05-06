@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod pane_integration_tests {
     use todotxt_tui::app::App;
-    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig};
+    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig, TuiStateFile};
     use todotxt_tui::state::Pane;
     use todotxt_core::{TaskList, SortOrder};
     use std::fs::{self, File};
@@ -399,9 +399,10 @@ normalize_append = false
         app.panes[1].sort_order = SortOrder::DueDate;
         app.panes[1].grouping = false;
 
-        app.persist_panes_on_quit().expect("quit persistence should succeed");
+        app.save_view_state().expect("quit persistence should succeed");
 
-        let reloaded = TuiConfig::load(&config_path).expect("reloaded config should parse");
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+        let reloaded = TuiStateFile::load(&state_path).expect("state file should be written and parseable");
         assert_eq!(reloaded.panes.len(), 2);
         assert_eq!(reloaded.panes[0].label, "Work");
         assert_eq!(reloaded.panes[0].filter, "project:work");
@@ -413,20 +414,24 @@ normalize_append = false
         assert_eq!(reloaded.panes[1].sort, PaneSort::DueDate);
         assert!(!reloaded.panes[1].group);
 
-        assert!(!reloaded.normalize_append, "non-pane fields should be preserved on save");
+        // config.toml must NOT be rewritten at runtime (PRSV-03).
+        let config_contents = fs::read_to_string(&config_path).expect("config.toml should still exist");
+        assert!(config_contents.contains("normalize_append"), "config.toml should be preserved unchanged");
 
         let _ = fs::remove_file(&config_path);
+        let _ = fs::remove_file(&state_path);
     }
 
     #[test]
     fn test_persisted_pane_data_contains_only_config_fields() {
-        let todo_path = unique_temp_file("pane_fields_todo");
+        let dir = tempfile::tempdir().expect("temp dir must be creatable");
+        let todo_path = dir.path().join("todo.txt");
+        let config_path = dir.path().join("config.toml");
         File::create(&todo_path)
             .expect("Failed to create todo file")
             .write_all(b"")
             .expect("Failed to write todo file");
 
-        let config_path = unique_temp_file("pane_fields_config");
         fs::write(&config_path, "").expect("should create config file");
 
         let mut app = App::new(
@@ -444,9 +449,10 @@ normalize_append = false
         app.panes[0].sort_order = SortOrder::Alphabetical;
         app.panes[0].grouping = true;
 
-        app.persist_panes_on_quit().expect("quit persistence should succeed");
+        app.save_view_state().expect("quit persistence should succeed");
 
-        let persisted = fs::read_to_string(&config_path).expect("should read persisted config");
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+        let persisted = fs::read_to_string(&state_path).expect("should read persisted state file");
         assert!(persisted.contains("label = \"Persist Me\""));
         assert!(persisted.contains("filter = \"@home\""));
         assert!(persisted.contains("sort = \"alphabetical\""));
@@ -454,19 +460,19 @@ normalize_append = false
         assert!(!persisted.contains("id ="));
         assert!(!persisted.contains("selected ="));
         assert!(!persisted.contains("display_rows"));
-
-        let _ = fs::remove_file(&config_path);
+        // dir drops here, cleaning up all temp files automatically
     }
 
     #[test]
     fn test_no_pane_write_occurs_until_quit_persist_path() {
-        let todo_path = unique_temp_file("pane_no_write_todo");
+        let dir = tempfile::tempdir().expect("temp dir must be creatable");
+        let todo_path = dir.path().join("todo.txt");
+        let config_path = dir.path().join("config.toml");
         File::create(&todo_path)
             .expect("Failed to create todo file")
             .write_all(b"")
             .expect("Failed to write todo file");
 
-        let config_path = unique_temp_file("pane_no_write_config");
         let initial_config = r#"
 [[panes]]
 label = "Initial"
@@ -486,14 +492,13 @@ group = false
         );
 
         app.panes[0].filter_query = "project:changed".to_string();
-        let before_quit_write = fs::read_to_string(&config_path).expect("should read config before quit save");
-        assert!(before_quit_write.contains("project:one"));
-        assert!(!before_quit_write.contains("project:changed"));
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+        // state file must not exist before quit save
+        assert!(!state_path.exists(), "state file must not be written until quit");
 
-        app.persist_panes_on_quit().expect("quit persistence should succeed");
-        let after_quit_write = fs::read_to_string(&config_path).expect("should read config after quit save");
+        app.save_view_state().expect("quit persistence should succeed");
+        let after_quit_write = fs::read_to_string(&state_path).expect("should read state file after quit save");
         assert!(after_quit_write.contains("project:changed"));
-
-        let _ = fs::remove_file(&config_path);
+        // dir drops here, cleaning up all temp files automatically
     }
 }
