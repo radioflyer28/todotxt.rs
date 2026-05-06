@@ -6966,6 +6966,118 @@ mod tests {
         app.pane_move_task(1).unwrap();
         assert!(app.undo_entry.is_some(), "pane_move_task must push undo_entry before mutating");
     }
+
+    // ── compute_filter_autocomplete tests (Phase 42, Plan 01) ────────────────
+
+    fn make_task_list_for_filter(task_lines: &[&str]) -> TaskList {
+        let mut file = NamedTempFile::new().expect("failed to create temp file");
+        for line in task_lines {
+            writeln!(file, "{}", line).unwrap();
+        }
+        let path = file.path().to_path_buf();
+        let task_list = TaskList::load(&path).expect("load failed");
+        let _ = file.keep();
+        task_list
+    }
+
+    // AC-04-T01: empty input returns None
+    #[test]
+    fn compute_filter_autocomplete_empty_returns_none() {
+        let tl = make_task_list_for_filter(&[]);
+        let history = std::collections::VecDeque::<String>::new();
+        assert!(compute_filter_autocomplete("", 0, &tl, &history).is_none());
+    }
+
+    // AC-04-T02: "@" alone returns all contexts
+    #[test]
+    fn compute_filter_autocomplete_at_alone_returns_all_contexts() {
+        let tl = make_task_list_for_filter(&["task @work", "task @waiting"]);
+        let history = std::collections::VecDeque::<String>::new();
+        let result = compute_filter_autocomplete("@", 1, &tl, &history);
+        assert!(result.is_some(), "@ alone should return Some");
+        let ac = result.unwrap();
+        assert_eq!(ac.trigger, '@', "trigger must be '@'");
+        assert_eq!(ac.prefix, "", "prefix must be empty");
+        assert_eq!(ac.mode, AutocompleteMode::TokenAutocomplete('@'));
+        let mut items = ac.items.clone();
+        items.sort();
+        assert!(items.contains(&"work".to_string()), "items must contain 'work': {:?}", items);
+        assert!(items.contains(&"waiting".to_string()), "items must contain 'waiting': {:?}", items);
+    }
+
+    // AC-04-T03: "@w" filters to contexts starting with 'w'
+    #[test]
+    fn compute_filter_autocomplete_at_w_filters_contexts() {
+        let tl = make_task_list_for_filter(&["task @work", "task @waiting", "task @home"]);
+        let history = std::collections::VecDeque::<String>::new();
+        let result = compute_filter_autocomplete("@w", 2, &tl, &history);
+        assert!(result.is_some(), "@w should return Some");
+        let ac = result.unwrap();
+        assert_eq!(ac.trigger, '@');
+        assert_eq!(ac.prefix, "w");
+        let mut items = ac.items.clone();
+        items.sort();
+        assert_eq!(items, vec!["waiting", "work"], "must be filtered+sorted: {:?}", items);
+        assert!(!items.contains(&"home".to_string()), "must not include @home");
+    }
+
+    // AC-04-T04: cursor-aware extraction — "done:false @w" at col 13 triggers '@'
+    #[test]
+    fn compute_filter_autocomplete_mid_expression_cursor_aware() {
+        let tl = make_task_list_for_filter(&["task @work", "task @waiting"]);
+        let history = std::collections::VecDeque::<String>::new();
+        let line = "done:false @w";
+        let result = compute_filter_autocomplete(line, 13, &tl, &history);
+        assert!(result.is_some(), "mid-expression @w should return Some");
+        let ac = result.unwrap();
+        assert_eq!(ac.trigger, '@');
+        assert_eq!(ac.prefix, "w");
+    }
+
+    // AC-02-T01: "+" alone returns all projects
+    #[test]
+    fn compute_filter_autocomplete_plus_alone_returns_all_projects() {
+        let tl = make_task_list_for_filter(&["task +inbox", "task +personal"]);
+        let history = std::collections::VecDeque::<String>::new();
+        let result = compute_filter_autocomplete("+", 1, &tl, &history);
+        assert!(result.is_some(), "+ alone should return Some");
+        let ac = result.unwrap();
+        assert_eq!(ac.trigger, '+');
+        assert_eq!(ac.prefix, "");
+        assert_eq!(ac.mode, AutocompleteMode::TokenAutocomplete('+'));
+        assert!(ac.items.contains(&"inbox".to_string()), "items must contain 'inbox': {:?}", ac.items);
+        assert!(ac.items.contains(&"personal".to_string()), "items must contain 'personal': {:?}", ac.items);
+    }
+
+    // AC-04-T05: no trigger + non-empty history → FilterHistory
+    #[test]
+    fn compute_filter_autocomplete_no_trigger_with_history_returns_filter_history() {
+        let tl = make_task_list_for_filter(&[]);
+        let mut history = std::collections::VecDeque::<String>::new();
+        history.push_back("+work".to_string());
+        history.push_back("@home".to_string());
+        let result = compute_filter_autocomplete("just text", 9, &tl, &history);
+        assert!(result.is_some(), "no trigger + non-empty history should return Some");
+        let ac = result.unwrap();
+        assert_eq!(ac.mode, AutocompleteMode::FilterHistory);
+        assert_eq!(ac.trigger, '\0');
+    }
+
+    // AC-04-T06: no trigger + empty history → None
+    #[test]
+    fn compute_filter_autocomplete_no_trigger_empty_history_returns_none() {
+        let tl = make_task_list_for_filter(&[]);
+        let history = std::collections::VecDeque::<String>::new();
+        assert!(compute_filter_autocomplete("just text", 9, &tl, &history).is_none());
+    }
+
+    // AC-04-T07: "@xyz" where no context starts with 'xyz' → None
+    #[test]
+    fn compute_filter_autocomplete_at_xyz_no_match_returns_none() {
+        let tl = make_task_list_for_filter(&["task @work", "task @home"]);
+        let history = std::collections::VecDeque::<String>::new();
+        assert!(compute_filter_autocomplete("@xyz", 4, &tl, &history).is_none());
+    }
 }
 
 
