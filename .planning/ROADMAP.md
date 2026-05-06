@@ -82,7 +82,9 @@ Plans:
 1. Typing `@` or `+` in the filter input shows an autocomplete suggestion popup with known contexts or projects from the task list
 2. Selecting a suggestion from the popup while the filter input is active inserts it into the filter field — not the task editor
 3. Each character typed after the trigger (`@` or `+`) re-filters the candidate list, narrowing the suggestions incrementally
-**Plans:** TBD
+**Plans:** 2 plans
+- [ ] 42-01-PLAN.md — `compute_filter_autocomplete` free function (TDD)
+- [ ] 42-02-PLAN.md — `accept_filter_completion` + `handle_filtering_key` wiring + integration tests
 
 ### Phase 43: View State Persistence
 **Goal:** TUI view state (sort order, grouping, active filter, pane settings) is saved on exit and restored at startup
