@@ -338,6 +338,57 @@ impl TuiConfig {
     }
 }
 
+/// Derives the `tui-state.toml` path from the `config.toml` path.
+/// Both files always live in the same directory (D-04, Phase 43).
+/// If `config_path` has no parent (unusual), falls back to a relative path.
+#[allow(dead_code)] // used by Plan 43-02 (main.rs + app.rs)
+pub fn state_file_path(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .map(|dir| dir.join("tui-state.toml"))
+        .unwrap_or_else(|| PathBuf::from("tui-state.toml"))
+}
+
+/// On-disk view state sidecar — serialized to `tui-state.toml` beside `config.toml`.
+///
+/// Written atomically on clean exit (PRSV-01). At startup, if this file exists and
+/// parses cleanly, its `panes` fully replace `config.toml [[panes]]` (D-07, Phase 43).
+/// If absent, unreadable, or malformed, config.toml defaults apply silently (PRSV-02).
+///
+/// Permissive: `#[serde(default)]` on all fields — unknown TOML keys are silently ignored.
+/// `config.toml` is NEVER written at runtime (PRSV-03).
+#[allow(dead_code)] // used by Plan 43-02 (main.rs + app.rs)
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct TuiStateFile {
+    /// Per-pane state snapshot. Uses the same `PaneConfig` schema as `[[panes]]` in config.toml.
+    #[serde(default)]
+    pub panes: Vec<PaneConfig>,
+}
+
+impl TuiStateFile {
+    /// Load from `path`. Returns `None` on any failure (missing, unreadable, malformed TOML).
+    /// Never returns an error — all failures are silently swallowed (PRSV-02).
+    #[allow(dead_code)] // used by Plan 43-02 (main.rs)
+    pub fn load(path: &Path) -> Option<Self> {
+        let content = std::fs::read_to_string(path).ok()?;
+        toml::from_str(&content).ok()
+    }
+
+    /// Serialize to TOML and write atomically to `path` (temp file + rename).
+    /// Mirrors `TuiConfig::save` exactly (D-03, Phase 43).
+    #[allow(dead_code)] // used by Plan 43-02 (app.rs)
+    pub fn save(&self, path: &Path) -> color_eyre::Result<()> {
+        let content = toml::to_string(self)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to serialize TUI state: {e}"))?;
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &content)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to write state tmp {}: {e}", tmp_path.display()))?;
+        std::fs::rename(&tmp_path, path)
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to rename state tmp to {}: {e}", path.display()))?;
+        Ok(())
+    }
+}
+
 /// Parse a human-readable key chord string into a (KeyCode, KeyModifiers) pair (D-03, Phase 22).
 ///
 /// Supported formats:
@@ -779,5 +830,84 @@ filter = "@home"
             Some(&(KeyCode::Right, KeyModifiers::CONTROL)),
             "pane_move_right must default to Ctrl+Right"
         );
+    }
+}
+
+#[cfg(test)]
+mod state_file_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // PRSV-02-T01: missing file → None
+    #[test]
+    fn tuistatefile_load_missing_returns_none() {
+        let path = std::path::Path::new("/nonexistent/__gsd_test_43__/tui-state.toml");
+        assert!(TuiStateFile::load(path).is_none());
+    }
+
+    // PRSV-02-T02: malformed TOML → None (never panics)
+    #[test]
+    fn tuistatefile_load_malformed_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tui-state.toml");
+        std::fs::write(&path, "not valid toml {{{{").unwrap();
+        assert!(TuiStateFile::load(&path).is_none());
+    }
+
+    // PRSV-01-T01: valid [[panes]] → Some with correct field values
+    #[test]
+    fn tuistatefile_load_valid_parses_panes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tui-state.toml");
+        std::fs::write(&path, "[[panes]]\nlabel = \"Work\"\nfilter = \"+work\"\ngroup = true\n").unwrap();
+        let result = TuiStateFile::load(&path).unwrap();
+        assert_eq!(result.panes.len(), 1);
+        assert_eq!(result.panes[0].label, "Work");
+        assert_eq!(result.panes[0].filter, "+work");
+        assert!(result.panes[0].group);
+    }
+
+    // PRSV-01-T02: save + load roundtrip preserves all 5 PaneConfig fields
+    #[test]
+    fn tuistatefile_save_load_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tui-state.toml");
+        let original = TuiStateFile {
+            panes: vec![PaneConfig {
+                label: "Inbox".to_string(),
+                filter: "@inbox".to_string(),
+                sort: PaneSort::Priority,
+                group: false,
+                group_by: Some(GroupByCategory::Project),
+            }],
+        };
+        original.save(&path).unwrap();
+        let loaded = TuiStateFile::load(&path).unwrap();
+        assert_eq!(loaded.panes.len(), 1);
+        assert_eq!(loaded.panes[0].label, "Inbox");
+        assert_eq!(loaded.panes[0].filter, "@inbox");
+        assert_eq!(loaded.panes[0].sort, PaneSort::Priority);
+        assert!(!loaded.panes[0].group);
+        assert_eq!(loaded.panes[0].group_by, Some(GroupByCategory::Project));
+    }
+
+    // PRSV-02-T03: unknown fields at top level and in [[panes]] entries → Some (silently ignored)
+    #[test]
+    fn tuistatefile_load_unknown_fields_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tui-state.toml");
+        let content = "version = \"1.0\"\nunknown_key = 42\n[[panes]]\nlabel = \"Work\"\nfilter = \"\"\nfuture_field = \"ignored\"\n";
+        std::fs::write(&path, content).unwrap();
+        let result = TuiStateFile::load(&path).unwrap();
+        assert_eq!(result.panes.len(), 1);
+        assert_eq!(result.panes[0].label, "Work");
+    }
+
+    // D-04-T01: state_file_path places tui-state.toml beside config.toml
+    #[test]
+    fn state_file_path_sibling_of_config() {
+        let config_path = PathBuf::from("/home/user/.todotxt.rs/config.toml");
+        let state_path = state_file_path(&config_path);
+        assert_eq!(state_path, PathBuf::from("/home/user/.todotxt.rs/tui-state.toml"));
     }
 }
