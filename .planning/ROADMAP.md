@@ -109,7 +109,7 @@ Plans:
 2. Pressing plain `Right` (no modifier) still navigates to the next pane as before — no regression
 3. Pressing `Ctrl+Left` moves the cursor task to the left pane (or declines with status bar message if compound filter)
 **Plans:** 1 plan
-- [ ] 44-01-PLAN.md — Add `KeyModifiers::NONE` guard to Left/Right pane-nav arms + 2 regression tests
+- [ ] 44-01-PLAN.md — TDD: RED failing tests for Ctrl+Left/Right dispatch, GREEN modifier guard fix (KeyModifiers::NONE) on Left/Right pane-nav arms
 
 ### Phase 45: v1.6 Verification Backfill
 **Goal:** All v1.6 phases have formal VERIFICATION.md sign-offs and Phase 39 is marked complete, making requirements coverage accurately reflect the implemented milestone
