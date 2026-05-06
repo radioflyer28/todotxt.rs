@@ -18,7 +18,7 @@
 - [ ] **Phase 39: Quick Wins** — Archive workflow, bulk mark-done, external editor escape hatch, and `+` autocomplete bug fix
 - [x] **Phase 40: Group-By Decoupling + Test Coverage** — Independent group-by controls per pane and automated Phase 22 test coverage
 - [x] **Phase 41: Full Presets, Filter History, Pane Task Movement** — Multi-dimensional view presets, session filter history, and tag-mutation pane moves
-- [ ] **Phase 42: Filter Autocomplete Coverage** — Autocomplete in the filter input with incremental narrowing
+- [x] **Phase 42: Filter Autocomplete Coverage** — Autocomplete in the filter input with incremental narrowing (completed 2026-05-06)
 - [ ] **Phase 43: View State Persistence** — Save and restore TUI view state across restarts
 
 ---
@@ -82,9 +82,9 @@ Plans:
 1. Typing `@` or `+` in the filter input shows an autocomplete suggestion popup with known contexts or projects from the task list
 2. Selecting a suggestion from the popup while the filter input is active inserts it into the filter field — not the task editor
 3. Each character typed after the trigger (`@` or `+`) re-filters the candidate list, narrowing the suggestions incrementally
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 - [x] 42-01-PLAN.md — `compute_filter_autocomplete` free function (TDD)
-- [ ] 42-02-PLAN.md — `accept_filter_completion` + `handle_filtering_key` wiring + integration tests
+- [x] 42-02-PLAN.md — `accept_filter_completion` + `handle_filtering_key` wiring + integration tests
 
 ### Phase 43: View State Persistence
 **Goal:** TUI view state (sort order, grouping, active filter, pane settings) is saved on exit and restored at startup
@@ -105,7 +105,7 @@ Plans:
 | 39 | Quick Wins | 0/? | Not started | - |
 | 40 | Group-By Decoupling + Test Coverage | 3/3 | Complete | e04679d, 2861696, 85dff6a |
 | 41 | Full Presets, Filter History, Pane Task Movement | 0/? | Not started | - |
-| 42 | Filter Autocomplete Coverage | 1/2 | In Progress|  |
+| 42 | Filter Autocomplete Coverage | 2/2 | Complete   | 2026-05-06 |
 | 43 | View State Persistence | 0/? | Not started | - |
 
 ---

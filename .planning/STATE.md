@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-05-06T18:48:12.576Z"
+status: verifying
+last_updated: "2026-05-06T18:55:41.910Z"
 last_activity: 2026-05-06
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 12
-  percent: 92
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State
@@ -24,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: 42 (Filter Autocomplete Coverage) — EXECUTING
-Plan: 2 of 2
-Status: Ready to execute
+Phase: 42 (Filter Autocomplete Coverage) — COMPLETE
+Plan: 2 of 2 (all plans done)
+Status: Phase complete — ready for verification
 Last activity: 2026-05-06
 
 ## Next Step
 
-Begin Phase 42: Filter Autocomplete Coverage (AC-02, AC-03, AC-04).
+Phase 42 complete. Verify AC-02/AC-03/AC-04 behavior in TUI, then run `/gsd-complete-milestone` or proceed to next phase.
 
 ## Deferred Items
 
@@ -54,4 +54,5 @@ None.
 
 ## Decisions
 
-(v1.6 decisions will be recorded here as phases are executed)
+- `accept_filter_completion` uses local enum `AcceptResult` to extract action before dropping autocomplete borrow — required by Rust borrow checker
+- `#[allow(dead_code)]` on `compute_filter_autocomplete` removed: function is now called from `handle_filtering_key` `_` arm
