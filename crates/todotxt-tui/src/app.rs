@@ -424,7 +424,20 @@ impl App {
         // Resolve keymap at startup — applies user overrides, collects warnings (D-04, Phase 22).
         let (effective_keymap, keymap_warnings) = resolve_keymap(&config);
         let panes = Self::panes_from_config(&config);
-        let startup_pane_snapshot = config.panes.clone();
+        // Compute snapshot using the same normalization as save_view_state so the
+        // compare-on-quit identity check is reliable (D-06, Phase 43).
+        // config.panes.clone() would leave group_by as None (TOML default) while
+        // save_view_state writes Some(pane.group_by), causing a false mismatch.
+        let startup_pane_snapshot: Vec<crate::config::PaneConfig> = panes
+            .iter()
+            .map(|pane| crate::config::PaneConfig {
+                label: pane.label.clone(),
+                filter: pane.filter_query.clone(),
+                sort: PaneSort::from_sort_order(pane.sort_order),
+                group: pane.grouping,
+                group_by: Some(pane.group_by),
+            })
+            .collect();
         let pane_counter = panes.len() + 1;
         let mut app = App {
             should_quit: false,
