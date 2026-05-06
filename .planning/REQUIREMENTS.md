@@ -45,9 +45,9 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 ### Autocomplete Fixes and Coverage (SEED-013 + SEED-014)
 
 - [ ] **AC-01**: When typing `+` in the task editor (Adding or Editing mode), a suggestion popup appears with existing project tags from the task list (fixes the SEED-013 regression where `+` triggered no suggestions)
-- [ ] **AC-02**: When typing `@` or `+` in the filter input, a suggestion popup appears with known contexts or projects from the task list
+- [x] **AC-02**: When typing `@` or `+` in the filter input, a suggestion popup appears with known contexts or projects from the task list
 - [ ] **AC-03**: Selecting a suggestion from the autocomplete popup while in filter input mode inserts it into the filter input field (not the task editor)
-- [ ] **AC-04**: While the autocomplete popup is visible, additional characters typed narrow the suggestion list incrementally (each keypress re-filters the candidate list by the updated prefix)
+- [x] **AC-04**: While the autocomplete popup is visible, additional characters typed narrow the suggestion list incrementally (each keypress re-filters the candidate list by the updated prefix)
 
 ### Filter Input History (SEED-011)
 

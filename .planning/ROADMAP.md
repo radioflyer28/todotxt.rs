@@ -82,8 +82,8 @@ Plans:
 1. Typing `@` or `+` in the filter input shows an autocomplete suggestion popup with known contexts or projects from the task list
 2. Selecting a suggestion from the popup while the filter input is active inserts it into the filter field — not the task editor
 3. Each character typed after the trigger (`@` or `+`) re-filters the candidate list, narrowing the suggestions incrementally
-**Plans:** 2 plans
-- [ ] 42-01-PLAN.md — `compute_filter_autocomplete` free function (TDD)
+**Plans:** 1/2 plans executed
+- [x] 42-01-PLAN.md — `compute_filter_autocomplete` free function (TDD)
 - [ ] 42-02-PLAN.md — `accept_filter_completion` + `handle_filtering_key` wiring + integration tests
 
 ### Phase 43: View State Persistence
@@ -105,7 +105,7 @@ Plans:
 | 39 | Quick Wins | 0/? | Not started | - |
 | 40 | Group-By Decoupling + Test Coverage | 3/3 | Complete | e04679d, 2861696, 85dff6a |
 | 41 | Full Presets, Filter History, Pane Task Movement | 0/? | Not started | - |
-| 42 | Filter Autocomplete Coverage | 0/? | Not started | - |
+| 42 | Filter Autocomplete Coverage | 1/2 | In Progress|  |
 | 43 | View State Persistence | 0/? | Not started | - |
 
 ---
