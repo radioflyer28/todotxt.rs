@@ -341,7 +341,6 @@ impl TuiConfig {
 /// Derives the `tui-state.toml` path from the `config.toml` path.
 /// Both files always live in the same directory (D-04, Phase 43).
 /// If `config_path` has no parent (unusual), falls back to a relative path.
-#[allow(dead_code)] // used by Plan 43-02 (main.rs + app.rs)
 pub fn state_file_path(config_path: &Path) -> PathBuf {
     config_path
         .parent()
@@ -357,7 +356,6 @@ pub fn state_file_path(config_path: &Path) -> PathBuf {
 ///
 /// Permissive: `#[serde(default)]` on all fields — unknown TOML keys are silently ignored.
 /// `config.toml` is NEVER written at runtime (PRSV-03).
-#[allow(dead_code)] // used by Plan 43-02 (main.rs + app.rs)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct TuiStateFile {
     /// Per-pane state snapshot. Uses the same `PaneConfig` schema as `[[panes]]` in config.toml.
@@ -368,7 +366,6 @@ pub struct TuiStateFile {
 impl TuiStateFile {
     /// Load from `path`. Returns `None` on any failure (missing, unreadable, malformed TOML).
     /// Never returns an error — all failures are silently swallowed (PRSV-02).
-    #[allow(dead_code)] // used by Plan 43-02 (main.rs)
     pub fn load(path: &Path) -> Option<Self> {
         let content = std::fs::read_to_string(path).ok()?;
         toml::from_str(&content).ok()
@@ -376,7 +373,6 @@ impl TuiStateFile {
 
     /// Serialize to TOML and write atomically to `path` (temp file + rename).
     /// Mirrors `TuiConfig::save` exactly (D-03, Phase 43).
-    #[allow(dead_code)] // used by Plan 43-02 (app.rs)
     pub fn save(&self, path: &Path) -> color_eyre::Result<()> {
         let content = toml::to_string(self)
             .map_err(|e| color_eyre::eyre::eyre!("Failed to serialize TUI state: {e}"))?;
