@@ -2,7 +2,7 @@
 
 ## Current State
 
-v1.0 through v1.5 are shipped. The Rust port now includes fast capture/edit flows, picker-driven metadata workflows, safer bulk operations, clipboard flows, and short-horizon undo in addition to the earlier CLI/TUI/pane foundations.
+v1.0 through v1.6 are shipped. The Rust port now features a full-featured power-user TUI with archive workflow, bulk mark-done, external `$EDITOR` integration, filter history, multi-dimensional view presets, view state persistence, independent group-by controls, filter input autocomplete, and pane task movement — all on top of the earlier CLI/TUI/pane foundations.
 
 Milestone archives:
 
@@ -12,21 +12,18 @@ Milestone archives:
 - .planning/milestones/v1.3-ROADMAP.md
 - .planning/milestones/v1.4-ROADMAP.md
 - .planning/milestones/v1.5-ROADMAP.md
+- .planning/milestones/v1.6-ROADMAP.md
 
-**v1.6 is now in planning.** Focus: TUI fixes and power user improvements — archive workflow, bulk mark-done, `$EDITOR` escape, autocomplete fixes and coverage, filter history, view state persistence, group-by decoupling, full numeric presets, and Phase 22 test coverage debt.
+## Next Milestone
 
-## Current Milestone
+**v1.7 — (to be planned)**
 
-**v1.6 — TUI Fixes and Power User Improvements** (in planning)
+Run `/gsd-new-milestone` to define v1.7 requirements and roadmap.
 
-Focus areas:
-- Autocomplete fixes: `+` project bug (SEED-013) and coverage gaps — filter input, edit mode, incremental narrowing (SEED-014)
-- Archive workflow: TUI archive hotkey to move completed tasks to done.txt (SEED-006)
-- Bulk actions: bulk mark-done via multi-selection (SEED-009)
-- External editor: open task in `$EDITOR` escape hatch (SEED-012)
-- Filter UX: filter input history ring with `Ctrl+H` recall (SEED-011)
-- View & presets: expand numeric presets to sort+group+filter (SEED-015), persist view state across restarts (SEED-007), decouple group-by from sort order (SEED-008)
-- Validation debt: automate Phase 22's 11 manual-only tests (SEED-005)
+Known candidate features for v1.7 consideration:
+- Recurring task support (`rec:` extension) — SEED-010
+- done.txt rotation (log-file style) — SEED-016
+- Seed registry cleanup (mark addressed seeds as shipped)
 
 ---
 
@@ -98,6 +95,20 @@ Shipped:
 - META-01 through META-02 — shipped and verified (META-01 orphan resolved)
 - VIEW-03 — shipped and verified
 
+### Validated (v1.6)
+
+- ARCH-01 through ARCH-03 — archive workflow shipped and verified (Phase 39)
+- BDONE-01, BDONE-02 — bulk mark-done shipped and verified (Phase 39)
+- XEDIT-01 through XEDIT-03 — external editor with `RawModeGuard` shipped and verified (Phase 39)
+- AC-01 — `+` project autocomplete verified correct (Phase 39)
+- GRP-01 through GRP-04 — independent group-by per pane shipped and verified (Phase 40)
+- TST-01, TST-02 — all Phase 22 manual gaps automated; `make_app_with_config` helper added (Phase 40)
+- PRST-01, PRST-02 — multi-dimensional view presets shipped and verified (Phase 41)
+- FHIST-01 through FHIST-03 — session filter history + `Ctrl+R` shipped and verified (Phase 41)
+- PMOVE-01 through PMOVE-03 — pane task movement via tag mutation shipped and verified (Phase 41 + Phase 44 dispatch fix)
+- AC-02 through AC-04 — filter input autocomplete with cursor-aware narrowing shipped and verified (Phase 42)
+- PRSV-01 through PRSV-03 — `tui-state.toml` view state persistence shipped and verified (Phase 43)
+
 ### Planned (future milestone)
 
 - GUI interface (native desktop)
@@ -105,9 +116,11 @@ Shipped:
 
 ## Context
 
-Shipped: v1.0 (2026-04-16), v1.1 (2026-04-23), v1.2 (2026-04-24), v1.3 (2026-04-28)
-Tech stack: Rust stable, Cargo workspace, winnow, clap, ratatui, tui-textarea, crossterm, tokio, serde_json
+Shipped: v1.0 (2026-04-16), v1.1 (2026-04-23), v1.2 (2026-04-24), v1.3 (2026-04-28), v1.4 (2026-04-29), v1.5 (2026-05-01), v1.6 (2026-05-06)
+Tech stack: Rust stable, Cargo workspace, winnow, clap, ratatui, tui-textarea, crossterm, tokio, serde_json, tempfile
 Crates: crates/todotxt-core, crates/todotxt-cli, crates/todotxt-tui
+Tests: 215 passing (todotxt-tui); 0 failing
+v1.6 additions: archive workflow, bulk mark-done, external editor, filter autocomplete, view state persistence (tui-state.toml), group-by decoupling, full view presets, filter history, pane task movement
 
 ## Constraints
 
@@ -121,8 +134,13 @@ Crates: crates/todotxt-core, crates/todotxt-cli, crates/todotxt-tui
 | -------- | ------- |
 | Rust for core + CLI first | Shipped and validated |
 | Strict todo.txt compatibility | Preserved across milestones |
-| Workspace split by crate | Scaled through v1.3 |
+| Workspace split by crate | Scaled through v1.6 |
 | Parity split authority (text semantics vs UX parity) | Applied through v1.3 |
+| Group-by category separate from sort order | Validated v1.6 — independent per pane |
+| View state in sidecar `tui-state.toml` (not config.toml) | Validated v1.6 — config = defaults, state = session overrides |
+| Filter history session-only (not persisted) | Validated v1.6 — session ring covers use case; cross-session deferred |
+| `accept_filter_completion` uses local `AcceptResult` enum | v1.6 — required by Rust borrow checker to extract action before dropping autocomplete borrow |
+| BUG-41-01 fix: `KeyModifiers::NONE` guard on Left/Right nav arms | v1.6 — Phase 44 TDD; plain Right still navigates, Ctrl+Right now reaches pane_move_task |
 
 ## Archived Planning Snapshot
 
@@ -153,4 +171,4 @@ After each milestone:
 4. Context refresh with current state.
 
 ---
-Last updated: 2026-05-01 after v1.5 milestone completion.
+*Last updated: 2026-05-06 after v1.6 milestone completion.*
