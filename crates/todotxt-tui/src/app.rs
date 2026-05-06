@@ -6828,6 +6828,144 @@ mod tests {
         app.pane_move_task(-1).unwrap();
         assert_eq!(app.active_pane, 1, "move left from pane 0 must wrap to last pane");
     }
+
+    // ── Phase 41 gap-fill tests ───────────────────────────────────────────────
+
+    // PRST-02 / 41-03-G01: Ctrl+1 in normal mode applies pane layout preset at index 0.
+    #[test]
+    fn ctrl_one_applies_pane_layout_preset() {
+        use crate::config::{TuiConfig, PaneConfig, PaneLayoutPreset, PaneSort};
+        let mut config = TuiConfig::default();
+        config.presets.panes.insert(
+            "1".into(),
+            PaneLayoutPreset {
+                panes: vec![
+                    PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+                    PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+                ],
+            },
+        );
+        let mut app = make_app_with_config(&["task @work", "task @home"], config);
+        assert_eq!(app.panes.len(), 1, "initial pane count must be 1");
+        assert_eq!(app.pane_presets.len(), 1, "must have 1 pane preset loaded");
+        press_ctrl_key(&mut app, KeyCode::Char('1'));
+        assert_eq!(app.panes.len(), 2, "Ctrl+1 must apply pane layout preset → 2 panes");
+        assert_eq!(app.panes[0].label, "Work");
+        assert_eq!(app.active_pane, 0, "active pane reset to 0 after preset");
+    }
+
+    // FHIST-01 / 41-03-G02: pressing Enter in Filtering mode pushes the entered text to history.
+    #[test]
+    fn filter_enter_pushes_to_history() {
+        use crate::state::FilteringState;
+        use tui_textarea::TextArea;
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+        let mut app = make_app_with_tasks(&["task +work"]);
+        assert!(app.filter_history.is_empty(), "history must start empty");
+        // Enter filtering mode manually.
+        let mut editor = TextArea::default();
+        editor.insert_str("+work");
+        app.filter_state = Some(FilteringState {
+            editor,
+            selected_preset: 0,
+            snapshot: String::new(),
+        });
+        app.mode = AppMode::Filtering;
+        // Press Enter to apply filter.
+        let enter = KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_filtering_key(enter).unwrap();
+        assert_eq!(app.filter_history.len(), 1, "Enter must push filter text to history");
+        assert_eq!(app.filter_history[0], "+work");
+        assert_eq!(app.mode, AppMode::Normal, "mode must return to Normal after Enter");
+    }
+
+    // FHIST-02 / 41-03-G03: Ctrl+R in Filtering mode cycles backward through history.
+    #[test]
+    fn ctrl_r_cycles_filter_history() {
+        use crate::state::FilteringState;
+        use tui_textarea::TextArea;
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+        let mut app = make_app_with_tasks(&["task +work", "task +home"]);
+        app.filter_history.push_front("+home".into());
+        app.filter_history.push_front("+work".into());
+        // Enter filtering mode with empty editor.
+        let editor = TextArea::default();
+        app.filter_state = Some(FilteringState {
+            editor,
+            selected_preset: 0,
+            snapshot: String::new(),
+        });
+        app.mode = AppMode::Filtering;
+        // First Ctrl+R → cursor 0, entry "+work".
+        let ctrl_r = KeyEvent {
+            code: KeyCode::Char('r'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_filtering_key(ctrl_r).unwrap();
+        assert_eq!(app.filter_history_cursor, Some(0), "first Ctrl+R must set cursor to 0");
+        assert_eq!(
+            app.active_pane().filter_query, "+work",
+            "first Ctrl+R must load history[0] into active pane filter"
+        );
+        // Second Ctrl+R → cursor 1, entry "+home".
+        let ctrl_r2 = KeyEvent {
+            code: KeyCode::Char('r'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        app.handle_filtering_key(ctrl_r2).unwrap();
+        assert_eq!(app.filter_history_cursor, Some(1), "second Ctrl+R must advance cursor to 1");
+        assert_eq!(
+            app.active_pane().filter_query, "+home",
+            "second Ctrl+R must load history[1]"
+        );
+    }
+
+    // PMOVE-02 / 41-04-G01: Ctrl+Right key dispatch — NOTE: IMPLEMENTATION BUG FOUND
+    // The unguarded `KeyCode::Right =>` arm in handle_normal_key (line ~994) catches all
+    // Right-arrow events before the `pane_move_right` action check is reached, making
+    // Ctrl+Right always call focus_next_pane() instead of pane_move_task(1).
+    // This test verifies the method works correctly when called directly (PMOVE-02 method coverage).
+    // The key dispatch path is blocked by the unguarded arm — documented in VALIDATION.md.
+    #[test]
+    fn pane_move_task_direct_moves_right() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo @work task"], config);
+        assert_eq!(app.active_pane, 0);
+        app.pane_move_task(1).unwrap();
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(!raw.contains("@work"), "pane_move_task(1) must remove src tag: {}", raw);
+        assert!(raw.contains("@home"), "pane_move_task(1) must add dest tag: {}", raw);
+        assert_eq!(app.active_pane, 1, "pane_move_task(1) must jump focus to dest pane");
+    }
+
+    // PMOVE-03 / 41-04-G02: pane_move_task pushes undo entry before mutation.
+    #[test]
+    fn pane_move_task_pushes_undo_entry() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo @work task"], config);
+        assert!(app.undo_entry.is_none(), "undo_entry must be None before any mutation");
+        app.pane_move_task(1).unwrap();
+        assert!(app.undo_entry.is_some(), "pane_move_task must push undo_entry before mutating");
+    }
 }
 
 

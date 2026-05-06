@@ -711,4 +711,73 @@ sort = "due_date"
         assert_eq!(config.panes.len(), 1);
         assert_eq!(config.panes[0].sort, PaneSort::DueDate);
     }
+
+    // ── Phase 41 keymap + TOML preset tests ──────────────────────────────────
+
+    // PRST-01 / 41-01-T01: [presets.filter.*] TOML section deserializes into PresetsConfig.
+    #[test]
+    fn toml_presets_filter_deserializes() {
+        let toml_str = r#"
+[presets.filter."1"]
+filter = "@work"
+
+[presets.filter."2"]
+filter = "+personal"
+"#;
+        let config: TuiConfig = toml::from_str(toml_str)
+            .expect("presets.filter TOML must deserialize without error");
+        assert_eq!(
+            config.presets.filter.len(),
+            2,
+            "two filter presets must be parsed"
+        );
+        assert_eq!(
+            config.presets.filter["1"].filter.as_deref(),
+            Some("@work"),
+            "preset '1' filter must be '@work'"
+        );
+        assert_eq!(
+            config.presets.filter["2"].filter.as_deref(),
+            Some("+personal"),
+            "preset '2' filter must be '+personal'"
+        );
+    }
+
+    // PRST-02 / 41-01-T02: [presets.panes.*] TOML section deserializes into PaneLayoutPreset.
+    #[test]
+    fn toml_presets_panes_deserializes() {
+        let toml_str = r#"
+[[presets.panes.work.panes]]
+label = "Work"
+filter = "@work"
+
+[[presets.panes.work.panes]]
+label = "Home"
+filter = "@home"
+"#;
+        let config: TuiConfig = toml::from_str(toml_str)
+            .expect("presets.panes TOML must deserialize without error");
+        let preset = config.presets.panes.get("work")
+            .expect("preset 'work' must exist");
+        assert_eq!(preset.panes.len(), 2, "two pane entries must be parsed");
+        assert_eq!(preset.panes[0].label, "Work");
+        assert_eq!(preset.panes[0].filter, "@work");
+        assert_eq!(preset.panes[1].filter, "@home");
+    }
+
+    // PMOVE-01 / 41-01-T03: default_keymap includes pane_move_left and pane_move_right.
+    #[test]
+    fn default_keymap_includes_pane_move_bindings() {
+        let km = default_keymap();
+        assert_eq!(
+            km.get("pane_move_left"),
+            Some(&(KeyCode::Left, KeyModifiers::CONTROL)),
+            "pane_move_left must default to Ctrl+Left"
+        );
+        assert_eq!(
+            km.get("pane_move_right"),
+            Some(&(KeyCode::Right, KeyModifiers::CONTROL)),
+            "pane_move_right must default to Ctrl+Right"
+        );
+    }
 }
