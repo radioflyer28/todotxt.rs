@@ -27,62 +27,62 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 ### Archive Workflow (SEED-006)
 
-- [ ] **ARCH-01**: User can archive all completed tasks to done.txt with a single keypress from the TUI (default key: `A`)
-- [ ] **ARCH-02**: User sees a confirmation dialog showing the count of tasks to be archived before the action completes; pressing Enter confirms, Esc cancels
-- [ ] **ARCH-03**: User sees a status bar message confirming how many tasks were archived, or an error if the archive path is not writable
+- [x] **ARCH-01**: User can archive all completed tasks to done.txt with a single keypress from the TUI (default key: `A`)
+- [x] **ARCH-02**: User sees a confirmation dialog showing the count of tasks to be archived before the action completes; pressing Enter confirms, Esc cancels
+- [x] **ARCH-03**: User sees a status bar message confirming how many tasks were archived, or an error if the archive path is not writable
 
 ### Bulk Mark-Done (SEED-009)
 
-- [ ] **BDONE-01**: User can mark all tasks in an active multi-selection as done with a single `x` keypress (when `selected_tasks` is non-empty, `x` targets the selection rather than the cursor task)
-- [ ] **BDONE-02**: When bulk-marking done on a mixed selection (some tasks already done), all incomplete tasks in the selection are completed (not toggled); already-done tasks are left unchanged
+- [x] **BDONE-01**: User can mark all tasks in an active multi-selection as done with a single `x` keypress (when `selected_tasks` is non-empty, `x` targets the selection rather than the cursor task)
+- [x] **BDONE-02**: When bulk-marking done on a mixed selection (some tasks already done), all incomplete tasks in the selection are completed (not toggled); already-done tasks are left unchanged
 
 ### External Editor Integration (SEED-012)
 
-- [ ] **XEDIT-01**: User can open the cursor task in an external editor via `Ctrl+E` from Normal mode; editor is resolved as `$VISUAL` → `$EDITOR` → platform fallback (`notepad` on Windows, `vi` on Unix)
-- [ ] **XEDIT-02**: The TUI suspends ratatui rendering and disables crossterm raw mode before launching the editor, and fully restores terminal state after the editor exits — including on editor crash
-- [ ] **XEDIT-03**: If no external editor is found or the editor exits with an error, the TUI shows an error message in the status bar and continues operating normally without data loss
+- [x] **XEDIT-01**: User can open the cursor task in an external editor via `Ctrl+E` from Normal mode; editor is resolved as `$VISUAL` → `$EDITOR` → platform fallback (`notepad` on Windows, `vi` on Unix)
+- [x] **XEDIT-02**: The TUI suspends ratatui rendering and disables crossterm raw mode before launching the editor, and fully restores terminal state after the editor exits — including on editor crash
+- [x] **XEDIT-03**: If no external editor is found or the editor exits with an error, the TUI shows an error message in the status bar and continues operating normally without data loss
 
 ### Autocomplete Fixes and Coverage (SEED-013 + SEED-014)
 
-- [ ] **AC-01**: When typing `+` in the task editor (Adding or Editing mode), a suggestion popup appears with existing project tags from the task list (fixes the SEED-013 regression where `+` triggered no suggestions)
+- [x] **AC-01**: When typing `+` in the task editor (Adding or Editing mode), a suggestion popup appears with existing project tags from the task list (fixes the SEED-013 regression where `+` triggered no suggestions)
 - [x] **AC-02**: When typing `@` or `+` in the filter input, a suggestion popup appears with known contexts or projects from the task list
 - [x] **AC-03**: Selecting a suggestion from the autocomplete popup while in filter input mode inserts it into the filter input field (not the task editor)
 - [x] **AC-04**: While the autocomplete popup is visible, additional characters typed narrow the suggestion list incrementally (each keypress re-filters the candidate list by the updated prefix)
 
 ### Filter Input History (SEED-011)
 
-- [ ] **FHIST-01**: The filter input maintains a ring buffer of recently used filter expressions for the current session; expressions are added when the user applies a filter (presses Enter)
-- [ ] **FHIST-02**: User can cycle through recent filter history using `Ctrl+R` in the filter input; each press recalls the previous entry
-- [ ] **FHIST-03**: The filter history ring is deduplicated — applying the same filter expression twice records only one entry
+- [x] **FHIST-01**: The filter input maintains a ring buffer of recently used filter expressions for the current session; expressions are added when the user applies a filter (presses Enter)
+- [x] **FHIST-02**: User can cycle through recent filter history using `Ctrl+R` in the filter input; each press recalls the previous entry
+- [x] **FHIST-03**: The filter history ring is deduplicated — applying the same filter expression twice records only one entry
 
 ### View State Persistence (SEED-007)
 
-- [ ] **PRSV-01**: The TUI saves the current view state (sort order, grouping, active filter, and per-pane settings) to a `tui-state.toml` sidecar in the platform config directory on clean exit
-- [ ] **PRSV-02**: The TUI loads `tui-state.toml` at startup and applies saved state; if the file is absent, unreadable, or contains unknown fields, config.toml defaults are used silently (no error shown)
-- [ ] **PRSV-03**: Only pane dimensions that were interactively modified during the session are written to the state file; panes that were not changed retain config.toml as their source of truth
+- [x] **PRSV-01**: The TUI saves the current view state (sort order, grouping, active filter, and per-pane settings) to a `tui-state.toml` sidecar in the platform config directory on clean exit
+- [x] **PRSV-02**: The TUI loads `tui-state.toml` at startup and applies saved state; if the file is absent, unreadable, or contains unknown fields, config.toml defaults are used silently (no error shown)
+- [x] **PRSV-03**: Only pane dimensions that were interactively modified during the session are written to the state file; panes that were not changed retain config.toml as their source of truth
 
 ### Group-by Decoupling (SEED-008)
 
-- [ ] **GRP-01**: Each TUI pane has an independent group-by category (Project, Context, Priority, DueDate) that is separate from the intra-group sort order; the two can be configured independently
-- [ ] **GRP-02**: User can toggle grouping on/off with `G` (Shift+g) by default (configurable); `g` cycles through group-by categories; `o` continues to cycle intra-group sort order
-- [ ] **GRP-03**: The status bar displays both the active group-by category and the active sort order simultaneously when grouping is enabled
-- [ ] **GRP-04**: Group-by category can be defined per pane in `config.toml` (e.g., `group_by = "project"`) and is respected at startup independently from sort order
+- [x] **GRP-01**: Each TUI pane has an independent group-by category (Project, Context, Priority, DueDate) that is separate from the intra-group sort order; the two can be configured independently
+- [x] **GRP-02**: User can toggle grouping on/off with `G` (Shift+g) by default (configurable); `g` cycles through group-by categories; `o` continues to cycle intra-group sort order
+- [x] **GRP-03**: The status bar displays both the active group-by category and the active sort order simultaneously when grouping is enabled
+- [x] **GRP-04**: Group-by category can be defined per pane in `config.toml` (e.g., `group_by = "project"`) and is respected at startup independently from sort order
 
 ### Full View Presets (SEED-015)
 
-- [ ] **PRST-01**: Numeric preset config blocks (`[presets.f1]` … `[presets.f9]`) can optionally declare `sort`, `group`, `group_by`, `panes` (count and layout), and per-pane settings in addition to `filter`; all new fields are optional and existing filter-only presets continue to work without modification
-- [ ] **PRST-02**: Pressing a preset key (1–9) applies all defined preset dimensions atomically — including filter, sort, grouping, group-by category, active pane count, pane positions, and per-pane view settings — in a single operation
+- [x] **PRST-01**: Numeric preset config blocks (`[presets.f1]` … `[presets.f9]`) can optionally declare `sort`, `group`, `group_by`, `panes` (count and layout), and per-pane settings in addition to `filter`; all new fields are optional and existing filter-only presets continue to work without modification
+- [x] **PRST-02**: Pressing a preset key (1–9) applies all defined preset dimensions atomically — including filter, sort, grouping, group-by category, active pane count, pane positions, and per-pane view settings — in a single operation
 
 ### Test Coverage Debt (SEED-005)
 
-- [ ] **TST-01**: All 11 Phase 22 manual-only validation gaps (KEY-01, KEY-02, PAR-01, PAR-02 test cases covering mode transitions, key dispatch, filter mutations, preset application, and help overlay behavior) are covered by automated unit tests in the `todotxt-tui` crate
-- [ ] **TST-02**: A `make_app_with_keymap` (or equivalent) test helper exists that constructs an `App` instance with a custom keymap config, enabling isolated testing of keymap-dependent behavior
+- [x] **TST-01**: All 11 Phase 22 manual-only validation gaps (KEY-01, KEY-02, PAR-01, PAR-02 test cases covering mode transitions, key dispatch, filter mutations, preset application, and help overlay behavior) are covered by automated unit tests in the `todotxt-tui` crate
+- [x] **TST-02**: A `make_app_with_keymap` (or equivalent) test helper exists that constructs an `App` instance with a custom keymap config, enabling isolated testing of keymap-dependent behavior
 
 ### Move Tasks Between Panes
 
-- [ ] **PMOVE-01**: User can move the cursor task (or all tasks in the current multi-selection) to an adjacent pane with `Ctrl+Left` / `Ctrl+Right` (default, configurable via keymap)
-- [ ] **PMOVE-02**: When moving a task between two filter-based panes where each pane's filter is a single tag token (e.g., `@waiting`, `+project`), the move operation removes the source pane's filter token from the task and appends the destination pane's filter token — making the task disappear from the source pane and appear in the destination pane
-- [ ] **PMOVE-03**: If the source or destination pane has no filter, or its filter is not a single tag token (e.g., a compound query like `due:today @work`), the move is declined and the status bar explains why; no task data is modified
+- [x] **PMOVE-01**: User can move the cursor task (or all tasks in the current multi-selection) to an adjacent pane with `Ctrl+Left` / `Ctrl+Right` (default, configurable via keymap)
+- [x] **PMOVE-02**: When moving a task between two filter-based panes where each pane's filter is a single tag token (e.g., `@waiting`, `+project`), the move operation removes the source pane's filter token from the task and appends the destination pane's filter token — making the task disappear from the source pane and appear in the destination pane
+- [x] **PMOVE-03**: If the source or destination pane has no filter, or its filter is not a single tag token (e.g., a compound query like `due:today @work`), the move is declined and the status bar explains why; no task data is modified
 
 ---
 
@@ -110,17 +110,17 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01, ARCH-02, ARCH-03 | Phase 39 | Pending |
-| BDONE-01, BDONE-02 | Phase 39 | Pending |
-| XEDIT-01, XEDIT-02, XEDIT-03 | Phase 39 | Pending |
-| AC-01 | Phase 39 | Pending |
-| AC-02, AC-03, AC-04 | Phase 42 | Pending |
-| FHIST-01, FHIST-02, FHIST-03 | Phase 41 | Pending |
-| PRSV-01, PRSV-02, PRSV-03 | Phase 43 | Pending |
-| GRP-01, GRP-02, GRP-03, GRP-04 | Phase 40 | Pending |
-| PRST-01, PRST-02 | Phase 41 | Pending |
-| PMOVE-01, PMOVE-02, PMOVE-03 | Phase 44 | Pending (gap closure — BUG-41-01 fix) |
-| TST-01, TST-02 | Phase 40 | Pending |
+| ARCH-01, ARCH-02, ARCH-03 | Phase 39 | Complete |
+| BDONE-01, BDONE-02 | Phase 39 | Complete |
+| XEDIT-01, XEDIT-02, XEDIT-03 | Phase 39 | Complete |
+| AC-01 | Phase 39 | Complete |
+| AC-02, AC-03, AC-04 | Phase 42 | Complete |
+| FHIST-01, FHIST-02, FHIST-03 | Phase 41 | Complete |
+| PRSV-01, PRSV-02, PRSV-03 | Phase 43 | Complete |
+| GRP-01, GRP-02, GRP-03, GRP-04 | Phase 40 | Complete |
+| PRST-01, PRST-02 | Phase 41 | Complete |
+| PMOVE-01, PMOVE-02, PMOVE-03 | Phase 44 | Complete (gap closure — BUG-41-01 fix) |
+| TST-01, TST-02 | Phase 40 | Complete |
 
 Coverage:
 
