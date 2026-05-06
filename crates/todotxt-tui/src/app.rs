@@ -7136,6 +7136,70 @@ mod tests {
         assert!(app.undo_entry.is_some(), "pane_move_task must push undo_entry before mutating");
     }
 
+    // ── BUG-41-01 regression tests: Ctrl+Left/Right key dispatch (Phase 44) ──
+
+    // BUG-41-01 / PMOVE-02: Ctrl+Right must dispatch pane_move_task(1), NOT focus_next_pane.
+    // Without the fix the unguarded `KeyCode::Right =>` arm fires first and only moves focus.
+    #[test]
+    fn ctrl_right_dispatches_pane_move_not_focus_next() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        use crossterm::event::KeyCode;
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo @work task"], config);
+        assert_eq!(app.active_pane, 0, "must start in pane 0");
+        press_ctrl_key(&mut app, KeyCode::Right);
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        // pane_move_task(1) removes @work and adds @home tag
+        assert!(!raw.contains("@work"), "Ctrl+Right must call pane_move_task (removes @work tag), not focus_next_pane. got: {}", raw);
+        assert!(raw.contains("@home"), "Ctrl+Right must call pane_move_task (adds @home tag), not focus_next_pane. got: {}", raw);
+    }
+
+    // BUG-41-01 regression: plain Right (no modifier) must still navigate pane focus.
+    // PMOVE-01 / Phase 44
+    #[test]
+    fn plain_right_still_dispatches_focus_next_pane() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        use crossterm::event::KeyCode;
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["task1 @work", "task2 @home"], config);
+        assert_eq!(app.active_pane, 0, "must start in pane 0");
+        press_key(&mut app, KeyCode::Right); // plain Right, no modifier
+        assert_eq!(app.active_pane, 1, "plain Right must focus next pane");
+        // Tasks must be unchanged — plain Right does not move any task
+        assert!(app.task_list.tasks()[0].to_raw().to_string().contains("@work"), "plain Right must not modify task0");
+        assert!(app.task_list.tasks()[1].to_raw().to_string().contains("@home"), "plain Right must not modify task1");
+    }
+
+    // BUG-41-01 / PMOVE-02: Ctrl+Left must dispatch pane_move_task(-1), NOT focus_prev_pane.
+    // Without the fix the unguarded `KeyCode::Left =>` arm fires first and only moves focus.
+    #[test]
+    fn ctrl_left_dispatches_pane_move_not_focus_prev() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        use crossterm::event::KeyCode;
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["task1 @work", "task2 @home"], config);
+        // Navigate to pane 1 using plain Right (focus only — no task moved)
+        press_key(&mut app, KeyCode::Right);
+        assert_eq!(app.active_pane, 1, "must be in pane 1 before test");
+        press_ctrl_key(&mut app, KeyCode::Left);
+        let raw = app.task_list.tasks()[1].to_raw().to_string();
+        // pane_move_task(-1) removes @home and adds @work tag to task2
+        assert!(!raw.contains("@home"), "Ctrl+Left must call pane_move_task (removes @home tag), not focus_prev_pane. got: {}", raw);
+        assert!(raw.contains("@work"), "Ctrl+Left must call pane_move_task (adds @work tag), not focus_prev_pane. got: {}", raw);
+    }
+
     // ── compute_filter_autocomplete tests (Phase 42, Plan 01) ────────────────
 
     fn make_task_list_for_filter(task_lines: &[&str]) -> TaskList {
