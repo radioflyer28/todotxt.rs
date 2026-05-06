@@ -1010,11 +1010,13 @@ impl App {
             }
 
             // ── Pane navigation (left/right arrows, Phase 24) ────────────────
-            KeyCode::Left => {
+            // Guard: only plain Left/Right (no modifier). Ctrl+Left/Right must fall through
+            // to the pane_move_left/pane_move_right action guards below (Phase 44, BUG-41-01).
+            KeyCode::Left if key.modifiers == KeyModifiers::NONE => {
                 self.focus_prev_pane();
                 self.rebuild_and_reanchor();
             }
-            KeyCode::Right => {
+            KeyCode::Right if key.modifiers == KeyModifiers::NONE => {
                 self.focus_next_pane();
                 self.rebuild_and_reanchor();
             }
