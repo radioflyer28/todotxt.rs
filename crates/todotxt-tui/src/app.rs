@@ -4455,6 +4455,54 @@ fn group_key_for(task: &Task, group_by: &GroupByCategory) -> String {
     }
 }
 
+/// Determine autocomplete state for the filter input based on cursor position (AC-02, AC-04).
+///
+/// Cursor-aware: only the word immediately to the left of `cursor_col` is examined.
+/// - Word starts with `@` → `TokenAutocomplete('@')` with contexts from `task_list`.
+/// - Word starts with `+` → `TokenAutocomplete('+')` with projects from `task_list`.
+/// - No trigger and `history` non-empty → `FilterHistory`.
+/// - Otherwise → `None`.
+#[allow(dead_code)]
+fn compute_filter_autocomplete(
+    line: &str,
+    cursor_col: usize,
+    task_list: &TaskList,
+    history: &std::collections::VecDeque<String>,
+) -> Option<AutocompleteState> {
+    let before_cursor = &line[..cursor_col.min(line.len())];
+    let word_start = before_cursor
+        .rfind(|c: char| c.is_whitespace())
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let word = &before_cursor[word_start..];
+
+    if let Some(trigger) = word.chars().next().filter(|&c| c == '@' || c == '+') {
+        let prefix = &word[1..];
+        let prefix_lower = prefix.to_lowercase();
+        let candidates = if trigger == '@' {
+            get_existing_contexts(task_list)
+        } else {
+            get_existing_projects(task_list)
+        };
+        let mut filtered: Vec<String> = candidates
+            .into_iter()
+            .filter(|t| t.to_lowercase().starts_with(&prefix_lower))
+            .collect();
+        filtered.sort();
+        if filtered.is_empty() {
+            return None;
+        }
+        Some(AutocompleteState::new(trigger, prefix.to_string(), filtered))
+    } else if !history.is_empty() {
+        Some(AutocompleteState::new_filter_history(
+            line.to_string(),
+            history.iter().cloned().collect(),
+        ))
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
