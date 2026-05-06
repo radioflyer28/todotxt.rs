@@ -99,6 +99,33 @@ Plans:
 - [x] 43-01-PLAN.md — TuiStateFile struct + load/save + state_file_path (TDD, Wave 1)
 - [x] 43-02-PLAN.md — main.rs startup override + app.rs save_view_state + retire persist_panes_on_quit (Wave 2)
 
+### Phase 44: Pane Move Key Dispatch Fix
+**Goal:** Ctrl+Left/Right key presses reach `pane_move_task()` instead of being intercepted by the unguarded pane-navigation arms, making pane task movement accessible via the default keymap
+**Requirements:** PMOVE-01, PMOVE-02, PMOVE-03
+**Gap Closure:** Closes BUG-41-01 from v1.6 audit — unguarded `KeyCode::Left/Right` arms at handle_normal_key:1013–1020 shadow the `pane_move_left`/`pane_move_right` key_is_action guards
+**Depends on:** Phase 41 (pane_move_task implementation)
+**Success criteria:**
+1. Pressing `Ctrl+Right` in Normal mode moves the cursor task to the right pane (tag swap if single-token filters) — it no longer calls `focus_next_pane()`
+2. Pressing plain `Right` (no modifier) still navigates to the next pane as before — no regression
+3. Pressing `Ctrl+Left` moves the cursor task to the left pane (or declines with status bar message if compound filter)
+**Plans:** 1 plan
+- [ ] 44-01-PLAN.md — Add `KeyModifiers::NONE` guard to Left/Right pane-nav arms + 2 regression tests
+
+### Phase 45: v1.6 Verification Backfill
+**Goal:** All v1.6 phases have formal VERIFICATION.md sign-offs and Phase 39 is marked complete, making requirements coverage accurately reflect the implemented milestone
+**Requirements:** ARCH-01, ARCH-02, ARCH-03, BDONE-01, BDONE-02, XEDIT-01, XEDIT-02, XEDIT-03, AC-01, GRP-01, GRP-02, GRP-03, GRP-04, TST-01, TST-02, PRST-01, PRST-02, FHIST-01, FHIST-02, FHIST-03, PMOVE-01, PMOVE-02, PMOVE-03, PRSV-01, PRSV-02, PRSV-03
+**Gap Closure:** Closes 4 unverified phases (39/40/41/43) and Phase 39 ROADMAP tracking gap from v1.6 audit
+**Depends on:** Phase 44 (PMOVE verification requires BUG-41-01 fix)
+**Success criteria:**
+1. `39-VERIFICATION.md` exists and shows status: passed for ARCH-01/02/03, BDONE-01/02, XEDIT-01/02/03, AC-01
+2. `40-VERIFICATION.md` exists and shows status: passed for GRP-01/02/03/04, TST-01/02
+3. `41-VERIFICATION.md` exists and shows status: passed for PRST-01/02, FHIST-01/02/03, PMOVE-01/02/03
+4. `43-VERIFICATION.md` exists and shows status: passed for PRSV-01/02/03
+5. Phase 39 is marked `[x]` complete in ROADMAP.md with all 4 plan checkboxes checked
+**Plans:** 2 plans
+- [ ] 45-01-PLAN.md — Write 39-VERIFICATION.md and 40-VERIFICATION.md; mark Phase 39 complete
+- [ ] 45-02-PLAN.md — Write 41-VERIFICATION.md and 43-VERIFICATION.md
+
 ---
 
 ## Progress
@@ -110,6 +137,8 @@ Plans:
 | 41 | Full Presets, Filter History, Pane Task Movement | 0/? | Not started | - |
 | 42 | Filter Autocomplete Coverage | 2/2 | Complete   | 2026-05-06 |
 | 43 | View State Persistence | 2/2 | Complete | 2026-05-07 |
+| 44 | Pane Move Key Dispatch Fix | 0/1 | Not started | - |
+| 45 | v1.6 Verification Backfill | 0/2 | Not started | - |
 
 ---
 

@@ -119,7 +119,7 @@ Core Value: A fast, cross-platform todo.txt tool with a first-class CLI for both
 | PRSV-01, PRSV-02, PRSV-03 | Phase 43 | Pending |
 | GRP-01, GRP-02, GRP-03, GRP-04 | Phase 40 | Pending |
 | PRST-01, PRST-02 | Phase 41 | Pending |
-| PMOVE-01, PMOVE-02, PMOVE-03 | Phase 41 | Pending |
+| PMOVE-01, PMOVE-02, PMOVE-03 | Phase 44 | Pending (gap closure — BUG-41-01 fix) |
 | TST-01, TST-02 | Phase 40 | Pending |
 
 Coverage:
@@ -130,7 +130,7 @@ Coverage:
 
 ---
 Requirements defined: 2026-05-04
-Last updated: 2026-05-04 — v1.6 milestone initialization
+Last updated: 2026-05-06 — PMOVE-01/02/03 reassigned to Phase 44 (gap closure)
 
 ### Quick Context and Project Setters
 
