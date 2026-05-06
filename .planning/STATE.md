@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.6
-milestone_name: TUI Fixes and Power User Improvements
-status: planning
-last_updated: "2026-05-04T00:00:00.000Z"
-last_activity: 2026-05-04 -- v1.6 milestone planning started
+milestone_name: Verification Backfill
+status: complete
+last_updated: "2026-05-06T00:00:00.000Z"
+last_activity: 2026-05-06 -- Phase 45 complete — all v1.6 phases have VERIFICATION.md, Phase 39/41 ROADMAP fixed, 215 tests pass
 progress:
-  total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 18
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
@@ -20,29 +20,42 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-04)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** v1.6 milestone planning — TUI fixes and power user improvements
+**Current focus:** Phase 45 complete — all v1.6 phases verified
 
 ## Current Position
 
-Phase: 38 (last completed — v1.5)
-Plan: complete
-Status: v1.6 roadmap defined — ready to execute Phase 39
-Last activity: 2026-05-04 -- v1.6 roadmap created (phases 39-43)
+Milestone v1.6 closed — 2026-05-06. All 7 phases complete (18/18 plans).
+Status: Archiving milestone artifacts.
 
 ## Next Step
 
-Execute Phase 39 (Quick Wins — archive, bulk mark-done, external editor, AC-01 fix).
+Run `/gsd-new-milestone` to start v1.7 planning.
 
 ## Deferred Items
 
+Items acknowledged and deferred at milestone close on 2026-05-06:
+
 | Category | Item | Status |
 | -------- | ---- | ------ |
-| verification_gap | Phase 19: 19-VERIFICATION.md | human_needed — carried forward from v1.5 |
-| verification_gap | Phase 20: 20-VERIFICATION.md | human_needed — carried forward from v1.5 |
-| verification_gap | Phase 21: 21-VERIFICATION.md | human_needed — carried forward from v1.5 |
-| verification_gap | Phase 22: 22-VERIFICATION.md | human_needed — carried forward from v1.5 |
+| verification_gap | Phase 19: 19-VERIFICATION.md | human_needed — v1.5 carryover |
+| verification_gap | Phase 20: 20-VERIFICATION.md | human_needed — v1.5 carryover |
+| verification_gap | Phase 21: 21-VERIFICATION.md | human_needed — v1.5 carryover |
+| verification_gap | Phase 22: 22-VERIFICATION.md | human_needed — v1.5 carryover |
+| verification_gap | Phase 35: 35-VERIFICATION.md | human_needed — v1.5 carryover |
+| seed | SEED-005-phase22-nyquist-mode-transition-tests | dormant — addressed by Phase 40 (TST-01/02) |
+| seed | SEED-006-tui-archive-hotkey | dormant — addressed by Phase 39 (ARCH-01/02/03) |
+| seed | SEED-007-tui-view-state-persistence | dormant — addressed by Phase 43 (PRSV-01/02/03) |
+| seed | SEED-008-decouple-group-by-from-sort-order | dormant — addressed by Phase 40 (GRP-01/02/03/04) |
+| seed | SEED-009-bulk-mark-done | dormant — addressed by Phase 39 (BDONE-01/02) |
+| seed | SEED-010-recurring-tasks | dormant — genuinely unimplemented; future milestone |
+| seed | SEED-011-filter-history | dormant — addressed by Phase 41 (FHIST-01/02/03) |
+| seed | SEED-012-open-in-editor | dormant — addressed by Phase 39 (XEDIT-01/02/03) |
+| seed | SEED-013-fix-project-autocomplete-bug | dormant — addressed by Phase 39 (AC-01) |
+| seed | SEED-014-autocomplete-coverage-and-narrowing | dormant — addressed by Phase 42 (AC-02/03/04) |
+| seed | SEED-015-view-presets | dormant — addressed by Phase 41 (PRST-01/02) |
+| seed | SEED-016-done-txt-rotation | dormant — genuinely unimplemented; future milestone |
 
-Note: SEED-005 (Phase 22 automated tests) is now in-scope for v1.6, not deferred.
+Known deferred items at close: 17 (5 verification gaps, 12 seeds)
 
 ## Pending Decisions
 
@@ -54,4 +67,5 @@ None.
 
 ## Decisions
 
-(v1.6 decisions will be recorded here as phases are executed)
+- `accept_filter_completion` uses local enum `AcceptResult` to extract action before dropping autocomplete borrow — required by Rust borrow checker
+- `#[allow(dead_code)]` on `compute_filter_autocomplete` removed: function is now called from `handle_filtering_key` `_` arm
