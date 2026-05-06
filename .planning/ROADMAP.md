@@ -20,11 +20,9 @@
 - [x] **Phase 41: Full Presets, Filter History, Pane Task Movement** — Multi-dimensional view presets, session filter history, and tag-mutation pane moves
 - [x] **Phase 42: Filter Autocomplete Coverage** — Autocomplete in the filter input with incremental narrowing
  (completed 2026-05-06)
-- [ ] **Phase 43: View State Persistence** — Save and restore TUI view state across restarts
+- [x] **Phase 43: View State Persistence** — Save and restore TUI view state across restarts
 
 ---
-
-## Phase Details
 
 ## Phase Details
 
@@ -97,10 +95,9 @@ Plans:
 1. On clean exit, the TUI writes a `tui-state.toml` file to the platform config directory capturing the current sort order, group-by category, grouping toggle, active filter expression, and per-pane settings for panes that were interactively modified during the session
 2. On startup, the TUI loads `tui-state.toml` and restores the saved view state; if the file is absent, unreadable, or contains unknown fields, config.toml defaults are applied silently with no error shown to the user
 3. Pane settings that were not changed during the session are not written to the state file and continue to be governed by config.toml
-**Plans:** 2 plans
-Plans:
-- [ ] 43-01-PLAN.md — TuiStateFile struct + load/save + state_file_path (TDD, Wave 1)
-- [ ] 43-02-PLAN.md — main.rs startup override + app.rs save_view_state + retire persist_panes_on_quit (Wave 2)
+**Plans:** 2/2 plans complete
+- [x] 43-01-PLAN.md — TuiStateFile struct + load/save + state_file_path (TDD, Wave 1)
+- [x] 43-02-PLAN.md — main.rs startup override + app.rs save_view_state + retire persist_panes_on_quit (Wave 2)
 
 ---
 
@@ -112,7 +109,7 @@ Plans:
 | 40 | Group-By Decoupling + Test Coverage | 3/3 | Complete | e04679d, 2861696, 85dff6a |
 | 41 | Full Presets, Filter History, Pane Task Movement | 0/? | Not started | - |
 | 42 | Filter Autocomplete Coverage | 2/2 | Complete   | 2026-05-06 |
-| 43 | View State Persistence | 0/? | Not started | - |
+| 43 | View State Persistence | 2/2 | Complete | 2026-05-07 |
 
 ---
 
