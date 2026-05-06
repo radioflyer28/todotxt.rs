@@ -7126,6 +7126,173 @@ mod tests {
         let history = std::collections::VecDeque::<String>::new();
         assert!(compute_filter_autocomplete("@xyz", 4, &tl, &history).is_none());
     }
+
+    // ── handle_filtering_key integration tests (Phase 42, Plan 02) ───────────
+
+    /// Set up an app in Filtering mode with the given task lines.
+    fn make_filtering_app(task_lines: &[&str]) -> App {
+        let mut app = make_app_with_tasks(task_lines);
+        app.mode = AppMode::Filtering;
+        app.filter_state = Some(FilteringState {
+            editor: tui_textarea::TextArea::default(),
+            selected_preset: 0,
+            snapshot: String::new(),
+        });
+        app
+    }
+
+    fn key(code: KeyCode) -> crossterm::event::KeyEvent {
+        crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE)
+    }
+
+    // AC-02-I01: typing '@' in filter input triggers TokenAutocomplete('@')
+    #[test]
+    fn filter_autocomplete_at_triggers_token_popup() {
+        let mut app = make_filtering_app(&["task @work", "task @waiting"]);
+        app.handle_filtering_key(key(KeyCode::Char('@'))).unwrap();
+        let ac = app.autocomplete.as_ref().expect("autocomplete should be Some after '@'");
+        assert_eq!(
+            ac.mode,
+            AutocompleteMode::TokenAutocomplete('@'),
+            "mode must be TokenAutocomplete('@'), got {:?}",
+            ac.mode
+        );
+    }
+
+    // AC-02-I02: typing '+' in filter input triggers TokenAutocomplete('+')
+    #[test]
+    fn filter_autocomplete_plus_triggers_project_popup() {
+        let mut app = make_filtering_app(&["task +inbox", "task +personal"]);
+        app.handle_filtering_key(key(KeyCode::Char('+'))).unwrap();
+        let ac = app.autocomplete.as_ref().expect("autocomplete should be Some after '+'");
+        assert_eq!(
+            ac.mode,
+            AutocompleteMode::TokenAutocomplete('+'),
+            "mode must be TokenAutocomplete('+'), got {:?}",
+            ac.mode
+        );
+    }
+
+    // AC-04-I01: typing '@' then 'w' narrows to contexts starting with 'w'
+    #[test]
+    fn filter_autocomplete_narrowing_reduces_list() {
+        let mut app = make_filtering_app(&["task @work", "task @waiting", "task @home"]);
+        app.handle_filtering_key(key(KeyCode::Char('@'))).unwrap();
+        app.handle_filtering_key(key(KeyCode::Char('w'))).unwrap();
+        let ac = app.autocomplete.as_ref().expect("autocomplete should be Some after '@w'");
+        assert_eq!(ac.mode, AutocompleteMode::TokenAutocomplete('@'));
+        for item in &ac.items {
+            assert!(
+                item.to_lowercase().starts_with('w'),
+                "item '{}' doesn't start with 'w'",
+                item
+            );
+        }
+        assert!(!ac.items.contains(&"home".to_string()), "'home' must not appear after '@w'");
+    }
+
+    // AC-02-I03: Down navigates popup — focused=true, selected increments
+    #[test]
+    fn filter_autocomplete_down_navigates_when_popup_present() {
+        let mut app = make_filtering_app(&["task @work", "task @waiting"]);
+        // Manually inject a token autocomplete with 2 items, not focused
+        app.autocomplete = Some(AutocompleteState::new(
+            '@',
+            String::new(),
+            vec!["waiting".to_string(), "work".to_string()],
+        ));
+        app.handle_filtering_key(key(KeyCode::Down)).unwrap();
+        let ac = app.autocomplete.as_ref().expect("autocomplete should still be Some after Down");
+        assert!(ac.focused, "Down with popup present must set focused=true");
+        assert_eq!(ac.selected, 1, "selected must increment to 1 after Down");
+    }
+
+    // AC-02-I04: Up with focused popup decrements selected
+    #[test]
+    fn filter_autocomplete_up_decrements_when_popup_focused() {
+        let mut app = make_filtering_app(&["task @work", "task @waiting"]);
+        app.autocomplete = Some(AutocompleteState::new(
+            '@',
+            String::new(),
+            vec!["waiting".to_string(), "work".to_string()],
+        ));
+        // First focus and move to index 1
+        app.handle_filtering_key(key(KeyCode::Down)).unwrap();
+        // Now Up should go back to 0
+        app.handle_filtering_key(key(KeyCode::Up)).unwrap();
+        let ac = app.autocomplete.as_ref().expect("autocomplete should still be Some after Up");
+        assert_eq!(ac.selected, 0, "Up must decrement selected back to 0");
+    }
+
+    // AC-03-I01: Enter with focused popup keeps Filtering mode open (D-02)
+    #[test]
+    fn filter_autocomplete_enter_when_focused_keeps_filter_open() {
+        let mut app = make_filtering_app(&["task @work"]);
+        let mut ac = AutocompleteState::new('@', String::new(), vec!["work".to_string()]);
+        ac.focused = true;
+        ac.selected = 0;
+        app.autocomplete = Some(ac);
+        app.handle_filtering_key(key(KeyCode::Enter)).unwrap();
+        assert_eq!(
+            app.mode,
+            AppMode::Filtering,
+            "Enter with focused popup must keep Filtering mode, not apply filter"
+        );
+        assert!(
+            app.filter_state.is_some(),
+            "filter_state must stay Some after autocomplete accept"
+        );
+    }
+
+    // AC-03-I02: Tab accepts the focused popup and inserts token into editor
+    #[test]
+    fn filter_autocomplete_tab_accepts_and_inserts_token() {
+        let mut app = make_filtering_app(&["task @work"]);
+        // Seed editor with "@" so the token replacement has a word to work with
+        if let Some(ref mut state) = app.filter_state {
+            state.editor.insert_str("@");
+        }
+        let mut ac = AutocompleteState::new('@', String::new(), vec!["work".to_string()]);
+        ac.focused = true;
+        ac.selected = 0;
+        app.autocomplete = Some(ac);
+        app.handle_filtering_key(key(KeyCode::Tab)).unwrap();
+        // Autocomplete popup should be dismissed
+        assert!(
+            app.autocomplete.is_none(),
+            "autocomplete must be None after Tab accept"
+        );
+        // Mode stays Filtering (D-02)
+        assert_eq!(app.mode, AppMode::Filtering, "mode must stay Filtering after Tab accept");
+        // Editor content should contain "work" (token inserted)
+        let content = app
+            .filter_state
+            .as_ref()
+            .map(|s| s.editor.lines().first().cloned().unwrap_or_default())
+            .unwrap_or_default();
+        assert!(
+            content.contains("work"),
+            "editor must contain 'work' after accepting '@work', got: '{}'",
+            content
+        );
+    }
+
+    // AC-03-I03: Enter without focused popup applies filter normally (no regression)
+    #[test]
+    fn filter_autocomplete_enter_no_focused_popup_applies_filter() {
+        let mut app = make_filtering_app(&["task @work"]);
+        if let Some(ref mut state) = app.filter_state {
+            state.editor.insert_str("@work");
+        }
+        // No focused autocomplete
+        app.autocomplete = None;
+        app.handle_filtering_key(key(KeyCode::Enter)).unwrap();
+        assert_eq!(
+            app.mode,
+            AppMode::Normal,
+            "Enter without focused popup must apply filter and return to Normal mode"
+        );
+    }
 }
 
 
