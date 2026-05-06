@@ -108,8 +108,8 @@ Plans:
 1. Pressing `Ctrl+Right` in Normal mode moves the cursor task to the right pane (tag swap if single-token filters) — it no longer calls `focus_next_pane()`
 2. Pressing plain `Right` (no modifier) still navigates to the next pane as before — no regression
 3. Pressing `Ctrl+Left` moves the cursor task to the left pane (or declines with status bar message if compound filter)
-**Plans:** 1 plan
-- [ ] 44-01-PLAN.md — TDD: RED failing tests for Ctrl+Left/Right dispatch, GREEN modifier guard fix (KeyModifiers::NONE) on Left/Right pane-nav arms
+**Plans:** 1/1 plans complete
+- [x] 44-01-PLAN.md — TDD: RED failing tests for Ctrl+Left/Right dispatch, GREEN modifier guard fix (KeyModifiers::NONE) on Left/Right pane-nav arms
 
 ### Phase 45: v1.6 Verification Backfill
 **Goal:** All v1.6 phases have formal VERIFICATION.md sign-offs and Phase 39 is marked complete, making requirements coverage accurately reflect the implemented milestone
@@ -137,7 +137,7 @@ Plans:
 | 41 | Full Presets, Filter History, Pane Task Movement | 0/? | Not started | - |
 | 42 | Filter Autocomplete Coverage | 2/2 | Complete   | 2026-05-06 |
 | 43 | View State Persistence | 2/2 | Complete | 2026-05-07 |
-| 44 | Pane Move Key Dispatch Fix | 0/1 | Not started | - |
+| 44 | Pane Move Key Dispatch Fix | 1/1 | Complete   | 2026-05-06 |
 | 45 | v1.6 Verification Backfill | 0/2 | Not started | - |
 
 ---
