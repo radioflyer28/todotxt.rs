@@ -1887,6 +1887,11 @@ impl App {
                 self.apply_pending_reload()?;
             }
             KeyCode::Enter => {
+                // Guard: if popup is focused, accept suggestion instead of applying filter (D-02).
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
+                    self.accept_filter_completion();
+                    return Ok(());
+                }
                 // Apply filter to active pane
                 if let Some(state) = self.filter_state.take() {
                     let filter_text = state.editor.lines().join("").trim().to_string();
@@ -1919,6 +1924,12 @@ impl App {
                 }
             }
             KeyCode::Down => {
+                // Navigate autocomplete popup if visible (before preset cycling).
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.focused = true;
+                    ac.selected = (ac.selected + 1).min(ac.items.len().saturating_sub(1));
+                    return Ok(());
+                }
                 let preset_count = self.presets.len();
                 if let Some(ref mut state) = self.filter_state {
                     if preset_count > 0 {
@@ -1934,6 +1945,13 @@ impl App {
                 self.rebuild_and_reanchor();
             }
             KeyCode::Up => {
+                // Navigate autocomplete popup if focused (before preset cycling).
+                if let Some(ref mut ac) = self.autocomplete {
+                    if ac.focused {
+                        ac.selected = ac.selected.saturating_sub(1);
+                        return Ok(());
+                    }
+                }
                 if let Some(ref mut state) = self.filter_state {
                     if state.selected_preset > 0 {
                         state.selected_preset = state.selected_preset.saturating_sub(1);
@@ -1960,27 +1978,38 @@ impl App {
                     self.rebuild_and_reanchor();
                 }
             }
+            // Tab accepts focused popup suggestion (AC-03, Phase 42).
+            KeyCode::Tab => {
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
+                    self.accept_filter_completion();
+                }
+            }
             _ => {
+                // Borrow-safe pattern: feed key first, then clone line+cursor, then call helper.
                 if let Some(ref mut state) = self.filter_state {
                     state.editor.input(key);
-                    let filter_text = state
-                        .editor
-                        .lines()
-                        .first()
-                        .cloned()
-                        .unwrap_or_default();
-                    // Per-pane: update active pane's filter as user types (D-04, Phase 25).
-                    // Reset Ctrl+R cursor when user types manually (FHIST-02, D-09).
-                    self.filter_history_cursor = None;
-                    self.active_pane_mut().filter_query = filter_text.clone();
-                    // Show inline history suggestions matching the current prefix (Phase 41, FHIST-02).
-                    let history_items: Vec<String> = self.filter_history.iter().cloned().collect();
-                    if !history_items.is_empty() {
-                        self.autocomplete = Some(AutocompleteState::new_filter_history(filter_text, history_items));
-                    } else {
-                        self.autocomplete = None;
-                    }
                 }
+                let (filter_text, cursor_col) = match &self.filter_state {
+                    Some(s) => (
+                        s.editor.lines().first().cloned().unwrap_or_default(),
+                        s.editor.cursor().1,
+                    ),
+                    None => {
+                        self.rebuild_and_reanchor();
+                        return Ok(());
+                    }
+                };
+                // Reset Ctrl+R cursor when user types manually (FHIST-02, D-09).
+                self.filter_history_cursor = None;
+                // Per-pane: update active pane's filter as user types (D-04, Phase 25).
+                self.active_pane_mut().filter_query = filter_text.clone();
+                // Compute autocomplete: TokenAutocomplete for @/+, FilterHistory fallback (AC-02, AC-04).
+                self.autocomplete = compute_filter_autocomplete(
+                    &filter_text,
+                    cursor_col,
+                    &self.task_list,
+                    &self.filter_history,
+                );
                 self.rebuild_and_reanchor();
             }
         }
@@ -2365,6 +2394,76 @@ impl App {
         self.autocomplete = None;
     }
 
+    // ── Filter autocomplete accept (AC-03, Phase 42, Plan 02) ─────────────────
+
+    /// Insert the focused filter autocomplete suggestion into the filter editor,
+    /// keeping the filter panel open (D-02: accept stays in Filtering mode).
+    fn accept_filter_completion(&mut self) {
+        // 1. Clone line and cursor_col from filter_state (immutable borrow, then release).
+        let (line, cursor_col) = match &self.filter_state {
+            Some(s) => (
+                s.editor.lines().first().cloned().unwrap_or_default(),
+                s.editor.cursor().1,
+            ),
+            None => return,
+        };
+
+        // 2. Extract the accept action without holding a reference.
+        enum AcceptResult {
+            Token(char, String),
+            History(String),
+            NoOp,
+        }
+        let result = match &self.autocomplete {
+            None => AcceptResult::NoOp,
+            Some(ac) => match &ac.mode {
+                AutocompleteMode::TokenAutocomplete(trigger) => match ac.items.get(ac.selected) {
+                    Some(token) => AcceptResult::Token(*trigger, token.clone()),
+                    None => AcceptResult::NoOp,
+                },
+                AutocompleteMode::FilterHistory => match ac.items.get(ac.selected) {
+                    Some(entry) => AcceptResult::History(entry.clone()),
+                    None => AcceptResult::NoOp,
+                },
+                _ => AcceptResult::NoOp,
+            },
+        };
+
+        // 3. Build new_line — no self borrows needed here.
+        let new_line = match result {
+            AcceptResult::NoOp => {
+                self.autocomplete = None;
+                return;
+            }
+            AcceptResult::Token(trigger, token) => {
+                // Cursor-aware replacement: replace the trigger-word at cursor (D-03).
+                let end = cursor_col.min(line.len());
+                let before_cursor = &line[..end];
+                let word_start = before_cursor
+                    .rfind(char::is_whitespace)
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+                let after_cursor = if cursor_col <= line.len() {
+                    &line[cursor_col..]
+                } else {
+                    ""
+                };
+                format!("{}{}{}{}", &line[..word_start], trigger, token, after_cursor)
+            }
+            AcceptResult::History(entry) => entry,
+        };
+
+        // 4. Apply new content — safe: no existing borrows.
+        let filter_query = new_line.trim().to_string();
+        let mut new_editor = tui_textarea::TextArea::default();
+        new_editor.insert_str(&new_line);
+        if let Some(ref mut state) = self.filter_state {
+            state.editor = new_editor;
+        }
+        self.active_pane_mut().filter_query = filter_query;
+        self.autocomplete = None;
+        self.rebuild_and_reanchor();
+    }
 
     // ── Delete confirm key handler ────────────────────────────────────────────
 
@@ -4462,7 +4561,6 @@ fn group_key_for(task: &Task, group_by: &GroupByCategory) -> String {
 /// - Word starts with `+` → `TokenAutocomplete('+')` with projects from `task_list`.
 /// - No trigger and `history` non-empty → `FilterHistory`.
 /// - Otherwise → `None`.
-#[allow(dead_code)]
 fn compute_filter_autocomplete(
     line: &str,
     cursor_col: usize,
