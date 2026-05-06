@@ -15,7 +15,7 @@
 
 ### Phases
 
-- [ ] **Phase 39: Quick Wins** — Archive workflow, bulk mark-done, external editor escape hatch, and `+` autocomplete bug fix
+- [x] **Phase 39: Quick Wins** — Archive workflow, bulk mark-done, external editor escape hatch, and `+` autocomplete bug fix
 - [x] **Phase 40: Group-By Decoupling + Test Coverage** — Independent group-by controls per pane and automated Phase 22 test coverage
 - [x] **Phase 41: Full Presets, Filter History, Pane Task Movement** — Multi-dimensional view presets, session filter history, and tag-mutation pane moves
 - [x] **Phase 42: Filter Autocomplete Coverage** — Autocomplete in the filter input with incremental narrowing
@@ -36,11 +36,11 @@
 3. User presses `Ctrl+E` on a cursor task and the task opens in `$VISUAL` / `$EDITOR` / platform fallback; TUI suspends ratatui rendering and raw mode before launch and fully restores terminal state after exit — including on editor crash
 4. If no editor is found or the editor exits with an error, a status bar error message appears and the TUI continues operating without data loss
 5. Typing `+` in the task editor (Add or Edit mode) shows an autocomplete popup with existing project tags, and the popup narrows as additional characters are typed
-**Plans:** 4 plans
-- [ ] 39-01-PLAN.md — Archive workflow: AppMode::ArchiveConfirm, A key, archive_tasks(), write-first atomic done.txt
-- [ ] 39-02-PLAN.md — Bulk mark-done (TDD): bulk_mark_done(), x key routing with selection guard
-- [ ] 39-03-PLAN.md — External editor: RawModeGuard, resolve_editor(), launch_external_editor(), Ctrl+E
-- [ ] 39-04-PLAN.md — AC-01 autocomplete verify (TDD): + project tag correctness tests, fix if needed
+**Plans:** 4/4 plans complete
+- [x] 39-01-PLAN.md — Archive workflow: AppMode::ArchiveConfirm, A key, archive_tasks(), write-first atomic done.txt
+- [x] 39-02-PLAN.md — Bulk mark-done (TDD): bulk_mark_done(), x key routing with selection guard
+- [x] 39-03-PLAN.md — External editor: RawModeGuard, resolve_editor(), launch_external_editor(), Ctrl+E
+- [x] 39-04-PLAN.md — AC-01 autocomplete verify (TDD): + project tag correctness tests, fix if needed
 
 ### Phase 40: Group-By Decoupling + Test Coverage
 **Goal:** Group-by category and sort order become fully independent controls per pane, and Phase 22 manual validation gaps are closed with automated tests
@@ -132,9 +132,9 @@ Plans:
 
 | Phase | Name | Plans Complete | Status | Completed |
 |-------|------|----------------|--------|-----------|
-| 39 | Quick Wins | 0/? | Not started | - |
+| 39 | Quick Wins | 4/4 | Complete | 2026-05-04 |
 | 40 | Group-By Decoupling + Test Coverage | 3/3 | Complete | e04679d, 2861696, 85dff6a |
-| 41 | Full Presets, Filter History, Pane Task Movement | 0/? | Not started | - |
+| 41 | Full Presets, Filter History, Pane Task Movement | 4/4 | Complete | 2026-05-05 |
 | 42 | Filter Autocomplete Coverage | 2/2 | Complete   | 2026-05-06 |
 | 43 | View State Persistence | 2/2 | Complete | 2026-05-07 |
 | 44 | Pane Move Key Dispatch Fix | 1/1 | Complete   | 2026-05-06 |
