@@ -289,27 +289,30 @@ impl App {
         self.filter_history_cursor = None;
     }
 
-    /// Returns true if `filter` is a single @/+ tag token with no spaces (Phase 41, PMOVE-01, D-15).
-    ///
-    /// Valid: "@work", "+project", "@home-office". Invalid: "@work @home", "due:today", "".
-    fn is_single_tag_token(filter: &str) -> bool {
-        if filter.is_empty() {
-            return false;
-        }
-        let trimmed = filter.trim();
-        (trimmed.starts_with('@') || trimmed.starts_with('+'))
-            && !trimmed.contains(char::is_whitespace)
+    /// Extracts @context and +project tag tokens from a pane filter query string.
+    /// Non-tag terms (due:today, priority, negated/dash-prefixed tokens, slash-forms, bare `@`/`+`) are ignored.
+    /// Returns an empty Vec for unfiltered panes (empty filter_query).
+    fn extract_tag_tokens(filter_query: &str) -> Vec<String> {
+        filter_query
+            .split_whitespace()
+            .filter(|t| {
+                (t.starts_with('@') || t.starts_with('+'))
+                    && t.len() > 1
+                    && !t.contains('/')
+            })
+            .map(|t| t.to_string())
+            .collect()
     }
 
     /// Move task(s) from the active pane to an adjacent pane by tag mutation (Phase 41, PMOVE-02).
     ///
     /// `direction` is +1 (right) or -1 (left). Wraps at boundaries using rem_euclid.
     ///
-    /// Validation (PMOVE-03, D-15): source and dest pane must each have a single-token
-    /// @/+ filter. Otherwise pushes a status message and returns without mutating.
+    /// Both panes may have zero or more @/+ tag tokens in their filter; empty = unfiltered
+    /// pane, no tag mutation for that side.
     ///
-    /// Mutation per task (D-16): removes the source token from task raw text (if present),
-    /// then appends the dest token (if not already present).
+    /// Mutation per task (D-16): removes all source tag tokens from task raw text, then appends
+    /// each dest tag token (if not already present).
     ///
     /// After mutation (D-17, D-18): pushes undo entry BEFORE mutation, saves, rebuilds,
     /// and jumps active_pane to the dest pane index.
@@ -326,20 +329,8 @@ impl App {
         let src_filter = self.panes[src_idx].filter_query.trim().to_string();
         let dest_filter = self.panes[dest_idx].filter_query.trim().to_string();
 
-        if !Self::is_single_tag_token(&src_filter) {
-            self.push_runtime_warning(format!(
-                "Cannot move: source pane filter '{}' is not a single @/+ tag.",
-                src_filter
-            ));
-            return Ok(());
-        }
-        if !Self::is_single_tag_token(&dest_filter) {
-            self.push_runtime_warning(format!(
-                "Cannot move: destination pane filter '{}' is not a single @/+ tag.",
-                dest_filter
-            ));
-            return Ok(());
-        }
+        let src_tags = Self::extract_tag_tokens(&src_filter);
+        let dest_tags = Self::extract_tag_tokens(&dest_filter);
 
         // Collect global task indices: selected_tasks if non-empty, else cursor task in active pane.
         let task_indices: Vec<usize> = if !self.selected_tasks.is_empty() {
@@ -369,22 +360,22 @@ impl App {
             }
             let raw = self.task_list.tasks()[task_idx].to_raw().to_string();
 
-            // Remove source filter token (word-by-word, case-sensitive exact match).
-            let filtered_tokens: Vec<&str> = raw
+            // Remove all source tag tokens from raw (word-exact match, case-sensitive).
+            let mut new_raw: String = raw
                 .split_whitespace()
-                .filter(|&t| t != src_filter)
-                .collect();
-            let mut new_raw = filtered_tokens.join(" ");
+                .filter(|&t| !src_tags.iter().any(|s| s == t))
+                .collect::<Vec<_>>()
+                .join(" ");
 
-            // Append dest filter token if not already present.
-            let already_has_dest = new_raw
-                .split_whitespace()
-                .any(|t| t == dest_filter);
-            if !already_has_dest {
-                if !new_raw.is_empty() {
-                    new_raw.push(' ');
+            // Append each dest tag token if not already present.
+            for dest_tag in &dest_tags {
+                let already_present = new_raw.split_whitespace().any(|t| t == dest_tag.as_str());
+                if !already_present {
+                    if !new_raw.is_empty() {
+                        new_raw.push(' ');
+                    }
+                    new_raw.push_str(dest_tag);
                 }
-                new_raw.push_str(&dest_filter);
             }
 
             let new_task = todotxt_core::Task::parse(&new_raw);
@@ -6931,23 +6922,6 @@ mod tests {
 
     // ── Phase 41 Plan 04: pane task movement ─────────────────────────────────
 
-    // PMOVE-01 / 41-04-T01: is_single_tag_token accepts valid single tokens.
-    #[test]
-    fn is_single_tag_token_valid() {
-        assert!(App::is_single_tag_token("@work"), "@work should be valid");
-        assert!(App::is_single_tag_token("+project"), "+project should be valid");
-        assert!(App::is_single_tag_token("@home-office"), "@home-office should be valid");
-    }
-
-    // PMOVE-01 / 41-04-T02: is_single_tag_token rejects invalid tokens.
-    #[test]
-    fn is_single_tag_token_invalid() {
-        assert!(!App::is_single_tag_token("@work @home"), "compound @work @home must be invalid");
-        assert!(!App::is_single_tag_token("due:today"), "due:today has no @/+ prefix");
-        assert!(!App::is_single_tag_token(""), "empty string must be invalid");
-        assert!(!App::is_single_tag_token("@work +personal"), "compound @work +personal must be invalid");
-    }
-
     // PMOVE-02 / 41-04-T03: pane_move_task swaps tags correctly.
     #[test]
     fn pane_move_task_tag_swap() {
@@ -6967,9 +6941,9 @@ mod tests {
         assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
     }
 
-    // PMOVE-03 / 41-04-T04: pane_move_task is declined when src filter is compound.
+    // PMOVE-03 (updated): pane_move_task accepts multi-token src filter and removes all tag tokens.
     #[test]
-    fn pane_move_task_declined_compound_filter() {
+    fn pane_move_task_multi_token_src_filter() {
         use crate::config::{TuiConfig, PaneConfig, PaneSort};
         let mut config = TuiConfig::default();
         config.panes = vec![
@@ -6977,11 +6951,12 @@ mod tests {
             PaneConfig { label: "Home".into(), filter: "@home".into(), sort: PaneSort::default(), group: false, group_by: None },
         ];
         let mut app = make_app_with_config(&["todo @work +project task"], config);
-        let was_none = app.undo_entry.is_none();
         app.pane_move_task(1).unwrap();
-        // Declined: undo_entry unchanged, active pane unchanged.
-        assert_eq!(app.undo_entry.is_none(), was_none, "undo entry must not be pushed on declined move");
-        assert_eq!(app.active_pane, 0, "active pane must not change on declined move");
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(!raw.contains("@work"), "src @work token must be removed: {}", raw);
+        assert!(!raw.contains("+project"), "src +project token must be removed: {}", raw);
+        assert!(raw.contains("@home"), "dest @home token must be added: {}", raw);
+        assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
     }
 
     // PMOVE-02 / 41-04-T05: pane_move_task wraps at boundary.
@@ -6998,6 +6973,90 @@ mod tests {
         // Move left from pane 0 → should wrap to last pane (index 1).
         app.pane_move_task(-1).unwrap();
         assert_eq!(app.active_pane, 1, "move left from pane 0 must wrap to last pane");
+    }
+
+    // NH1-FIX / T01: unfiltered → filtered: task gains dest tag(s).
+    #[test]
+    fn pane_move_task_unfiltered_to_filtered() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "All".into(), filter: "".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo plain task"], config);
+        app.pane_move_task(1).unwrap();
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(raw.contains("@work"), "dest @work token must be added: {}", raw);
+        assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
+    }
+
+    // NH1-FIX / T02: filtered → unfiltered: task loses src tag(s).
+    #[test]
+    fn pane_move_task_filtered_to_unfiltered() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "Work".into(), filter: "@work".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "All".into(), filter: "".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo @work task"], config);
+        app.pane_move_task(1).unwrap();
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(!raw.contains("@work"), "src @work token must be removed: {}", raw);
+        assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
+    }
+
+    // NH1-FIX / T03: unfiltered → unfiltered: task moves with no tag changes.
+    #[test]
+    fn pane_move_task_unfiltered_to_unfiltered() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "All1".into(), filter: "".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "All2".into(), filter: "".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let raw_before = "todo @work +project plain task".to_string();
+        let mut app = make_app_with_config(&[&raw_before], config);
+        app.pane_move_task(1).unwrap();
+        let raw_after = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(raw_after.contains("@work"), "@work must be preserved: {}", raw_after);
+        assert!(raw_after.contains("+project"), "+project must be preserved: {}", raw_after);
+        assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
+    }
+
+    // NH1-FIX / T04: multi-token dest filter: all tag tokens are added.
+    #[test]
+    fn pane_move_task_multi_token_dest_filter() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "All".into(), filter: "".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "WorkProj".into(), filter: "@work +project".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo plain task"], config);
+        app.pane_move_task(1).unwrap();
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(raw.contains("@work"), "@work must be added: {}", raw);
+        assert!(raw.contains("+project"), "+project must be added: {}", raw);
+        assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
+    }
+
+    // NH1-FIX / T05: non-tag filter tokens (due:today) are ignored for tag mutation.
+    #[test]
+    fn pane_move_task_non_tag_filter_tokens_ignored() {
+        use crate::config::{TuiConfig, PaneConfig, PaneSort};
+        let mut config = TuiConfig::default();
+        config.panes = vec![
+            PaneConfig { label: "All".into(), filter: "".into(), sort: PaneSort::default(), group: false, group_by: None },
+            PaneConfig { label: "Due".into(), filter: "@work due:today".into(), sort: PaneSort::default(), group: false, group_by: None },
+        ];
+        let mut app = make_app_with_config(&["todo plain task"], config);
+        app.pane_move_task(1).unwrap();
+        let raw = app.task_list.tasks()[0].to_raw().to_string();
+        assert!(raw.contains("@work"), "@work must be added: {}", raw);
+        assert!(!raw.contains("due:today"), "due:today must not be injected into task: {}", raw);
+        assert_eq!(app.active_pane, 1, "focus must jump to dest pane");
     }
 
     // ── Phase 41 gap-fill tests ───────────────────────────────────────────────

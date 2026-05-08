@@ -4,7 +4,7 @@ milestone: v1.6
 milestone_name: Verification Backfill
 status: complete
 last_updated: "2026-05-06T00:00:00.000Z"
-last_activity: 2026-05-06 -- Phase 45 complete — all v1.6 phases have VERIFICATION.md, Phase 39/41 ROADMAP fixed, 215 tests pass
+last_activity: 2026-05-07 - Completed quick task 260507-nh1: fix ctrl-left/right task movement between panes with missing context/project filters
 progress:
   total_phases: 7
   completed_phases: 7
@@ -60,6 +60,12 @@ Known deferred items at close: 17 (5 verification gaps, 12 seeds)
 ## Pending Decisions
 
 None.
+
+## Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260507-nh1 | fix ctrl-left/right task movement between panes with missing context/project filters | 2026-05-07 | 5e3c383 | Verified | [260507-nh1-fix-ctrl-left-right-task-movement-betwee](.planning/quick/260507-nh1-fix-ctrl-left-right-task-movement-betwee/) |
 
 ## Blockers
 
