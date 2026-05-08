@@ -759,6 +759,16 @@ impl App {
             filtered_tasks.sort_by(|(_, a), (_, b)| pane.sort_order.compare(a, b));
         }
 
+        // Secondary stable-sort by group key so all tasks with the same key are
+        // contiguous before the grouping loop emits headers.
+        // Mirrors the single-pane path in rebuild_display_indices. (D-09)
+        if pane.grouping && !filtered_tasks.is_empty() {
+            let group_by = pane.group_by;
+            filtered_tasks.sort_by(|(_, a), (_, b)| {
+                group_key_for(a, &group_by).cmp(&group_key_for(b, &group_by))
+            });
+        }
+
         // Per-pane grouping behavior (D-09, Phase 25): Add group headers if enabled
         let rows: Vec<DisplayRow> = if pane.grouping && !filtered_tasks.is_empty() {
             let mut display_rows: Vec<DisplayRow> = Vec::new();
@@ -815,6 +825,13 @@ impl App {
 
                 if sort_order != SortOrder::FileOrder {
                     filtered.sort_by(|(_, a), (_, b)| sort_order.compare(a, b));
+                }
+
+                // Secondary stable-sort by group key — mirrors rebuild_display_indices.
+                if grouping && !filtered.is_empty() {
+                    filtered.sort_by(|(_, a), (_, b)| {
+                        group_key_for(a, &group_by).cmp(&group_key_for(b, &group_by))
+                    });
                 }
 
                 if grouping && !filtered.is_empty() {
@@ -5775,6 +5792,35 @@ mod tests {
         // Switch back and verify
         app.focus_prev_pane();
         assert_eq!(app.active_pane().selected, 1);
+    }
+
+    #[test]
+    fn rebuild_all_panes_no_duplicate_group_headers_with_sort_and_group() {
+        // Two tasks share priority "(A)", one task is "(B)".
+        // With Alphabetical sort + Priority group-by, without the secondary group-key sort
+        // the "(A)" tasks could be interleaved with "(B)", producing duplicate headers.
+        let mut app = make_app_with_tasks(&[
+            "(B) beta task",
+            "(A) alpha task",
+            "(A) zebra task",
+        ]);
+        app.panes.push(Pane::new(1, "Work".to_string()));
+
+        // Configure pane 0: sort=Alphabetical, group=Priority
+        app.panes[0].sort_order = SortOrder::Alphabetical;
+        app.panes[0].grouping = true;
+        app.panes[0].group_by = GroupByCategory::Priority;
+
+        app.rebuild_all_panes();
+
+        let headers: Vec<_> = app.panes[0]
+            .display_rows
+            .iter()
+            .filter(|r| matches!(r, DisplayRow::GroupHeader(_)))
+            .collect();
+
+        // Expect exactly 2 unique headers: "(A)" and "(B)" — not 3 (the broken case)
+        assert_eq!(headers.len(), 2, "Expected 2 group headers, got: {:?}", headers);
     }
 
     #[test]

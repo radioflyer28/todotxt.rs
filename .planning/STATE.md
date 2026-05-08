@@ -4,7 +4,7 @@ milestone: v1.6
 milestone_name: Verification Backfill
 status: complete
 last_updated: "2026-05-06T00:00:00.000Z"
-last_activity: 2026-05-07 - Completed quick task 260507-nh1: fix ctrl-left/right task movement between panes with missing context/project filters
+last_activity: 2026-05-08 - Completed quick task 260508-dbv: fix multi-pane sort/group conflict and remove sort indicator from pane header
 progress:
   total_phases: 7
   completed_phases: 7
@@ -66,6 +66,7 @@ None.
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260507-nh1 | fix ctrl-left/right task movement between panes with missing context/project filters | 2026-05-07 | 5e3c383 | Verified | [260507-nh1-fix-ctrl-left-right-task-movement-betwee](.planning/quick/260507-nh1-fix-ctrl-left-right-task-movement-betwee/) |
+| 260508-dbv | fix multi-pane sort/group conflict and remove sort indicator from pane header | 2026-05-08 | 5e183ed | Verified | [260508-dbv-fix-multi-pane-sort-group-conflict-and-r](.planning/quick/260508-dbv-fix-multi-pane-sort-group-conflict-and-r/) |
 
 ## Blockers
 

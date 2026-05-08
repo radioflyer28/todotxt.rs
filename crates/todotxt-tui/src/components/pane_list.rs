@@ -10,13 +10,48 @@ use std::collections::HashSet;
 use crate::state::{Pane, DisplayRow};
 use crate::theme::StyleSheet;
 use todotxt_core::DueStatus;
-use todotxt_core::SortOrder;
 use chrono::Local;
 
 #[allow(dead_code)]
 pub struct PaneList;
 
 impl PaneList {
+    /// Build the pane border title string from label, filter, and active state.
+    /// Used by render() and exposed for unit testing.
+    pub(crate) fn build_pane_title(pane: &Pane, is_active: bool, label_selected: bool) -> String {
+        let mut header_parts: Vec<String> = Vec::new();
+
+        if !pane.label.is_empty() {
+            let label_display = if is_active && label_selected {
+                format!("✎ {}", pane.label)
+            } else if is_active {
+                format!("▶ {}", pane.label)
+            } else {
+                format!("  {}", pane.label)
+            };
+            header_parts.push(label_display);
+        } else if is_active {
+            header_parts.push("▶".to_string());
+        }
+
+        let trimmed_filter = pane.filter_query.trim();
+        if !trimmed_filter.is_empty() {
+            let filter_display = if trimmed_filter.chars().count() > 20 {
+                let truncated: String = trimmed_filter.chars().take(17).collect();
+                format!("{}…", truncated)
+            } else {
+                trimmed_filter.to_string()
+            };
+            header_parts.push(filter_display.to_string());
+        }
+
+        if header_parts.is_empty() {
+            if is_active { "▶".to_string() } else { " ".to_string() }
+        } else {
+            header_parts.join(" | ")
+        }
+    }
+
     /// Truncate text at word boundaries with ellipsis to fit within max_width.
     /// Preserves one-line-per-task visual aesthetic in narrow panes.
     fn truncate_for_width(text: &str, max_width: usize) -> String {
@@ -66,56 +101,7 @@ impl PaneList {
                 .fg(Color::DarkGray)
         };
 
-        // Build pane header: [label] - [filter] - [sort]
-        let mut header_parts = Vec::new();
-
-        // Add label if non-empty
-        if !pane.label.is_empty() {
-            let label_display = if is_active && label_selected {
-                format!("✎ {}", pane.label)
-            } else if is_active {
-                format!("▶ {}", pane.label)
-            } else {
-                format!("  {}", pane.label)
-            };
-            header_parts.push(label_display);
-        } else if is_active {
-            // Show indicator for active pane even when label is empty
-            header_parts.push("▶".to_string());
-        }
-
-        // Add filter if non-empty
-        let trimmed_filter = pane.filter_query.trim();
-        if !trimmed_filter.is_empty() {
-            let filter_display = if trimmed_filter.len() > 20 {
-                format!("{}…", &trimmed_filter[..17])
-            } else {
-                trimmed_filter.to_string()
-            };
-            header_parts.push(format!("filter: {}", filter_display));
-        }
-
-        // Add sort order if not FileOrder
-        if pane.sort_order != SortOrder::FileOrder {
-            let sort_name = match pane.sort_order {
-                SortOrder::FileOrder => "file",
-                SortOrder::Alphabetical => "alpha",
-                SortOrder::Priority => "priority",
-                SortOrder::DueDate => "due",
-                _ => "unknown",
-            };
-            header_parts.push(format!("sort: {}", sort_name));
-        }
-
-        let title = if header_parts.is_empty() {
-            if is_active {
-                "▶".to_string()
-            } else {
-                " ".to_string()
-            }
-        } else {
-            header_parts.join(" | ")
-        };
+        let title = Self::build_pane_title(pane, is_active, label_selected);
 
         let block = Block::default()
             .title(title)
@@ -216,5 +202,33 @@ impl PaneList {
         }
 
         frame.render_stateful_widget(list, area, &mut list_state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::Pane;
+    use todotxt_core::SortOrder;
+
+    #[test]
+    fn pane_header_no_sort_indicator() {
+        // With a non-FileOrder sort, header must NOT contain "sort:"
+        let mut p = Pane::new(0, "Pane 3".to_string());
+        p.sort_order = SortOrder::CompletedDate;
+        let title = PaneList::build_pane_title(&p, true, false);
+        assert!(!title.contains("sort:"), "Header must not contain 'sort:': {}", title);
+        assert_eq!(title, "▶ Pane 3");
+    }
+
+    #[test]
+    fn pane_header_filter_no_prefix() {
+        // With a filter set, header must NOT contain "filter:" prefix
+        let mut p = Pane::new(0, "Pane 3".to_string());
+        p.filter_query = "@work +CTRC".to_string();
+        p.sort_order = SortOrder::CompletedDate;
+        let title = PaneList::build_pane_title(&p, true, false);
+        assert!(!title.contains("filter:"), "Header must not contain 'filter:': {}", title);
+        assert_eq!(title, "▶ Pane 3 | @work +CTRC");
     }
 }
