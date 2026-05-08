@@ -21,6 +21,7 @@ clap         = { workspace = true }
 todotxt-core = { path = "../todotxt-core", features = ["watching"] }
 tui-textarea = { workspace = true }
 arboard      = "=3.6.1"
+tempfile     = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

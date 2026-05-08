@@ -1,5 +1,24 @@
 # Milestones
 
+## v1.6 TUI Fixes and Power User Improvements (Shipped: 2026-05-06)
+
+**Phases:** 7 (Phases 39–45) | **Plans:** 18 | **Requirements:** 29/29 complete | **Tests:** 215 passing
+
+**Key accomplishments:**
+
+1. Archive workflow: `A` key → ArchiveConfirm dialog → atomic done.txt append; `x` bulk mark-done with selection guard
+2. External `$EDITOR` launch with `RawModeGuard` terminal restore; `+` project autocomplete verified correct
+3. Decoupled group-by category from sort order per pane (4 variants); automated all 11 Phase 22 manual test gaps with `make_app_with_config` helper
+4. Multi-dimensional view presets (filter+sort+group+panes), session filter history with `Ctrl+R` cycling, pane task movement via tag mutation
+5. Filter input autocomplete (`@`/`+`) with cursor-aware incremental narrowing; view state persisted to `tui-state.toml` across restarts
+6. TDD bug fix (BUG-41-01): `KeyModifiers::NONE` guard on Left/Right pane-nav arms — Ctrl+Left/Right now reach `pane_move_task()`
+
+**Archive:** .planning/milestones/v1.6-ROADMAP.md | .planning/milestones/v1.6-REQUIREMENTS.md | .planning/milestones/v1.6-MILESTONE-AUDIT.md
+
+Known deferred items at close: 17 (see STATE.md Deferred Items)
+
+---
+
 ## v1.5 Capture Flow + Bulk Safety + Clipboard + Undo (Shipped: 2026-05-01)
 
 **Phases:** 6 (Phases 33-38) | **Plans:** 14 | **Requirements:** 27/27 complete (5 adjusted)

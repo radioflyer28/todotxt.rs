@@ -52,6 +52,15 @@ fn main() -> color_eyre::Result<()> {
     };
     let mut config = TuiConfig::load(&config_path)?;
 
+    // Phase 43 (PRSV-01/02): Load view state sidecar; if present and non-empty,
+    // override config.panes so the last session's pane layout is restored.
+    let state_path = config::state_file_path(&config_path);
+    if let Some(state) = config::TuiStateFile::load(&state_path) {
+        if !state.panes.is_empty() {
+            config.panes = state.panes;
+        }
+    }
+
     let overrides = CliPathOverrides {
         todo: args.todo.clone(),
         archive: args.archive.clone(),

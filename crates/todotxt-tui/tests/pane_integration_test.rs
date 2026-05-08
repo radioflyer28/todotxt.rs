@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod pane_integration_tests {
     use todotxt_tui::app::App;
-    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig};
+    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig, TuiStateFile};
     use todotxt_tui::state::Pane;
     use todotxt_core::{TaskList, SortOrder};
     use std::fs::{self, File};
@@ -279,12 +279,14 @@ mod pane_integration_tests {
                 filter: "project:work".to_string(),
                 sort: PaneSort::Priority,
                 group: true,
+                group_by: None,
             },
             PaneConfig {
                 label: "Today".to_string(),
                 filter: "due:today".to_string(),
                 sort: PaneSort::DueDate,
                 group: false,
+                group_by: None,
             },
         ];
 
@@ -397,9 +399,10 @@ normalize_append = false
         app.panes[1].sort_order = SortOrder::DueDate;
         app.panes[1].grouping = false;
 
-        app.persist_panes_on_quit().expect("quit persistence should succeed");
+        app.save_view_state().expect("quit persistence should succeed");
 
-        let reloaded = TuiConfig::load(&config_path).expect("reloaded config should parse");
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+        let reloaded = TuiStateFile::load(&state_path).expect("state file should be written and parseable");
         assert_eq!(reloaded.panes.len(), 2);
         assert_eq!(reloaded.panes[0].label, "Work");
         assert_eq!(reloaded.panes[0].filter, "project:work");
@@ -411,20 +414,24 @@ normalize_append = false
         assert_eq!(reloaded.panes[1].sort, PaneSort::DueDate);
         assert!(!reloaded.panes[1].group);
 
-        assert!(!reloaded.normalize_append, "non-pane fields should be preserved on save");
+        // config.toml must NOT be rewritten at runtime (PRSV-03).
+        let config_contents = fs::read_to_string(&config_path).expect("config.toml should still exist");
+        assert!(config_contents.contains("normalize_append"), "config.toml should be preserved unchanged");
 
         let _ = fs::remove_file(&config_path);
+        let _ = fs::remove_file(&state_path);
     }
 
     #[test]
     fn test_persisted_pane_data_contains_only_config_fields() {
-        let todo_path = unique_temp_file("pane_fields_todo");
+        let dir = tempfile::tempdir().expect("temp dir must be creatable");
+        let todo_path = dir.path().join("todo.txt");
+        let config_path = dir.path().join("config.toml");
         File::create(&todo_path)
             .expect("Failed to create todo file")
             .write_all(b"")
             .expect("Failed to write todo file");
 
-        let config_path = unique_temp_file("pane_fields_config");
         fs::write(&config_path, "").expect("should create config file");
 
         let mut app = App::new(
@@ -442,9 +449,10 @@ normalize_append = false
         app.panes[0].sort_order = SortOrder::Alphabetical;
         app.panes[0].grouping = true;
 
-        app.persist_panes_on_quit().expect("quit persistence should succeed");
+        app.save_view_state().expect("quit persistence should succeed");
 
-        let persisted = fs::read_to_string(&config_path).expect("should read persisted config");
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+        let persisted = fs::read_to_string(&state_path).expect("should read persisted state file");
         assert!(persisted.contains("label = \"Persist Me\""));
         assert!(persisted.contains("filter = \"@home\""));
         assert!(persisted.contains("sort = \"alphabetical\""));
@@ -452,19 +460,19 @@ normalize_append = false
         assert!(!persisted.contains("id ="));
         assert!(!persisted.contains("selected ="));
         assert!(!persisted.contains("display_rows"));
-
-        let _ = fs::remove_file(&config_path);
+        // dir drops here, cleaning up all temp files automatically
     }
 
     #[test]
     fn test_no_pane_write_occurs_until_quit_persist_path() {
-        let todo_path = unique_temp_file("pane_no_write_todo");
+        let dir = tempfile::tempdir().expect("temp dir must be creatable");
+        let todo_path = dir.path().join("todo.txt");
+        let config_path = dir.path().join("config.toml");
         File::create(&todo_path)
             .expect("Failed to create todo file")
             .write_all(b"")
             .expect("Failed to write todo file");
 
-        let config_path = unique_temp_file("pane_no_write_config");
         let initial_config = r#"
 [[panes]]
 label = "Initial"
@@ -484,14 +492,135 @@ group = false
         );
 
         app.panes[0].filter_query = "project:changed".to_string();
-        let before_quit_write = fs::read_to_string(&config_path).expect("should read config before quit save");
-        assert!(before_quit_write.contains("project:one"));
-        assert!(!before_quit_write.contains("project:changed"));
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+        // state file must not exist before quit save
+        assert!(!state_path.exists(), "state file must not be written until quit");
 
-        app.persist_panes_on_quit().expect("quit persistence should succeed");
-        let after_quit_write = fs::read_to_string(&config_path).expect("should read config after quit save");
+        app.save_view_state().expect("quit persistence should succeed");
+        let after_quit_write = fs::read_to_string(&state_path).expect("should read state file after quit save");
         assert!(after_quit_write.contains("project:changed"));
+        // dir drops here, cleaning up all temp files automatically
+    }
 
-        let _ = fs::remove_file(&config_path);
+    // PRSV-02 startup override: tui-state.toml panes fully replace config.toml panes
+    #[test]
+    fn test_startup_state_file_overrides_config_panes() {
+        let dir = tempfile::tempdir().expect("temp dir must be creatable");
+        let todo_path = dir.path().join("todo.txt");
+        let config_path = dir.path().join("config.toml");
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+
+        File::create(&todo_path).unwrap().write_all(b"").unwrap();
+
+        // config.toml defines "OldWork" pane
+        fs::write(&config_path, "[[panes]]\nlabel = \"OldWork\"\nfilter = \"+old\"\n")
+            .expect("should write config");
+
+        // tui-state.toml defines "StateWork" pane — should win at startup
+        let state = todotxt_tui::config::TuiStateFile {
+            panes: vec![PaneConfig {
+                label: "StateWork".to_string(),
+                filter: "+state".to_string(),
+                sort: PaneSort::FileOrder,
+                group: false,
+                group_by: None,
+            }],
+        };
+        state.save(&state_path).expect("should write state file");
+
+        // Replicate main.rs startup logic: load config, then load state, override panes
+        let mut config = TuiConfig::load(&config_path).expect("should load config");
+        if let Some(loaded_state) = todotxt_tui::config::TuiStateFile::load(&state_path) {
+            if !loaded_state.panes.is_empty() {
+                config.panes = loaded_state.panes;
+            }
+        }
+
+        let app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            config,
+            Some(config_path),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        // Panes come from state file, not config.toml
+        assert_eq!(app.panes.len(), 1, "panes should come from state file");
+        assert_eq!(app.panes[0].label, "StateWork", "label must match state file, not config.toml");
+        assert_eq!(app.panes[0].filter_query, "+state");
+    }
+
+    // PRSV-02 startup fallback: absent state file → config.toml panes used, no error
+    #[test]
+    fn test_startup_absent_state_file_uses_config_panes() {
+        let dir = tempfile::tempdir().expect("temp dir must be creatable");
+        let todo_path = dir.path().join("todo.txt");
+        let config_path = dir.path().join("config.toml");
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+
+        File::create(&todo_path).unwrap().write_all(b"").unwrap();
+
+        // config.toml defines "ConfigPane" — no state file present
+        fs::write(&config_path, "[[panes]]\nlabel = \"ConfigPane\"\nfilter = \"+config\"\n")
+            .expect("should write config");
+
+        // No state file created — must not exist
+        assert!(!state_path.exists(), "state file must not exist for this test");
+
+        // Replicate main.rs startup logic: load state returns None → config unchanged
+        let mut config = TuiConfig::load(&config_path).expect("should load config");
+        if let Some(loaded_state) = todotxt_tui::config::TuiStateFile::load(&state_path) {
+            if !loaded_state.panes.is_empty() {
+                config.panes = loaded_state.panes;
+            }
+        }
+
+        let app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            config,
+            Some(config_path),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        // Panes come from config.toml
+        assert_eq!(app.panes.len(), 1, "panes should come from config.toml");
+        assert_eq!(app.panes[0].label, "ConfigPane", "label must match config.toml");
+        assert_eq!(app.panes[0].filter_query, "+config");
+    }
+
+    // PRSV-03 / D-06 skip-write: unchanged pane state → save_view_state does NOT write state file
+    #[test]
+    fn test_save_view_state_no_write_when_unchanged() {
+        let dir = tempfile::tempdir().expect("temp dir must be creatable");
+        let todo_path = dir.path().join("todo.txt");
+        let config_path = dir.path().join("config.toml");
+        let state_path = todotxt_tui::config::state_file_path(&config_path);
+
+        File::create(&todo_path).unwrap().write_all(b"").unwrap();
+
+        // Config with one pane — app starts with this, nothing changes
+        let config_toml = "[[panes]]\nlabel = \"Work\"\nfilter = \"+work\"\ngroup = false\n";
+        fs::write(&config_path, config_toml).expect("should write config");
+
+        let app = App::new(
+            TaskList::load(&todo_path).expect("Failed to load TaskList"),
+            todo_path,
+            TuiConfig::load(&config_path).expect("should load config"),
+            Some(config_path.clone()),
+            todotxt_tui::theme::Theme::Default,
+            false,
+        );
+
+        // No pane state mutation — startup_pane_snapshot matches current state
+        app.save_view_state().expect("save_view_state must not fail");
+
+        // State file must NOT be written (compare-on-quit optimization)
+        assert!(
+            !state_path.exists(),
+            "state file must NOT be written when pane state is unchanged from startup"
+        );
     }
 }
