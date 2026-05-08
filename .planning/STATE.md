@@ -4,7 +4,7 @@ milestone: v1.6
 milestone_name: Verification Backfill
 status: complete
 last_updated: "2026-05-06T00:00:00.000Z"
-last_activity: 2026-05-08 - Completed quick task 260508-dbv: fix multi-pane sort/group conflict and remove sort indicator from pane header
+last_activity: 2026-05-08 - Completed quick task 260508-fuq: fix auto_creation_date and validate other config.toml options are applied
 progress:
   total_phases: 7
   completed_phases: 7
@@ -67,6 +67,7 @@ None.
 |---|-------------|------|--------|--------|-----------|
 | 260507-nh1 | fix ctrl-left/right task movement between panes with missing context/project filters | 2026-05-07 | 5e3c383 | Verified | [260507-nh1-fix-ctrl-left-right-task-movement-betwee](.planning/quick/260507-nh1-fix-ctrl-left-right-task-movement-betwee/) |
 | 260508-dbv | fix multi-pane sort/group conflict and remove sort indicator from pane header | 2026-05-08 | 5e183ed | Verified | [260508-dbv-fix-multi-pane-sort-group-conflict-and-r](.planning/quick/260508-dbv-fix-multi-pane-sort-group-conflict-and-r/) |
+| 260508-fuq | fix auto_creation_date and validate other config.toml options are applied | 2026-05-08 | 28b8de1 | Verified | [260508-fuq-fix-auto-creation-date-and-validate-othe](.planning/quick/260508-fuq-fix-auto-creation-date-and-validate-othe/) |
 
 ## Blockers
 

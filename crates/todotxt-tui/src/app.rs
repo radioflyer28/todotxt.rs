@@ -3008,6 +3008,16 @@ impl App {
                 // T-21-07: Adding always uses Task::parse — normalize_edit does not apply here.
                 // User is creating a new task from scratch; there is no "original" to merge into.
                 let task = Task::parse(&text);
+                let task = if self.config.auto_creation_date
+                    && task.creation_date.is_none()
+                    && !(task.completed && task.completion_date.is_none())
+                {
+                    // Guard: skip completed tasks with no completion_date — rebuild_raw would
+                    // place the injected date in the completion_date slot when re-parsed (WR-01).
+                    task.with_creation_date(Some(Local::now().date_naive()))
+                } else {
+                    task
+                };
                 self.push_undo_entry();
                 self.task_list
                     .add(task)
@@ -6129,6 +6139,179 @@ mod tests {
         // Undo via Ctrl+Z
         press_ctrl_key(&mut app, KeyCode::Char('z'));
         assert_eq!(app.task_list.tasks().len(), original_count, "Ctrl+Z should remove the added task");
+    }
+
+    // ── Quick 260508-fuq: auto_creation_date tests ──────────────────────────
+
+    #[test]
+    fn save_and_exit_adding_injects_creation_date_when_enabled() {
+        // T-ACD-01: auto_creation_date = true, no date in input → today's date injected.
+        let mut cfg = TuiConfig::default();
+        cfg.auto_creation_date = true;
+        let mut app = make_app_with_config(&[], cfg);
+        app.mode = AppMode::Adding;
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("buy milk");
+            ta
+        };
+        app.save_and_exit().unwrap();
+        let task = &app.task_list.tasks()[0];
+        assert_eq!(
+            task.creation_date,
+            Some(Local::now().date_naive()),
+            "T-ACD-01: creation_date should be today when auto_creation_date=true"
+        );
+    }
+
+    #[test]
+    fn save_and_exit_adding_preserves_explicit_creation_date() {
+        // T-ACD-02: auto_creation_date = true, user typed a date → preserve user date.
+        let mut cfg = TuiConfig::default();
+        cfg.auto_creation_date = true;
+        let mut app = make_app_with_config(&[], cfg);
+        app.mode = AppMode::Adding;
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("2026-06-01 buy milk");
+            ta
+        };
+        app.save_and_exit().unwrap();
+        let task = &app.task_list.tasks()[0];
+        assert_eq!(
+            task.creation_date,
+            Some(chrono::NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
+            "T-ACD-02: user-typed date must not be overwritten"
+        );
+    }
+
+    #[test]
+    fn save_and_exit_adding_no_date_when_disabled() {
+        // T-ACD-03: auto_creation_date = false (default) → no date injected.
+        let mut app = make_app_with_tasks(&[]);
+        app.mode = AppMode::Adding;
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("buy milk");
+            ta
+        };
+        app.save_and_exit().unwrap();
+        let task = &app.task_list.tasks()[0];
+        assert!(
+            task.creation_date.is_none(),
+            "T-ACD-03: creation_date must be None when auto_creation_date=false"
+        );
+    }
+
+    // ── Quick 260508-fuq: normalize_edit / normalize_append tests ─────────────
+
+    #[test]
+    fn save_and_exit_editing_normalize_edit_true_lifts_inline_priority() {
+        // T-NE-01: normalize_edit = true → "buy milk (A)" → priority field = Some('A').
+        // normalize_line scans body for stray "(X)" and lifts it; Task::parse alone would leave it in body.
+        let mut cfg = TuiConfig::default();
+        cfg.normalize_edit = true;
+        let mut app = make_app_with_config(&["buy milk"], cfg);
+        app.mode = AppMode::Editing { original_idx: 0 };
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("buy milk (A)");
+            ta
+        };
+        app.save_and_exit().unwrap();
+        let task = &app.task_list.tasks()[0];
+        assert_eq!(
+            task.priority,
+            Some('A'),
+            "T-NE-01: normalize_edit=true must lift inline (A) to priority field"
+        );
+        assert!(
+            !task.body.contains("(A)"),
+            "T-NE-01: (A) must be removed from body after lifting"
+        );
+    }
+
+    #[test]
+    fn save_and_exit_editing_normalize_edit_false_keeps_inline_priority_in_body() {
+        // T-NE-02: normalize_edit = false → Task::parse only; "(A)" stays in body, priority is None.
+        let mut cfg = TuiConfig::default();
+        cfg.normalize_edit = false;
+        let mut app = make_app_with_config(&["buy milk"], cfg);
+        app.mode = AppMode::Editing { original_idx: 0 };
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("buy milk (A)");
+            ta
+        };
+        app.save_and_exit().unwrap();
+        let task = &app.task_list.tasks()[0];
+        assert!(
+            task.priority.is_none(),
+            "T-NE-02: normalize_edit=false must not lift priority; got {:?}",
+            task.priority
+        );
+        assert!(
+            task.body.contains("(A)"),
+            "T-NE-02: normalize_edit=false must keep (A) in body; got {:?}",
+            task.body
+        );
+    }
+
+    #[test]
+    fn append_text_normalize_append_true_merges_project_token() {
+        // T-NA-01: normalize_append = true → appending "+work" merges into task's projects field.
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        let mut cfg = TuiConfig::default();
+        cfg.normalize_append = true;
+        let mut app = make_app_with_config(&["buy milk"], cfg);
+        app.mode = AppMode::AppendText;
+        app.selected_tasks.insert(0);
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("+work");
+            ta
+        };
+        app.handle_append_text_key(KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+        let task = &app.task_list.tasks()[0];
+        assert!(
+            task.projects.iter().any(|p| p == "work"),
+            "T-NA-01: normalize_append=true must add 'work' to projects; got {:?}",
+            task.projects
+        );
+    }
+
+    #[test]
+    fn append_text_normalize_append_false_raw_concatenates() {
+        // T-NA-02: normalize_append = false → raw concat fallback; "+work" appended as-is to raw.
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        let mut cfg = TuiConfig::default();
+        cfg.normalize_append = false;
+        let mut app = make_app_with_config(&["buy milk"], cfg);
+        app.mode = AppMode::AppendText;
+        app.selected_tasks.insert(0);
+        app.editor = {
+            let mut ta = tui_textarea::TextArea::default();
+            ta.insert_str("+work");
+            ta
+        };
+        app.handle_append_text_key(KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+        let task = &app.task_list.tasks()[0];
+        // Raw concat still ends up in raw; what matters is the raw contains the text verbatim.
+        assert!(
+            task.to_raw().contains("+work"),
+            "T-NA-02: normalize_append=false must append +work verbatim in raw; got '{}'",
+            task.to_raw()
+        );
     }
 
     #[test]
