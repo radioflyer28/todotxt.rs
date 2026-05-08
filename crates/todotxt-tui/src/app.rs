@@ -2217,15 +2217,16 @@ impl App {
                     self.update_autocomplete();
                 }
             }
+            KeyCode::Char(' ')
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) =>
+            {
+                self.accept_completion();
+                // Also insert the space after the token.
+                self.editor.input(key);
+            }
             KeyCode::Char(' ') => {
-                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
-                    self.accept_completion();
-                    // Also insert the space after the token.
-                    self.editor.input(key);
-                } else {
-                    self.editor.input(key);
-                    self.update_autocomplete();
-                }
+                self.editor.input(key);
+                self.update_autocomplete();
             }
             _ => {
                 self.editor.input(key);
@@ -3685,7 +3686,7 @@ impl App {
                         } else {
                             ""
                         };
-                        let content = format!("{}{}{}: {}", prefix, indent, ci + 1, t.to_raw());
+                        let content = format!("{}{}{}", prefix, indent, t.to_raw());
                         // Priority and overdue coloring (D-01, D-09 in 13-CONTEXT.md).
                         // Style precedence: completed (DIM) > deferred shown (DIM) > priority A/B/C > overdue > plain.
                         // Modifier::REVERSED for selection is applied by List::highlight_style — not here.
