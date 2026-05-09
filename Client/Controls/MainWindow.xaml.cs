@@ -558,6 +558,15 @@ namespace Client
 
     #region help menu
 
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.OemQuestion && Keyboard.Modifiers == ModifierKeys.Shift && !taskText.IsFocused)
+        {
+            ViewModel.ShowHelpDialog();
+            e.Handled = true;
+        }
+    }
+
     private void HelpAboutExecuted(object sender, RoutedEventArgs e)
         {
             ViewModel.ShowHelpDialog();

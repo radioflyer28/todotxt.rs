@@ -4,7 +4,7 @@ milestone: v1.6
 milestone_name: Verification Backfill
 status: complete
 last_updated: "2026-05-06T00:00:00.000Z"
-last_activity: 2026-05-08 - Completed quick task 260508-l56: remove line numbers from task list display
+last_activity: 2026-05-09 - Completed quick task 260509-hkx: fix ? help key and update help text for v1.2+ features
 progress:
   total_phases: 7
   completed_phases: 7
@@ -69,6 +69,7 @@ None.
 | 260508-dbv | fix multi-pane sort/group conflict and remove sort indicator from pane header | 2026-05-08 | 5e183ed | Verified | [260508-dbv-fix-multi-pane-sort-group-conflict-and-r](.planning/quick/260508-dbv-fix-multi-pane-sort-group-conflict-and-r/) |
 | 260508-fuq | fix auto_creation_date and validate other config.toml options are applied | 2026-05-08 | 28b8de1 | Verified | [260508-fuq-fix-auto-creation-date-and-validate-othe](.planning/quick/260508-fuq-fix-auto-creation-date-and-validate-othe/) |
 | 260508-l56 | remove line numbers from task list display | 2026-05-08 | 97fa340 | Verified | [260508-l56-remove-line-numbers-from-task-list-displ](.planning/quick/260508-l56-remove-line-numbers-from-task-list-displ/) |
+| 260509-hkx | fix ? help key and update help text for v1.2+ features | 2026-05-09 | e858627 | Verified | [260509-hkx-help-key-fix-and-help-text-update](.planning/quick/260509-hkx-help-key-fix-and-help-text-update/) |
 
 ## Blockers
 

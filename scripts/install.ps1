@@ -66,7 +66,7 @@ function Install-Binary {
 
     $Version = & $Dest --version 2>$null
     Write-Host "Installed: $Dest"
-    Write-Host "Version:   $($Version ?? 'unknown')"
+    Write-Host "Version:   $(if ($Version) { $Version } else { 'unknown' })"
     Write-Host ""
 }
 

@@ -204,11 +204,16 @@
     - D or Del or Backspace: delete task (with confirmation)
     - U or F2: update task
     - T: append text to selected tasks
-    - P: Postpone task (enter days to postpone, or day of week to postpone to)
+    - P: postpone task due date (enter days to postpone, or day of week)
+    - Ctrl+Alt+P: postpone task threshold date
+    - S: set due date
+    - Ctrl+S: set threshold date
     - F: filter tasks (free-text, one filter condition per line)
     - I: set priority
     - 0: clear filter
     - 1-9: apply numbered filter preset
+    - Ctrl+T: toggle hiding future tasks (t: threshold date)
+    - Ctrl+H: toggle showing hidden tasks (h:1)
     - . or F5: reload tasks from file
     - ?: show help
     - Alt+Up: increase priority
@@ -216,20 +221,21 @@
     - Alt+Left/Right: clear priority
     - Ctrl+Alt+Up: increase due date by 1 day
     - Ctrl+Alt+Down: decrease due date by 1 day
+    - Ctrl+Alt+Left/Right: remove due date
     - Ctrl+Up: increase threshold date by 1 day
     - Ctrl+Down: decrease threshold date by 1 day
-    - Ctrl+Alt+Left/Right: remove due date
+    - Ctrl+Left/Right: remove threshold date
     - Ctrl+C: copy task to clipboard
     - Ctrl+Shift+C: copy task to edit field
-    - Win+Alt+T: hide/unhide windows
+    - Ctrl+Alt+M: hide/unhide window
 
 Sorting shortcuts:
-    - Ctrl+0: None
+    - Ctrl+0: None (file order)
     - Ctrl+1: Alphabetical
     - Ctrl+2: Completed
     - Ctrl+3: Context
-    - Ctrl+4: DueDate
-    - Ctrl+5: Created
+    - Ctrl+4: Due Date
+    - Ctrl+5: Creation Date
     - Ctrl+6: Priority
     - Ctrl+7: Project
 
@@ -238,6 +244,11 @@ Due date syntax:
     - due:today
     - due:tomorrow
     - due:friday
+
+Threshold date syntax (hide task until date):
+    - t:2012-09-28
+    - t:today
+    - t:tomorrow
 
 Filtering
     - one free-text filter per line
@@ -248,7 +259,7 @@ Filtering
     - precede due date filter with a '-' to produce the opposite due date filter
     - filter by completion: DONE, -DONE (case sensitive)
     - press Enter twice, or press Control+Enter, to save and close the filter
-    - set filter case sensistivity under File -&gt; Options...
+    - set filter case sensitivity under File -&gt; Options...
 
 Font selector based on Alessio Saltarin's code: http://goo.gl/vmujX
 
