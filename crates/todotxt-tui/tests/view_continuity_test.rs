@@ -141,7 +141,7 @@ fn test_delete_task_preserves_filter_state() {
     let initial_grouping = app.panes[0].grouping;
 
     // Delete the first task
-    if let Some(DisplayRow::Task(idx)) = app.display_rows.get(0) {
+    if let Some(DisplayRow::Task(idx)) = app.display_rows().get(0) {
         let idx = *idx;
         app.task_list.delete(idx).expect("failed to delete");
     }
@@ -164,7 +164,7 @@ fn test_toggle_task_preserves_filter_state() {
     let initial_grouping = app.panes[0].grouping;
 
     // Toggle done on a task
-    if let Some(DisplayRow::Task(idx)) = app.display_rows.get(0) {
+    if let Some(DisplayRow::Task(idx)) = app.display_rows().get(0) {
         let idx = *idx;
         if let Some(task) = app.task_list.tasks().get(idx).cloned() {
             let toggle_value = !task.completed;
@@ -205,7 +205,7 @@ fn test_multiple_mutations_preserve_filter_state() {
     assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query after edit");
 
     // Delete
-    if let Some(DisplayRow::Task(idx)) = app.display_rows.get(0) {
+    if let Some(DisplayRow::Task(idx)) = app.display_rows().get(0) {
         let idx = *idx;
         app.task_list.delete(idx).expect("delete failed");
     }
@@ -239,7 +239,7 @@ fn test_undo_entry_captures_original_state() {
     // Create undo entry (simulating what mutation handlers do)
     app.undo_entry = Some(todotxt_tui::state::UndoEntry {
         tasks: vec![original_task.clone()],
-        selected: app.selected,
+        selected: app.panes.first().map(|p| p.selected).unwrap_or(0),
     });
 
     // Verify undo_entry captured the original task state
@@ -293,7 +293,7 @@ fn test_project_hierarchical_filter_preserved() {
     let initial_grouping = app.panes[0].grouping;
 
     // Delete a task
-    if let Some(DisplayRow::Task(idx)) = app.display_rows.get(0) {
+    if let Some(DisplayRow::Task(idx)) = app.display_rows().get(0) {
         let idx = *idx;
         app.task_list.delete(idx).expect("delete failed");
     }
