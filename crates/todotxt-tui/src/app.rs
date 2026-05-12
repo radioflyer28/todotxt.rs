@@ -2821,13 +2821,14 @@ impl App {
                     self.editor.input(key);
                 }
             }
+            KeyCode::Tab
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) =>
+            {
+                self.accept_completion();
+            }
             KeyCode::Tab => {
-                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
-                    self.accept_completion();
-                } else {
-                    self.editor.input(key);
-                    self.update_autocomplete();
-                }
+                self.editor.input(key);
+                self.update_autocomplete();
             }
             KeyCode::Char(' ')
                 if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) =>
