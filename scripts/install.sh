@@ -7,15 +7,18 @@
 #   curl -fsSL ... | sh -s -- --both   # TUI + CLI
 #   # or clone the repo and run directly:
 #   sh scripts/install.sh [--tui|--cli|--both]
+#   sh scripts/install.sh --local       # install from local build
 #
 # Options:
-#   --tui   Install todotxt-tui only (default)
-#   --cli   Install todotxt only
-#   --both  Install both todotxt-tui and todotxt
+#   --tui    Install todotxt-tui only (default)
+#   --cli    Install todotxt only
+#   --both   Install both todotxt-tui and todotxt
+#   --local  Copy locally-built binaries from BUILD_DIR instead of downloading
 #
 # Environment overrides:
 #   INSTALL_DIR   Installation directory (default: /usr/local/bin, or ~/.local/bin)
 #   RELEASE_TAG   Specific release tag (default: latest)
+#   BUILD_DIR     Local build output directory for --local (default: ./target/release)
 
 set -e
 
@@ -25,44 +28,48 @@ REPO="radioflyer28/todotxt.rs"
 
 INSTALL_TUI=1
 INSTALL_CLI=0
+LOCAL=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --tui)  INSTALL_TUI=1; INSTALL_CLI=0 ;;
-        --cli)  INSTALL_TUI=0; INSTALL_CLI=1 ;;
-        --both) INSTALL_TUI=1; INSTALL_CLI=1 ;;
-        *) echo "Unknown option: $1. Use --tui (default), --cli, or --both." >&2; exit 1 ;;
+        --tui)   INSTALL_TUI=1; INSTALL_CLI=0 ;;
+        --cli)   INSTALL_TUI=0; INSTALL_CLI=1 ;;
+        --both)  INSTALL_TUI=1; INSTALL_CLI=1 ;;
+        --local) LOCAL=1 ;;
+        *) echo "Unknown option: $1. Use --tui (default), --cli, --both, or --local." >&2; exit 1 ;;
     esac
     shift
 done
 
-# ── Detect OS and architecture ────────────────────────────────────────────────
+# ── Detect OS and architecture (skipped for --local) ─────────────────────────
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-case "$OS" in
-    Linux)
-        case "$ARCH" in
-            x86_64) SUFFIX="linux-x86_64" ;;
-            *)
-                echo "Unsupported Linux architecture: $ARCH" >&2
-                echo "Pre-built binaries are available for x86_64 only." >&2
-                echo "Build from source: https://github.com/${REPO}#10-building-from-source" >&2
-                exit 1
-                ;;
-        esac
-        ;;
-    Darwin)
-        # macOS ships universal binaries covering both arm64 and x86_64.
-        SUFFIX="macos-universal"
-        ;;
-    *)
-        echo "Unsupported OS: $OS" >&2
-        echo "For Windows, use: irm https://raw.githubusercontent.com/${REPO}/master/scripts/install.ps1 | iex" >&2
-        exit 1
-        ;;
-esac
+if [ "$LOCAL" = "0" ]; then
+    case "$OS" in
+        Linux)
+            case "$ARCH" in
+                x86_64) SUFFIX="linux-x86_64" ;;
+                *)
+                    echo "Unsupported Linux architecture: $ARCH" >&2
+                    echo "Pre-built binaries are available for x86_64 only." >&2
+                    echo "Build from source: https://github.com/${REPO}#10-building-from-source" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        Darwin)
+            # macOS ships universal binaries covering both arm64 and x86_64.
+            SUFFIX="macos-universal"
+            ;;
+        *)
+            echo "Unsupported OS: $OS" >&2
+            echo "For Windows, use: irm https://raw.githubusercontent.com/${REPO}/master/scripts/install.ps1 | iex" >&2
+            exit 1
+            ;;
+    esac
+fi
 
 # ── Resolve install directory ─────────────────────────────────────────────────
 
@@ -103,14 +110,44 @@ download_binary() {
     echo ""
 }
 
+# ── Local copy helper ─────────────────────────────────────────────────────────
+
+copy_local_binary() {
+    _name="$1"
+    _dest="$2"
+    _build_dir="${BUILD_DIR:-./target/release}"
+    _src="${_build_dir}/${_name}"
+
+    if [ ! -f "$_src" ]; then
+        echo "Error: local binary not found: $_src" >&2
+        echo "Build first with: cargo build --release" >&2
+        exit 1
+    fi
+
+    echo "Copying ${_src} ..."
+    cp "$_src" "$_dest"
+    chmod +x "$_dest"
+    echo "Installed: $_dest"
+    echo "Version:   $($_dest --version 2>/dev/null || echo 'unknown')"
+    echo ""
+}
+
 # ── Install requested binaries ────────────────────────────────────────────────
 
 if [ "$INSTALL_TUI" = "1" ]; then
-    download_binary "todotxt-tui-${SUFFIX}" "$DEST_DIR/todotxt-tui"
+    if [ "$LOCAL" = "1" ]; then
+        copy_local_binary "todotxt-tui" "$DEST_DIR/todotxt-tui"
+    else
+        download_binary "todotxt-tui-${SUFFIX}" "$DEST_DIR/todotxt-tui"
+    fi
 fi
 
 if [ "$INSTALL_CLI" = "1" ]; then
-    download_binary "todotxt-${SUFFIX}" "$DEST_DIR/todotxt"
+    if [ "$LOCAL" = "1" ]; then
+        copy_local_binary "todotxt" "$DEST_DIR/todotxt"
+    else
+        download_binary "todotxt-${SUFFIX}" "$DEST_DIR/todotxt"
+    fi
 fi
 
 # ── PATH check ────────────────────────────────────────────────────────────────

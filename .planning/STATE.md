@@ -70,6 +70,9 @@ None.
 | 260508-fuq | fix auto_creation_date and validate other config.toml options are applied | 2026-05-08 | 28b8de1 | Verified | [260508-fuq-fix-auto-creation-date-and-validate-othe](.planning/quick/260508-fuq-fix-auto-creation-date-and-validate-othe/) |
 | 260508-l56 | remove line numbers from task list display | 2026-05-08 | 97fa340 | Verified | [260508-l56-remove-line-numbers-from-task-list-displ](.planning/quick/260508-l56-remove-line-numbers-from-task-list-displ/) |
 | 260509-hkx | fix ? help key and update help text for v1.2+ features | 2026-05-09 | e858627 | Verified | [260509-hkx-help-key-fix-and-help-text-update](.planning/quick/260509-hkx-help-key-fix-and-help-text-update/) |
+| 260512-ksx | fix cursor skip after grouping toggle + due-date sort in single-pane view | 2026-05-12 | c89610d | Verified | [260512-ksx-fix-cursor-skip-single-pane-due-date-sort](.planning/quick/260512-ksx-fix-cursor-skip-single-pane-due-date-sort/) |
+| 260512-gbx | fix group_by_cycle no visual effect in single-pane mode | 2026-05-12 | a51e281 | Verified | [260512-gbx-fix-group-by-cycle-single-pane](.planning/quick/260512-gbx-fix-group-by-cycle-single-pane/) |
+| 260512-upa | eliminate App-level shadow display state — unify single/multi-pane code paths | 2026-05-12 | 8513c53 | Verified | [260512-upa-unified-pane-arch](.planning/quick/260512-upa-unified-pane-arch/) |
 
 ## Blockers
 

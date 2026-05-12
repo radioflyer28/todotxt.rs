@@ -59,9 +59,6 @@ pub struct App {
     pub should_quit: bool,
     pub task_list: TaskList,
     pub todo_path: PathBuf,
-    /// 0-based index into `display_rows` for the currently selected row.
-    /// Always clamped to `[0, display_rows.len() - 1]`.
-    pub selected: usize,
     /// Height of the list area in terminal rows. Kept in sync with `Resize` events.
     /// Used to compute half-page step for Ctrl+d / Ctrl+u (D-09).
     pub list_height: u16,
@@ -80,20 +77,8 @@ pub struct App {
     pub priority_picker: Option<PriorityPickerState>,
     /// Count of tasks targeted by AppendTextConfirm mode (Phase 34, Plan 03).
     pub append_confirm_count: usize,
-    /// Maps display row position → canonical task index (D-10, D-11 in 12-CONTEXT.md).
-    pub display_indices: Vec<usize>,
-    /// Toggle grouped rendering with non-selectable header rows.
-    pub grouping: bool,
-    /// Group-by dimension for single-pane mode — independent of sort_order (GRP-01, Phase 40).
-    pub group_by: GroupByCategory,
-    /// Rendered rows for list/navigation; includes group headers when grouping is enabled.
-    pub display_rows: Vec<DisplayRow>,
-    /// Current display sort order (FileOrder = no sort applied).
-    pub sort_order: SortOrder,
     /// Toggle visibility of deferred tasks (`t:` in the future).
     pub show_deferred: bool,
-    /// Active filter query string (empty = no filter).
-    pub filter_query: String,
     /// Last non-empty filter captured when Ctrl+F toggles filtering off.
     pub toggled_filter_query: Option<String>,
     /// Filter panel state, or `None` when panel is closed (Plan 02).
@@ -268,7 +253,6 @@ impl App {
         self.selected_tasks.clear();
         self.selection_anchor = None;
         self.rebuild_all_panes();
-        self.rebuild_display_indices();
     }
 
     /// Push a filter expression to the session history ring (Phase 41, FHIST-01/03, D-10).
@@ -390,7 +374,6 @@ impl App {
         self.selection_anchor = None;
         self.active_pane = dest_idx;
         self.rebuild_all_panes();
-        self.rebuild_display_indices();
 
         Ok(())
     }
@@ -434,7 +417,6 @@ impl App {
             should_quit: false,
             task_list,
             todo_path,
-            selected: 0,
             list_height: 0,
             mode: AppMode::Normal,
             editor: TextArea::default(),
@@ -443,13 +425,7 @@ impl App {
             date_picker: None,
             priority_picker: None,
             append_confirm_count: 0,
-            display_indices: Vec::new(),
-            grouping: false,
-            group_by: GroupByCategory::Priority,
-            display_rows: Vec::new(),
-            sort_order: SortOrder::FileOrder,
             show_deferred: false,
-            filter_query: String::new(),
             toggled_filter_query: None,
             filter_state: None,
             presets,
@@ -479,7 +455,6 @@ impl App {
         };
         // Hydrate every pane immediately so non-active panes are populated on first render.
         app.rebuild_all_panes();
-        app.rebuild_display_indices();
         app
     }
 
@@ -501,7 +476,9 @@ impl App {
                 }
 
                 match code {
-                    KeyCode::Char(c) if c.is_ascii_uppercase() => {
+                    // Uppercase letters and shift-required special chars (?, @, +, etc.)
+                    // may arrive with SHIFT modifier — accept both.
+                    KeyCode::Char(c) if c.is_ascii_uppercase() || !c.is_ascii_alphanumeric() => {
                         key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT
                     }
                     _ => key.modifiers.is_empty(),
@@ -521,7 +498,7 @@ impl App {
     fn push_undo_entry(&mut self) {
         self.undo_entry = Some(crate::state::UndoEntry {
             tasks: self.task_list.tasks().to_vec(),
-            selected: self.selected,
+            selected: self.panes[self.active_pane].selected,
         });
     }
 
@@ -589,7 +566,7 @@ impl App {
         self.task_list
             .replace_all(entry.tasks)
             .map_err(|e| color_eyre::eyre::eyre!("Failed to restore undo: {}", e))?;
-        self.selected = entry.selected;
+        self.panes[self.active_pane].selected = entry.selected;
         self.rebuild_all_panes();
         self.rebuild_and_reanchor();
         Ok(())
@@ -742,12 +719,17 @@ impl App {
         } else {
             self.active_pane
         };
+        // Extract show_deferred before mutable pane borrow (borrow checker).
+        let show_deferred = self.show_deferred;
         let pane = &mut self.panes[pane_idx];
 
         // Per-pane query behavior (D-04, Phase 25): Apply active pane's filter_query
         let filter_str = pane.filter_query.trim();
-        let filter = Filter::from_query(filter_str);
-        
+        let mut filter = Filter::from_query(filter_str);
+        if show_deferred {
+            filter.suppress_future_threshold = false;
+        }
+
         let mut filtered_tasks: Vec<(usize, &Task)> = self
             .task_list
             .filter(&filter)
@@ -812,11 +794,15 @@ impl App {
             let sort_order = self.panes[idx].sort_order;
             let grouping = self.panes[idx].grouping;
             let group_by = self.panes[idx].group_by;
+            let show_deferred = self.show_deferred;
 
             // Build new display rows. Use a sub-block so `filtered` (which holds &Task refs
             // from self.task_list) is dropped before we mutably borrow self.panes[idx].
             let new_rows: Vec<DisplayRow> = {
-                let filter = Filter::from_query(filter_query.trim());
+                let mut filter = Filter::from_query(filter_query.trim());
+                if show_deferred {
+                    filter.suppress_future_threshold = false;
+                }
                 let mut filtered: Vec<(usize, &Task)> = self
                     .task_list
                     .filter(&filter)
@@ -987,12 +973,13 @@ impl App {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> color_eyre::Result<()> {
-        let display_count = self.display_indices.len();
-        let row_count = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
-            self.panes[self.active_pane].display_rows.len()
-        } else {
-            self.display_rows.len()
-        };
+        let display_count;
+        let row_count;
+        {
+            let pane_rows = &self.panes[self.active_pane].display_rows;
+            display_count = pane_rows.iter().filter(|r| matches!(r, DisplayRow::Task(_))).count();
+            row_count = pane_rows.len();
+        }
         match key.code {
             // ── Ctrl+C quit (not overridable) ────────────────────────────────
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1077,13 +1064,20 @@ impl App {
             {
                 self.ensure_anchor();
                 let half = (self.list_height / 2).max(1) as usize;
-                self.selected = self.selected.saturating_sub(half);
-                while self.selected < row_count
-                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
                 {
-                    self.selected += 1;
+                    let pane = self.active_pane_mut();
+                    pane.selected = pane.selected.saturating_sub(half);
+                    while pane.selected < pane.display_rows.len()
+                        && matches!(pane.display_rows[pane.selected], DisplayRow::GroupHeader(_))
+                    {
+                        pane.selected += 1;
+                    }
+                    if pane.display_rows.is_empty() {
+                        pane.selected = 0;
+                    } else {
+                        pane.selected = pane.selected.min(pane.display_rows.len() - 1);
+                    }
                 }
-                self.clamp_selection();
                 self.apply_range_selection();
             }
             // Ctrl+U half-page up — must come before plain 'u' (edit alias).
@@ -1092,13 +1086,20 @@ impl App {
             {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 let half = (self.list_height / 2).max(1) as usize;
-                self.selected = self.selected.saturating_sub(half);
-                while self.selected < row_count
-                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
                 {
-                    self.selected += 1;
+                    let pane = self.active_pane_mut();
+                    pane.selected = pane.selected.saturating_sub(half);
+                    while pane.selected < pane.display_rows.len()
+                        && matches!(pane.display_rows[pane.selected], DisplayRow::GroupHeader(_))
+                    {
+                        pane.selected += 1;
+                    }
+                    if pane.display_rows.is_empty() {
+                        pane.selected = 0;
+                    } else {
+                        pane.selected = pane.selected.min(pane.display_rows.len() - 1);
+                    }
                 }
-                self.clamp_selection();
             }
             // Shift+Ctrl+D: half-page range extension downward (D-10).
             // MUST precede plain Ctrl+D arm so SHIFT check wins (T-19-04).
@@ -1109,13 +1110,20 @@ impl App {
             {
                 self.ensure_anchor();
                 let half = (self.list_height / 2).max(1) as usize;
-                self.selected = (self.selected + half).min(row_count.saturating_sub(1));
-                while self.selected < row_count
-                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
                 {
-                    self.selected += 1;
+                    let pane = self.active_pane_mut();
+                    pane.selected = (pane.selected + half).min(pane.display_rows.len().saturating_sub(1));
+                    while pane.selected < pane.display_rows.len()
+                        && matches!(pane.display_rows[pane.selected], DisplayRow::GroupHeader(_))
+                    {
+                        pane.selected += 1;
+                    }
+                    if pane.display_rows.is_empty() {
+                        pane.selected = 0;
+                    } else {
+                        pane.selected = pane.selected.min(pane.display_rows.len() - 1);
+                    }
                 }
-                self.clamp_selection();
                 self.apply_range_selection();
             }
             // Ctrl+D half-page down — must come before overridable 'delete' arm.
@@ -1124,13 +1132,20 @@ impl App {
             {
                 self.selection_anchor = None; // D-12: non-shift nav clears anchor
                 let half = (self.list_height / 2).max(1) as usize;
-                self.selected = (self.selected + half).min(row_count.saturating_sub(1));
-                while self.selected < row_count
-                    && matches!(self.display_rows[self.selected], DisplayRow::GroupHeader(_))
                 {
-                    self.selected += 1;
+                    let pane = self.active_pane_mut();
+                    pane.selected = (pane.selected + half).min(pane.display_rows.len().saturating_sub(1));
+                    while pane.selected < pane.display_rows.len()
+                        && matches!(pane.display_rows[pane.selected], DisplayRow::GroupHeader(_))
+                    {
+                        pane.selected += 1;
+                    }
+                    if pane.display_rows.is_empty() {
+                        pane.selected = 0;
+                    } else {
+                        pane.selected = pane.selected.min(pane.display_rows.len() - 1);
+                    }
                 }
-                self.clamp_selection();
             }
 
             // ── Overridable actions (via effective_keymap, D-05 Phase 22) ────
@@ -1232,17 +1247,24 @@ impl App {
                 self.rebuild_and_reanchor();
             }
 
-            _ if !self.selected_tasks.is_empty() && display_count > 0 && self.key_is_action(key, "bulk_append") => {
+            _ if display_count > 0 && self.key_is_action(key, "bulk_append") => {
+                // If nothing is multi-selected, treat the active cursor row as the single target.
+                if self.selected_tasks.is_empty() {
+                    if let Some(idx) = self.active_canonical_selected() {
+                        self.selected_tasks.insert(idx);
+                    }
+                }
                 let n = self.selected_tasks.len();
                 if n > 1 {
                     // D-06: show count banner before text entry when multiple tasks targeted
                     self.append_confirm_count = n;
                     self.mode = AppMode::AppendTextConfirm;
-                } else {
-                    // Single task — go directly to append text editor
+                } else if n == 1 {
+                    // Single task (explicit selection or active row) — skip confirmation
                     self.editor = TextArea::default();
                     self.mode = AppMode::AppendText;
                 }
+                // n == 0 means cursor was on a group header; do nothing
             }
 
             _ if self.key_is_action(key, "theme_cycle") => {
@@ -1340,8 +1362,7 @@ impl App {
 
             _ if display_count > 0 && self.key_is_action(key, "deferred_toggle") => {
                 self.show_deferred = !self.show_deferred;
-                self.rebuild_display_indices();
-                self.clamp_selection();
+                self.rebuild_and_reanchor();
             }
 
             // '!' opens app error log overlay (even when empty for discoverability).
@@ -1644,10 +1665,13 @@ impl App {
                 .copied()
                 .filter(|&idx| idx < self.task_list.len())
                 .collect()
-        } else if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected) {
-            vec![*idx]
         } else {
-            vec![]
+            let pane_sel = self.panes[self.active_pane].selected;
+            if let Some(DisplayRow::Task(idx)) = self.panes[self.active_pane].display_rows.get(pane_sel) {
+                vec![*idx]
+            } else {
+                vec![]
+            }
         };
 
         // Abort silently if no task targeted (D-10: skip header rows)
@@ -2286,36 +2310,48 @@ impl App {
     /// Handles both token autocomplete (@/+) and date autocomplete (due:/t:).
     fn update_autocomplete(&mut self) {
         match self.mode {
-            AppMode::Adding | AppMode::Editing { .. } => {}
-            AppMode::AppendText => { self.autocomplete = None; return; }
+            AppMode::Adding | AppMode::Editing { .. } | AppMode::AppendText => {}
             _ => { self.autocomplete = None; return; }
         }
         let line = self.editor.lines().first().cloned().unwrap_or_default();
-        
-        // Check for date patterns first (due: or t:)
-        if let Some((month_year, _pos)) = self.extract_date_pattern(&line) {
-            if let Ok(date_suggestions) = crate::state::generate_date_suggestions(&month_year) {
-                if !date_suggestions.is_empty() {
-                    // Use a special trigger character '#' for date autocomplete
-                    if let Some(ref mut ac) = self.autocomplete {
-                        if ac.trigger == '#' && ac.prefix == month_year {
-                            ac.items = date_suggestions;
-                            ac.selected = ac.selected.min(ac.items.len().saturating_sub(1));
-                            return;
+        // Use only the text up to the cursor so that tags appearing *after*
+        // the cursor (common in edit mode) don't pollute the prefix. (#AC-cursor-fix)
+        let cursor_col = self.editor.cursor().1;
+        let before_cursor = &line[..cursor_col.min(line.len())];
+
+        // Find @/+ trigger position first so it can take priority over date autocomplete
+        // when the cursor is inside a @context or +project token that follows a date field.
+        let trigger_pos = before_cursor.rfind(['@', '+']);
+
+        // Date autocomplete (due:/t:) — only when no @/+ trigger appears *after* the
+        // date keyword. Characters in "due:YYYY-MM" and "t:YYYY-MM" never include @ or +,
+        // so any trigger_pos > date_pos must come after the date token.
+        if let Some((month_year, date_pos)) = self.extract_date_pattern(before_cursor) {
+            let trigger_after_date = trigger_pos.map(|tp| tp > date_pos).unwrap_or(false);
+            if !trigger_after_date {
+                if let Ok(date_suggestions) = crate::state::generate_date_suggestions(&month_year) {
+                    if !date_suggestions.is_empty() {
+                        // Use a special trigger character '#' for date autocomplete
+                        if let Some(ref mut ac) = self.autocomplete {
+                            if ac.trigger == '#' && ac.prefix == month_year {
+                                ac.items = date_suggestions;
+                                ac.selected = ac.selected.min(ac.items.len().saturating_sub(1));
+                                return;
+                            }
                         }
+                        self.autocomplete = Some(AutocompleteState::new('#', month_year, date_suggestions));
+                        return;
                     }
-                    self.autocomplete = Some(AutocompleteState::new('#', month_year, date_suggestions));
-                    return;
                 }
             }
         }
-        
-        // Fall back to token autocomplete (@/+)
-        // Find last @ or + in the line.
-        let trigger_pos = line.rfind(['@', '+']);
+
+        // Token autocomplete (@/+) — trigger_pos already computed above.
         if let Some(pos) = trigger_pos {
-            let trigger = line.chars().nth(pos).unwrap();
-            let prefix = &line[pos + 1..];
+            // pos is a byte offset from rfind; extract the char at that offset.
+            let trigger = before_cursor[pos..].chars().next().unwrap();
+            let trigger_len = trigger.len_utf8();
+            let prefix = &before_cursor[pos + trigger_len..];
             // No popup if prefix contains a space (token is complete).
             if prefix.contains(' ') {
                 self.autocomplete = None;
@@ -2411,11 +2447,15 @@ impl App {
                         }
                     }
                 } else {
-                    // Token autocomplete: insert selected token after trigger
+                    // Token autocomplete: replace trigger+prefix before cursor with trigger+token.
+                    // Cursor-aware so edit-mode mid-line completions work correctly.
                     if let Some(token) = ac.items.get(ac.selected) {
                         let trigger = ac.trigger;
-                        if let Some(pos) = line.rfind(trigger) {
-                            let new_line = format!("{}{}{}", &line[..=pos], token, "");
+                        let cursor_col = self.editor.cursor().1;
+                        let before_cursor = &line[..cursor_col.min(line.len())];
+                        let after_cursor = &line[cursor_col.min(line.len())..];
+                        if let Some(trigger_pos) = before_cursor.rfind(trigger) {
+                            let new_line = format!("{}{}{}", &before_cursor[..=trigger_pos], token, after_cursor);
                             let mut new_editor = tui_textarea::TextArea::default();
                             new_editor.insert_str(&new_line);
                             self.editor = new_editor;
@@ -2695,15 +2735,24 @@ impl App {
     ) -> color_eyre::Result<()> {
         match key.code {
             KeyCode::Esc => {
-                // Cancel — no tasks mutated (D-08)
-                self.selected_tasks.clear();
-                self.selection_anchor = None;
-                self.disjoint_select = false;
-                self.editor = TextArea::default();
-                self.mode = AppMode::Normal;
-                self.apply_pending_reload()?;
+                if self.autocomplete.is_some() {
+                    // Close popup only — keep append editor open.
+                    self.autocomplete = None;
+                } else {
+                    // Cancel — no tasks mutated (D-08)
+                    self.selected_tasks.clear();
+                    self.selection_anchor = None;
+                    self.disjoint_select = false;
+                    self.editor = TextArea::default();
+                    self.mode = AppMode::Normal;
+                    self.apply_pending_reload()?;
+                }
             }
             KeyCode::Enter => {
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
+                    self.accept_completion();
+                    return Ok(());
+                }
                 let text = self.editor.lines().first().cloned().unwrap_or_default();
                 let text = text.trim().to_string();
 
@@ -2753,9 +2802,42 @@ impl App {
                 self.mode = AppMode::Normal;
                 self.apply_pending_reload()?;
             }
-            _ => {
-                // Forward all other keys to the editor widget
+            KeyCode::Down => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    ac.focused = true;
+                    ac.selected = (ac.selected + 1).min(ac.items.len().saturating_sub(1));
+                } else {
+                    self.editor.input(key);
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut ac) = self.autocomplete {
+                    if ac.focused {
+                        ac.selected = ac.selected.saturating_sub(1);
+                    } else {
+                        self.editor.input(key);
+                    }
+                } else {
+                    self.editor.input(key);
+                }
+            }
+            KeyCode::Tab => {
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) {
+                    self.accept_completion();
+                } else {
+                    self.editor.input(key);
+                    self.update_autocomplete();
+                }
+            }
+            KeyCode::Char(' ')
+                if self.autocomplete.as_ref().map(|ac| ac.focused).unwrap_or(false) =>
+            {
+                self.accept_completion();
                 self.editor.input(key);
+            }
+            _ => {
+                self.editor.input(key);
+                self.update_autocomplete();
             }
         }
         Ok(())
@@ -3025,13 +3107,14 @@ impl App {
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to add task: {}", e))?;
                 // Move selection to the newly added task (D-13).
                 let canonical = self.task_list.len().saturating_sub(1);
-                self.rebuild_display_indices();
                 self.rebuild_all_panes();
-                self.selected = self
-                    .display_rows
-                    .iter()
+                self.rebuild_and_reanchor();
+                // After rebuild, move cursor to the newly-added task
+                if let Some(pos) = self.panes[self.active_pane].display_rows.iter()
                     .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == canonical))
-                    .unwrap_or(0);
+                {
+                    self.panes[self.active_pane].selected = pos;
+                }
             }
             AppMode::Editing { original_idx } => {
                 // D-05/D-06: normalize_edit = true (default) applies normalize_line.
@@ -3047,13 +3130,14 @@ impl App {
                 self.task_list
                     .update(original_idx, task)
                     .map_err(|e| color_eyre::eyre::eyre!("Failed to update task: {}", e))?;
-                self.rebuild_display_indices();
                 self.rebuild_all_panes();
-                self.selected = self
-                    .display_rows
-                    .iter()
+                self.rebuild_and_reanchor();
+                // After rebuild, move cursor to the edited task
+                if let Some(pos) = self.panes[self.active_pane].display_rows.iter()
                     .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == original_idx))
-                    .unwrap_or(0);
+                {
+                    self.panes[self.active_pane].selected = pos;
+                }
             }
             _ => {}
         }
@@ -3093,151 +3177,49 @@ impl App {
         Ok(())
     }
 
-    /// Clamp `selected` to `[0, display_count - 1]`, or 0 on empty display.
-    fn clamp_selection(&mut self) {
-        let count = self.display_rows.len();
-        if count == 0 {
-            self.selected = 0;
-        } else {
-            self.selected = self.selected.min(count - 1);
-        }
-    }
-
-    /// Rebuild `display_indices` by applying the active filter and sort order.
+    /// Rebuild display rows while preserving the selected canonical task.
     ///
-    /// Collects canonical task indices in display order. Does NOT touch `selected`.
-    fn rebuild_display_indices(&mut self) {
-        let query = self.filter_query.trim().to_string();
-        let sort_order = self.sort_order;
-        let new_indices: Vec<usize> = {
-            let mut pairs: Vec<(usize, &Task)> = if query.is_empty() {
-                self.task_list.tasks().iter().enumerate().collect()
-            } else {
-                let mut f = Filter::from_query(&query);
-                if self.show_deferred {
-                    f.suppress_future_threshold = false;
-                }
-                self.task_list.filter(&f)
-            };
-            if sort_order != SortOrder::FileOrder {
-                pairs.sort_by(|(_, a), (_, b)| sort_order.compare(a, b));
-            }
-            pairs.into_iter().map(|(idx, _)| idx).collect()
-        };
-        self.display_indices = new_indices;
-
-        if self.grouping && !self.display_indices.is_empty() {
-            let tasks = self.task_list.tasks();
-            let _sort_order = self.sort_order;
-            let group_by = self.group_by;
-            // Stable-sort by group key so same-key tasks are always adjacent.
-            // This fixes cases where the primary sort interleaves groups (e.g., Alphabetical
-            // sorts by raw string including priority prefix, but group_key_for uses body).
-            // stable_sort preserves primary sort order within each group.
-            self.display_indices.sort_by(|&a, &b| {
-                let ka = group_key_for(&tasks[a], &group_by);
-                let kb = group_key_for(&tasks[b], &group_by);
-                ka.cmp(&kb)
-            });
-            let mut rows: Vec<DisplayRow> = Vec::new();
-            let mut last_key: Option<String> = None;
-            for &idx in &self.display_indices {
-                let task = &tasks[idx];
-                let key = group_key_for(task, &group_by);
-                if last_key.as_deref() != Some(&key) {
-                    rows.push(DisplayRow::GroupHeader(key.clone()));
-                    last_key = Some(key);
-                }
-                rows.push(DisplayRow::Task(idx));
-            }
-            self.display_rows = rows;
-        } else {
-            self.display_rows = self
-                .display_indices
-                .iter()
-                .map(|&i| DisplayRow::Task(i))
-                .collect();
-        }
-    }
-
-    /// Rebuild display indices while preserving the selected canonical task.
-    ///
-    /// Saves the current canonical index, rebuilds, then restores the selection
-    /// to the display row where that canonical index now appears (or row 0).
-    ///
-    /// For multi-pane mode, also updates the active pane's display_rows with per-pane query state.
+    /// Captures the current canonical index from the active pane, rebuilds via
+    /// rebuild_visible_rows(), then reanchors pane.selected to that canonical index.
     fn rebuild_and_reanchor(&mut self) {
-        // In multi-pane mode, capture old canonical from the active pane's cursor (WARN-4 fix, Phase 28).
-        let old_canonical = if !self.should_show_single_pane() && self.panes.len() > 1 {
-            let pane = &self.panes[self.active_pane];
-            match pane.display_rows.get(pane.selected) {
-                Some(DisplayRow::Task(idx)) => Some(*idx),
-                _ => self.canonical_selected(),
-            }
-        } else {
-            self.canonical_selected()
+        // Capture old canonical from the active pane's cursor.
+        let pane = &self.panes[self.active_pane];
+        let old_canonical = match pane.display_rows.get(pane.selected) {
+            Some(DisplayRow::Task(idx)) => Some(*idx),
+            _ => None,
         };
 
-        // GAP-1 fix (Phase 31): sync global fields from active pane when in single-pane or hidden mode
-        // In multi-pane mode, rebuild_visible_rows() uses per-pane fields directly.
-        // In single-pane or panes_hidden mode, rebuild_display_indices() (global path) is used,
-        // so we must sync the global state to match the active pane before calling rebuild_display_indices().
-        if self.should_show_single_pane() || self.panes_hidden {
-            let pane = &self.panes[self.active_pane];
-            self.filter_query = pane.filter_query.clone();
-            self.sort_order = pane.sort_order;
-            self.grouping = pane.grouping;
-        }
+        self.rebuild_visible_rows();
 
-        self.rebuild_display_indices();
-
-        // Per-pane rebuild (Phase 25): Update active pane's display_rows with per-pane filter/sort/group
-        if !self.should_show_single_pane() && self.panes.len() > 1 {
-            self.rebuild_visible_rows();
-            // WARN-4 fix: reanchor the active pane's cursor after rebuild (Phase 28).
-            let new_pane_selected = old_canonical
-                .and_then(|ci| {
-                    self.panes[self.active_pane]
-                        .display_rows
-                        .iter()
-                        .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == ci))
-                })
-                .unwrap_or(0);
-            let pane = &mut self.panes[self.active_pane];
-            pane.selected = new_pane_selected;
-            if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
-                pane.selected = pane.display_rows.len() - 1;
-            }
-        }
-
-        self.selected = old_canonical
+        // Reanchor the active pane's cursor after rebuild.
+        let new_pane_selected = old_canonical
             .and_then(|ci| {
-                self.display_rows
+                self.panes[self.active_pane]
+                    .display_rows
                     .iter()
                     .position(|r| matches!(r, DisplayRow::Task(idx) if *idx == ci))
             })
             .unwrap_or(0);
-        self.clamp_selection();
+        let pane = &mut self.panes[self.active_pane];
+        pane.selected = new_pane_selected;
+        if pane.selected >= pane.display_rows.len() && !pane.display_rows.is_empty() {
+            pane.selected = pane.display_rows.len() - 1;
+        }
     }
 
     /// Return the canonical task index for the currently selected display row, or `None`
     /// if the display list is empty.
     fn canonical_selected(&self) -> Option<usize> {
-        match self.display_rows.get(self.selected) {
-            Some(DisplayRow::Task(idx)) => Some(*idx),
-            _ => self.display_indices.first().copied(),
-        }
+        let pane = &self.panes[self.active_pane];
+        pane.display_rows.get(pane.selected)
+            .and_then(|r| if let DisplayRow::Task(idx) = r { Some(*idx) } else { None })
     }
 
     /// Resolve selected canonical index from the current interaction scope.
-    ///
-    /// In multi-pane mode, uses the active pane cursor; otherwise uses global/single-pane cursor.
     fn active_canonical_selected(&self) -> Option<usize> {
-        let selected = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
-            self.pane_canonical_selected()
-        } else {
-            self.canonical_selected()
-        };
+        let pane = &self.panes[self.active_pane];
+        let selected = pane.display_rows.get(pane.selected)
+            .and_then(|r| if let DisplayRow::Task(idx) = r { Some(*idx) } else { None });
 
         // Guard against stale display mappings (e.g., after reload/race) so caller paths
         // never index tasks out-of-bounds.
@@ -3249,7 +3231,8 @@ impl App {
     /// No-op when the cursor is on a `GroupHeader` row (D-08).
     #[allow(dead_code)]
     fn toggle_task_selection(&mut self) {
-        if let Some(DisplayRow::Task(idx)) = self.display_rows.get(self.selected).cloned() {
+        let pane_sel = self.panes[self.active_pane].selected;
+        if let Some(DisplayRow::Task(idx)) = self.panes[self.active_pane].display_rows.get(pane_sel).cloned() {
             if self.selected_tasks.contains(&idx) {
                 self.selected_tasks.remove(&idx);
             } else {
@@ -3286,12 +3269,8 @@ impl App {
             None => return,
         };
 
-        let (rows, selected_row) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
-            let pane = &self.panes[self.active_pane];
-            (&pane.display_rows, pane.selected)
-        } else {
-            (&self.display_rows, self.selected)
-        };
+        let pane = &self.panes[self.active_pane];
+        let (rows, selected_row) = (&pane.display_rows, pane.selected);
 
         let cursor_canon = match rows.get(selected_row) {
             Some(DisplayRow::Task(idx)) => Some(*idx),
@@ -3451,13 +3430,7 @@ impl App {
     /// Move selection down in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_down(&mut self) {
         self.reconcile_active_pane();
-        let use_global_cursor = self.should_show_single_pane() || self.panes_hidden;
-        let global_selected = self.selected;
         let pane = self.active_pane_mut();
-
-        if use_global_cursor {
-            pane.selected = global_selected.min(pane.display_rows.len().saturating_sub(1));
-        }
 
         if pane.label_selected {
             pane.label_selected = false;
@@ -3484,21 +3457,12 @@ impl App {
                 }
             }
         }
-
-        if use_global_cursor {
-            self.selected = pane.selected;
-        }
     }
 
     /// Move selection up in the active pane, skipping group headers (Phase 24-02).
     fn pane_move_up(&mut self) {
         self.reconcile_active_pane();
-        let use_global_cursor = self.should_show_single_pane() || self.panes_hidden;
-        let global_selected = self.selected;
         let pane = self.active_pane_mut();
-        if use_global_cursor {
-            pane.selected = global_selected.min(pane.display_rows.len().saturating_sub(1));
-        }
         if !pane.label_selected {
             if pane.selected == 0 {
                 pane.label_selected = true;
@@ -3513,10 +3477,6 @@ impl App {
                     pane.label_selected = true;
                 }
             }
-        }
-
-        if use_global_cursor {
-            self.selected = pane.selected;
         }
     }
 
@@ -3577,6 +3537,8 @@ impl App {
                     Layout::horizontal([Length(9), Min(0)]).split(chunks[1]);
                 frame.render_widget(Paragraph::new("Append: "), footer_cols[0]);
                 frame.render_widget(&self.editor, footer_cols[1]);
+                // Autocomplete popup floats above the footer row.
+                self.render_autocomplete_popup(frame, footer_cols[1]);
             }
             AppMode::Normal => {
                 // Two-row split: panes area | status bar (D-14).
@@ -3661,13 +3623,15 @@ impl App {
         use todotxt_core::DueStatus;
 
         let tasks = self.task_list.tasks();
+        let pane = &self.panes[self.active_pane];
+        let display_count = pane.display_rows.iter().filter(|r| matches!(r, DisplayRow::Task(_))).count();
 
-        let items: Vec<ListItem> = if self.display_indices.is_empty() && tasks.is_empty() {
+        let items: Vec<ListItem> = if display_count == 0 && tasks.is_empty() {
             vec![ListItem::new("(no tasks)")]
-        } else if self.display_indices.is_empty() {
+        } else if display_count == 0 {
             vec![ListItem::new("(no matching tasks)")]
         } else {
-            self.display_rows
+            pane.display_rows
                 .iter()
                 .enumerate()
                 .map(|(row_idx, row)| match row {
@@ -3675,10 +3639,10 @@ impl App {
                         .style(self.styles.group_header),
                     DisplayRow::Task(ci) => {
                         let t = &tasks[*ci];
-                        let indent = if self.grouping { "  " } else { "" };
+                        let indent = if pane.grouping { "  " } else { "" };
                         // Visual precedence: selected non-cursor rows get `>` prefix (D-14).
                         let is_selected = self.selected_tasks.contains(ci);
-                        let is_cursor = row_idx == self.selected;
+                        let is_cursor = row_idx == pane.selected;
                         let prefix = if self.disjoint_select && is_cursor {
                             "V "
                         } else if is_selected && !is_cursor {
@@ -3721,9 +3685,9 @@ impl App {
         };
 
         // Cursor+selected: REVERSED | BOLD (D-15); cursor-only: REVERSED (D-13).
-        let cursor_is_selected = self
+        let cursor_is_selected = pane
             .display_rows
-            .get(self.selected)
+            .get(pane.selected)
             .map(|r| matches!(r, DisplayRow::Task(ci) if self.selected_tasks.contains(ci)))
             .unwrap_or(false);
         let highlight_modifier = if cursor_is_selected {
@@ -3736,8 +3700,8 @@ impl App {
             .highlight_style(Style::default().add_modifier(highlight_modifier));
 
         let mut list_state = ListState::default();
-        if !self.display_indices.is_empty() {
-            list_state = list_state.with_selected(Some(self.selected));
+        if display_count > 0 {
+            list_state = list_state.with_selected(Some(pane.selected));
         }
 
         frame.render_stateful_widget(list, area, &mut list_state);
@@ -3848,23 +3812,13 @@ impl App {
         let mut middle = String::new();
 
         // Per-pane query state (Phase 25): Show active pane's filter/sort/group state
-        let (pane_filter, pane_sort, pane_grouping, pane_group_by) = if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
-            let pane = &self.panes[self.active_pane];
-            (
-                pane.filter_query.clone(),
-                pane.sort_order,
-                pane.grouping,
-                pane.group_by,
-            )
-        } else {
-            // Fallback to global state when showing single pane
-            (
-                self.filter_query.clone(),
-                self.sort_order,
-                self.grouping,
-                self.group_by,
-            )
-        };
+        let pane = &self.panes[self.active_pane];
+        let (pane_filter, pane_sort, pane_grouping, pane_group_by) = (
+            pane.filter_query.clone(),
+            pane.sort_order,
+            pane.grouping,
+            pane.group_by,
+        );
 
         let trimmed_filter = pane_filter.trim();
         if let Some(filter_display) = Self::format_status_filter(trimmed_filter) {
@@ -3934,18 +3888,14 @@ impl App {
     /// In multi-pane mode this is the active pane's task rows (excluding group headers);
     /// otherwise it uses the single-pane/global display indices.
     fn status_scope_task_indices(&self) -> Vec<usize> {
-        if !self.should_show_single_pane() && self.panes.len() > 1 && !self.panes_hidden {
-            self.panes[self.active_pane]
-                .display_rows
-                .iter()
-                .filter_map(|row| match row {
-                    DisplayRow::Task(idx) => Some(*idx),
-                    DisplayRow::GroupHeader(_) => None,
-                })
-                .collect()
-        } else {
-            self.display_indices.clone()
-        }
+        self.panes[self.active_pane]
+            .display_rows
+            .iter()
+            .filter_map(|row| match row {
+                DisplayRow::Task(idx) => Some(*idx),
+                DisplayRow::GroupHeader(_) => None,
+            })
+            .collect()
     }
 
     fn format_status_filter(trimmed_filter: &str) -> Option<String> {
@@ -4229,8 +4179,9 @@ impl App {
             _ => return,
         };
 
-        let popup_height = (ac.items.len() as u16).min(5).min(footer_area.y);
-        if popup_height == 0 { return; }
+        // +2 for top and bottom border rows; items need inner height >= 1 to be visible.
+        let popup_height = ((ac.items.len() as u16).min(5) + 2).min(footer_area.y);
+        if popup_height < 3 { return; }
 
         let popup_title = match ac.mode {
             AutocompleteMode::QuickSetter(trigger) => {
@@ -4696,11 +4647,11 @@ mod tests {
     fn toggle_task_selection_no_op_on_group_header() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
         // Manually override display_rows to put a GroupHeader at position 0.
-        app.display_rows = vec![
+        app.panes[0].display_rows = vec![
             DisplayRow::GroupHeader("Header".to_string()),
             DisplayRow::Task(0),
         ];
-        app.selected = 0;
+        app.panes[0].selected = 0;
         app.toggle_task_selection();
         assert!(app.selected_tasks.is_empty(), "GroupHeader row must never enter selected_tasks (D-08)");
     }
@@ -4820,8 +4771,8 @@ mod tests {
     #[test]
     fn active_canonical_selected_filters_stale_global_index() {
         let mut app = make_app_with_tasks(&["task A", "task B"]);
-        app.display_rows = vec![DisplayRow::Task(999)];
-        app.selected = 0;
+        app.panes[0].display_rows = vec![DisplayRow::Task(999)];
+        app.panes[0].selected = 0;
 
         assert_eq!(app.active_canonical_selected(), None);
     }
@@ -4831,8 +4782,8 @@ mod tests {
         use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
 
         let mut app = make_app_with_tasks(&["task A", "task B"]);
-        app.display_rows = vec![DisplayRow::Task(999)];
-        app.selected = 0;
+        app.panes[0].display_rows = vec![DisplayRow::Task(999)];
+        app.panes[0].selected = 0;
         app.mode = AppMode::DeleteConfirm;
 
         let confirm_key = KeyEvent {
@@ -4851,7 +4802,7 @@ mod tests {
     #[test]
     fn single_delete_with_duplicate_content_targets_cursor_row() {
         let mut app = make_app_with_tasks(&["n", "n", "n", "n", "n"]);
-        app.selected = 3;
+        app.panes[0].selected = 3;
 
         press_key(&mut app, KeyCode::Char('d'));
         assert_eq!(app.task_list.len(), 4);
@@ -4864,7 +4815,7 @@ mod tests {
 
         // Simulate one task selected in disjoint mode and delete via 'd'.
         app.disjoint_select = true;
-        app.selected = 2;
+        app.panes[0].selected = 2;
         press_key(&mut app, KeyCode::Char(' ')); // select one task
         assert_eq!(app.selected_tasks.len(), 1);
 
@@ -4877,7 +4828,7 @@ mod tests {
     #[test]
     fn backspace_alias_deletes_single_task_immediately() {
         let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
-        app.selected = 1;
+        app.panes[0].selected = 1;
 
         press_key(&mut app, KeyCode::Backspace);
 
@@ -4890,7 +4841,7 @@ mod tests {
     #[test]
     fn delete_key_alias_deletes_single_task_immediately() {
         let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
-        app.selected = 1;
+        app.panes[0].selected = 1;
 
         press_key(&mut app, KeyCode::Delete);
 
@@ -4964,12 +4915,12 @@ mod tests {
     fn s_opens_date_picker_when_selected_tasks_exist_even_on_group_header_cursor() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
         app.selected_tasks.insert(1);
-        app.display_rows = vec![
+        app.panes[0].display_rows = vec![
             DisplayRow::GroupHeader("Header".to_string()),
             DisplayRow::Task(0),
             DisplayRow::Task(1),
         ];
-        app.selected = 0;
+        app.panes[0].selected = 0;
 
         press_key(&mut app, KeyCode::Char('s'));
 
@@ -5096,7 +5047,6 @@ mod tests {
         app.clipboard = Some(clipboard);
 
         app.disjoint_select = true;
-        app.selected = 1;
         app.active_pane_mut().selected = 1;
         press_key(&mut app, KeyCode::Char(' '));
         press_key(&mut app, KeyCode::Char('y'));
@@ -5169,17 +5119,11 @@ mod tests {
     fn space_no_op_on_group_header_in_disjoint_mode() {
         let mut app = make_app_with_tasks(&["Task one", "Task two"]);
         app.disjoint_select = true;
-        app.display_rows = vec![
+        app.panes[0].display_rows = vec![
             DisplayRow::GroupHeader("Header".to_string()),
             DisplayRow::Task(0),
         ];
-        app.selected = 0;
-        // Also update pane for Phase 24-02
-        app.active_pane_mut().display_rows = vec![
-            DisplayRow::GroupHeader("Header".to_string()),
-            DisplayRow::Task(0),
-        ];
-        app.active_pane_mut().selected = 0;
+        app.panes[0].selected = 0;
         press_key(&mut app, KeyCode::Char(' '));
         assert!(app.selected_tasks.is_empty(), "Space on GroupHeader must be a no-op (D-08)");
     }
@@ -5217,7 +5161,7 @@ mod tests {
     fn apply_range_selection_selects_tasks_from_anchor_to_cursor() {
         let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
         app.selection_anchor = Some(0); // anchor at Task(0), display row 0
-        app.selected = 2;              // cursor at Task(2), display row 2
+        app.panes[0].selected = 2;              // cursor at Task(2), display row 2
         app.apply_range_selection();
         assert!(app.selected_tasks.contains(&0), "Task 0 should be in range");
         assert!(app.selected_tasks.contains(&1), "Task 1 should be in range");
@@ -5229,7 +5173,7 @@ mod tests {
     fn apply_range_selection_works_upward_from_anchor() {
         let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
         app.selection_anchor = Some(2); // anchor at Task(2), display row 2
-        app.selected = 0;              // cursor at Task(0), display row 0
+        app.panes[0].selected = 0;              // cursor at Task(0), display row 0
         app.apply_range_selection();
         assert!(app.selected_tasks.contains(&0));
         assert!(app.selected_tasks.contains(&1));
@@ -5242,7 +5186,7 @@ mod tests {
         let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
         app.selected_tasks.insert(3); // pre-existing selection outside range
         app.selection_anchor = Some(0);
-        app.selected = 1;
+        app.panes[0].selected = 1;
         app.apply_range_selection();
         assert!(app.selected_tasks.contains(&0));
         assert!(app.selected_tasks.contains(&1));
@@ -5264,7 +5208,7 @@ mod tests {
     #[test]
     fn plain_k_clears_anchor_but_not_selected_tasks() {
         let mut app = make_app_with_tasks(&["A", "B", "C"]);
-        app.selected = 2;
+        app.panes[0].selected = 2;
         app.selected_tasks.insert(0);
         app.selection_anchor = Some(0);
         press_key(&mut app, KeyCode::Char('k'));
@@ -5290,7 +5234,7 @@ mod tests {
         assert!(app.selection_anchor.is_none());
         press_shift_key(&mut app, KeyCode::Char('j'));
         assert_eq!(app.selection_anchor, Some(0), "shift-j should lazily set anchor to original cursor (D-11)");
-        assert_eq!(app.selected, 1, "shift-j should move cursor down");
+        assert_eq!(app.panes[0].selected, 1, "shift-j should move cursor down");
         assert!(app.selected_tasks.contains(&0), "anchor task should be selected");
         assert!(app.selected_tasks.contains(&1), "new cursor task should be selected");
     }
@@ -5299,10 +5243,10 @@ mod tests {
     fn shift_j_extends_selection_further_down() {
         let mut app = make_app_with_tasks(&["A", "B", "C", "D"]);
         app.selection_anchor = Some(0);
-        app.selected = 1;
+        app.panes[0].selected = 1;
         app.selected_tasks = [0usize, 1].iter().cloned().collect();
         press_shift_key(&mut app, KeyCode::Char('j'));
-        assert_eq!(app.selected, 2);
+        assert_eq!(app.panes[0].selected, 2);
         assert!(app.selected_tasks.contains(&0));
         assert!(app.selected_tasks.contains(&1));
         assert!(app.selected_tasks.contains(&2));
@@ -5312,10 +5256,10 @@ mod tests {
     fn shift_k_shrinks_selection_back_toward_anchor() {
         let mut app = make_app_with_tasks(&["A", "B", "C"]);
         app.selection_anchor = Some(0);
-        app.selected = 2;
+        app.panes[0].selected = 2;
         app.selected_tasks = [0usize, 1, 2].iter().cloned().collect();
         press_shift_key(&mut app, KeyCode::Char('k'));
-        assert_eq!(app.selected, 1);
+        assert_eq!(app.panes[0].selected, 1);
         assert!(app.selected_tasks.contains(&0));
         assert!(app.selected_tasks.contains(&1));
         assert!(!app.selected_tasks.contains(&2), "shrunk range should not include task 2");
@@ -5324,9 +5268,9 @@ mod tests {
     #[test]
     fn shift_down_extends_selection_downward() {
         let mut app = make_app_with_tasks(&["A", "B", "C"]);
-        app.selected = 0;
+        app.panes[0].selected = 0;
         press_shift_key(&mut app, KeyCode::Down);
-        assert_eq!(app.selected, 1);
+        assert_eq!(app.panes[0].selected, 1);
         assert!(app.selected_tasks.contains(&0));
         assert!(app.selected_tasks.contains(&1));
     }
@@ -5334,9 +5278,9 @@ mod tests {
     #[test]
     fn shift_up_extends_selection_upward() {
         let mut app = make_app_with_tasks(&["A", "B", "C"]);
-        app.selected = 2;
+        app.panes[0].selected = 2;
         press_shift_key(&mut app, KeyCode::Up);
-        assert_eq!(app.selected, 1);
+        assert_eq!(app.panes[0].selected, 1);
         assert!(app.selected_tasks.contains(&1));
         assert!(app.selected_tasks.contains(&2));
     }
@@ -5345,19 +5289,16 @@ mod tests {
     fn shift_range_skips_group_headers_in_navigation() {
         let mut app = make_app_with_tasks(&["A", "B", "C"]);
         // Manually set up display_rows with a GroupHeader between tasks
-        app.display_rows = vec![
+        app.panes[0].display_rows = vec![
             DisplayRow::Task(0),
             DisplayRow::GroupHeader("Group".to_string()),
             DisplayRow::Task(1),
             DisplayRow::Task(2),
         ];
-        app.display_indices = vec![0, 1, 2];
-        app.selected = 0;
-        app.panes[0].display_rows = app.display_rows.clone();
         app.panes[0].selected = 0;
         press_shift_key(&mut app, KeyCode::Char('j'));
         // shift-j should skip GroupHeader at row 1 and land on Task(1) at row 2
-        assert_eq!(app.selected, 2, "shift-j should skip GroupHeader rows (D-08)");
+        assert_eq!(app.panes[0].selected, 2, "shift-j should skip GroupHeader rows (D-08)");
         assert!(app.selected_tasks.contains(&0), "Task 0 (anchor) should be selected");
         assert!(app.selected_tasks.contains(&1), "Task 1 (at row 2) should be selected");
         assert!(!app.selected_tasks.is_empty());
@@ -5378,15 +5319,6 @@ mod tests {
             DisplayRow::Task(3),
         ];
         app.panes[1].selected = 0;
-
-        // Keep global rows different to catch accidental global-row usage.
-        app.display_rows = vec![
-            DisplayRow::Task(0),
-            DisplayRow::Task(1),
-            DisplayRow::Task(2),
-            DisplayRow::Task(3),
-        ];
-        app.selected = 0;
 
         press_shift_key(&mut app, KeyCode::Down);
 
@@ -5410,22 +5342,12 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_display_indices_does_not_clear_selected_tasks() {
-        let mut app = make_app_with_tasks(&["A", "B", "C"]);
-        app.selected_tasks.insert(0);
-        app.selected_tasks.insert(2);
-        app.rebuild_display_indices();
-        assert!(app.selected_tasks.contains(&0), "rebuild_display_indices must not clear selected_tasks (D-18)");
-        assert!(app.selected_tasks.contains(&2), "rebuild_display_indices must not clear selected_tasks (D-18)");
-    }
-
-    #[test]
     fn filter_hidden_tasks_remain_selected_d20() {
         let mut app = make_app_with_tasks(&["(A) priority task", "plain task"]);
         app.selected_tasks.insert(0);
         app.selected_tasks.insert(1);
         // Apply a filter that hides task 1 (index 1, "plain task" has no priority)
-        app.filter_query = "pri:A".to_string();
+        app.panes[0].filter_query = "pri:A".to_string();
         app.rebuild_and_reanchor();
         // Task index 1 is hidden by filter but must remain in selected_tasks per D-20
         assert!(app.selected_tasks.contains(&0), "visible task stays selected after filter");
@@ -5436,7 +5358,7 @@ mod tests {
     fn sort_change_does_not_clear_selected_tasks() {
         let mut app = make_app_with_tasks(&["(B) task b", "(A) task a"]);
         app.selected_tasks.insert(0); // canonical index 0 = "(B) task b"
-        app.sort_order = todotxt_core::SortOrder::Priority;
+        app.panes[0].sort_order = todotxt_core::SortOrder::Priority;
         app.rebuild_and_reanchor();
         // Sort changes display order but canonical index 0 must still be selected
         assert!(app.selected_tasks.contains(&0), "sort change must not clear selected_tasks (D-18)");
@@ -5661,6 +5583,57 @@ mod tests {
         assert_eq!(app.mode, AppMode::Normal);
     }
 
+    #[test]
+    fn bulk_append_no_selection_uses_active_task() {
+        // T with no multi-selection → enters AppendText mode targeting active row,
+        // no confirmation dialog (single-task fast path).
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        // cursor on row 1 (task B), nothing in selected_tasks
+        app.panes[0].selected = 1;
+
+        app.handle_normal_key(KeyEvent {
+            code: crossterm::event::KeyCode::Char('T'),
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+
+        assert_eq!(app.mode, AppMode::AppendText, "should enter AppendText without confirmation");
+        assert_eq!(app.selected_tasks.len(), 1, "active task should be added to selected_tasks");
+        assert!(app.selected_tasks.contains(&1), "task B (index 1) should be targeted");
+    }
+
+    #[test]
+    fn bulk_append_no_selection_appends_to_active_task_only() {
+        // End-to-end: T on active row with no selection → appends only to that task.
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+        let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
+        app.panes[0].selected = 1; // cursor on task B
+
+        // Press T to enter AppendText mode (no prior selection)
+        app.handle_normal_key(KeyEvent {
+            code: crossterm::event::KeyCode::Char('T'),
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }).unwrap();
+        assert_eq!(app.mode, AppMode::AppendText);
+
+        // Type text and confirm
+        app.editor.insert_str("+work");
+        app.handle_append_text_key(KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            KeyModifiers::NONE,
+        )).unwrap();
+
+        assert_eq!(app.task_list.tasks()[0].to_raw(), "task A",  "untouched");
+        assert_eq!(app.task_list.tasks()[1].to_raw(), "task B +work", "appended");
+        assert_eq!(app.task_list.tasks()[2].to_raw(), "task C",  "untouched");
+        assert!(app.selected_tasks.is_empty());
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
     // ── Task 3 (20-03): Status bar selection indicator ──────────────────────
 
     /// Verify selection count indicator logic: selected_tasks non-empty → count string
@@ -5670,7 +5643,8 @@ mod tests {
         let app = make_app_with_tasks(&["task A", "task B", "task C"]);
         // No selection → no indicator
         assert!(app.selected_tasks.is_empty());
-        let mut left = format!("todo.txt | {}/{} tasks", app.display_indices.len(), app.task_list.len());
+        let task_count = app.panes[0].display_rows.iter().filter(|r| matches!(r, DisplayRow::Task(_))).count();
+        let mut left = format!("todo.txt | {}/{} tasks", task_count, app.task_list.len());
         if !app.selected_tasks.is_empty() {
             left.push_str(&format!(" | {} selected", app.selected_tasks.len()));
         }
@@ -5683,7 +5657,8 @@ mod tests {
         // With selection → indicator present
         app.selected_tasks.insert(0);
         app.selected_tasks.insert(2);
-        let mut left = format!("todo.txt | {}/{} tasks", app.display_indices.len(), app.task_list.len());
+        let task_count = app.panes[0].display_rows.iter().filter(|r| matches!(r, DisplayRow::Task(_))).count();
+        let mut left = format!("todo.txt | {}/{} tasks", task_count, app.task_list.len());
         if !app.selected_tasks.is_empty() {
             left.push_str(&format!(" | {} selected", app.selected_tasks.len()));
         }
@@ -5696,7 +5671,8 @@ mod tests {
         let mut app = make_app_with_tasks(&["task A"]);
         app.selected_tasks.insert(0);
         app.disjoint_select = true;
-        let mut left = format!("todo.txt | {}/{} tasks", app.display_indices.len(), app.task_list.len());
+        let task_count = app.panes[0].display_rows.iter().filter(|r| matches!(r, DisplayRow::Task(_))).count();
+        let mut left = format!("todo.txt | {}/{} tasks", task_count, app.task_list.len());
         if !app.selected_tasks.is_empty() {
             left.push_str(&format!(" | {} selected", app.selected_tasks.len()));
         }
@@ -6020,11 +5996,6 @@ mod tests {
             app.panes[1].filter_query, "",
             "FAIL-1: sibling pane filter_query must be empty"
         );
-        // Global self.filter_query must NOT be written to.
-        assert_eq!(
-            app.filter_query, "",
-            "FAIL-1: global filter_query must remain empty"
-        );
         // Mode must return to Normal.
         assert_eq!(app.mode, AppMode::Normal);
         // filter_defining_state must be cleared.
@@ -6036,7 +6007,7 @@ mod tests {
     #[test]
     fn push_then_apply_restores_task_list() {
         let mut app = make_app_with_tasks(&["task A", "task B"]);
-        app.selected = 0;
+        app.panes[0].selected = 0;
         // Snapshot before mutation
         app.push_undo_entry();
         // Mutate: delete task B (index 1)
@@ -6049,7 +6020,7 @@ mod tests {
         let names: Vec<String> = app.task_list.tasks().iter().map(|t| t.body.clone()).collect();
         assert!(names.iter().any(|n| n.contains("task A")), "task A must be present");
         assert!(names.iter().any(|n| n.contains("task B")), "task B must be present");
-        assert_eq!(app.selected, 0, "cursor must be restored to 0");
+        assert_eq!(app.panes[0].selected, 0, "cursor must be restored to 0");
     }
 
     #[test]
@@ -6064,7 +6035,7 @@ mod tests {
     #[test]
     fn second_push_overwrites_first() {
         let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
-        app.selected = 0;
+        app.panes[0].selected = 0;
         // First push: 3 tasks
         app.push_undo_entry();
         // Mutate: delete C (index 2) → 2 tasks
@@ -6090,7 +6061,7 @@ mod tests {
     #[test]
     fn ctrl_z_in_normal_mode_triggers_apply_undo() {
         let mut app = make_app_with_tasks(&["task A", "task B"]);
-        app.selected = 0;
+        app.panes[0].selected = 0;
         // Snapshot before mutation
         app.push_undo_entry();
         // Mutate: delete task B
@@ -6108,8 +6079,8 @@ mod tests {
     fn delete_undo_round_trip() {
         // delete_active_task now calls push_undo_entry() internally
         let mut app = make_app_with_tasks(&["task A", "task B", "task C"]);
-        app.selected = 1; // select "task B"
-        app.rebuild_display_indices();
+        app.panes[0].selected = 1; // select "task B"
+        app.rebuild_and_reanchor();
 
         // Trigger delete via 'd' key which routes to delete_active_task in confirm-skip path
         // Use delete_active_task directly to test the wired site
@@ -6637,6 +6608,48 @@ mod tests {
         );
     }
 
+    // ── AC-02 AppendText autocomplete tests ────────────────────────────────
+
+    #[test]
+    fn append_text_autocomplete_shows_projects_on_plus() {
+        let mut app = make_app_with_tasks(&["task +work", "task +home"]);
+        app.mode = AppMode::AppendText;
+        app.selected_tasks.insert(0);
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("+");
+        app.update_autocomplete();
+        let ac = app.autocomplete.as_ref().expect("autocomplete must appear after '+' in AppendText");
+        assert!(ac.items.contains(&"work".to_string()), "items must include 'work', got: {:?}", ac.items);
+        assert!(ac.items.contains(&"home".to_string()), "items must include 'home', got: {:?}", ac.items);
+    }
+
+    #[test]
+    fn append_text_autocomplete_narrows_on_typing() {
+        let mut app = make_app_with_tasks(&["task +work", "task +home"]);
+        app.mode = AppMode::AppendText;
+        app.selected_tasks.insert(0);
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("+h");
+        app.update_autocomplete();
+        let ac = app.autocomplete.as_ref().expect("autocomplete must be Some after '+h' in AppendText");
+        assert_eq!(ac.items, vec!["home".to_string()], "'+h' must narrow to only 'home', got: {:?}", ac.items);
+    }
+
+    #[test]
+    fn token_autocomplete_wins_over_date_when_cursor_after_date_token() {
+        // Regression: "task due:2026-06-01 @em" — cursor is inside @em context token,
+        // but date autocomplete was incorrectly overriding it because the date check ran first.
+        let mut app = make_app_with_tasks(&["task @email @home"]);
+        app.mode = AppMode::Adding;
+        app.editor = tui_textarea::TextArea::default();
+        app.editor.insert_str("task due:2026-06-01 @em");
+        app.update_autocomplete();
+        let ac = app.autocomplete.as_ref().expect("autocomplete must be Some after '@em'");
+        assert_eq!(ac.trigger, '@', "trigger must be '@', not date '#'; got trigger={:?}", ac.trigger);
+        assert!(ac.items.iter().any(|i| i.starts_with("em")),
+            "@em must narrow to context starting with 'em', got: {:?}", ac.items);
+    }
+
     // ── Phase 40 Plan 03-B: GRP requirement coverage ────────────────────────
 
     // GRP-01-T1: GroupByCategory type invariants.
@@ -6665,8 +6678,8 @@ mod tests {
 
     // GRP-01-T2: group_key_for returns correct group key per variant.
     // Tested indirectly via single-pane display_rows GroupHeader values.
-    // Note: single-pane rebuild syncs pane.grouping → app.grouping but NOT group_by;
-    // app.group_by must be set directly for group_key selection to take effect.
+    // Note: in single-pane mode rebuild_and_reanchor syncs pane.group_by → self.group_by,
+    // so pane.group_by is the canonical way to set the group-by category (260512-gbx fix).
     #[test]
     fn group_key_for_groups_by_correct_field_per_variant() {
         // Task: "(A) fix things +work @home due:2025-01-15"
@@ -6676,33 +6689,33 @@ mod tests {
         app.active_pane_mut().grouping = true;
 
         // Priority: expect GroupHeader "(A)"
-        app.group_by = GroupByCategory::Priority;
+        app.active_pane_mut().group_by = GroupByCategory::Priority;
         app.rebuild_and_reanchor();
-        let headers: Vec<_> = app.display_rows.iter()
+        let headers: Vec<_> = app.panes[0].display_rows.iter()
             .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
             .collect();
         assert!(headers.contains(&"(A)"), "Priority group_key should be '(A)', got {:?}", headers);
 
         // Project: expect GroupHeader "+work"
-        app.group_by = GroupByCategory::Project;
+        app.active_pane_mut().group_by = GroupByCategory::Project;
         app.rebuild_and_reanchor();
-        let headers: Vec<_> = app.display_rows.iter()
+        let headers: Vec<_> = app.panes[0].display_rows.iter()
             .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
             .collect();
         assert!(headers.contains(&"+work"), "Project group_key should be '+work', got {:?}", headers);
 
         // Context: expect GroupHeader "@home"
-        app.group_by = GroupByCategory::Context;
+        app.active_pane_mut().group_by = GroupByCategory::Context;
         app.rebuild_and_reanchor();
-        let headers: Vec<_> = app.display_rows.iter()
+        let headers: Vec<_> = app.panes[0].display_rows.iter()
             .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
             .collect();
         assert!(headers.contains(&"@home"), "Context group_key should be '@home', got {:?}", headers);
 
         // DueDate: expect GroupHeader "2025-01-15"
-        app.group_by = GroupByCategory::DueDate;
+        app.active_pane_mut().group_by = GroupByCategory::DueDate;
         app.rebuild_and_reanchor();
-        let headers: Vec<_> = app.display_rows.iter()
+        let headers: Vec<_> = app.panes[0].display_rows.iter()
             .filter_map(|r| if let DisplayRow::GroupHeader(s) = r { Some(s.as_str()) } else { None })
             .collect();
         assert!(headers.contains(&"2025-01-15"), "DueDate group_key should be '2025-01-15', got {:?}", headers);
@@ -6712,13 +6725,7 @@ mod tests {
     #[test]
     fn pane_initializes_group_by_to_priority() {
         let app = make_app_with_tasks(&["task A"]);
-        // In multi-pane mode panes vec is used; in single-pane mode, app.group_by is the field.
-        // make_app_with_tasks starts single-pane, so check app.group_by and panes[0].group_by.
-        assert_eq!(
-            app.group_by,
-            GroupByCategory::Priority,
-            "App.group_by must default to Priority (GRP-01)"
-        );
+        // In single-pane mode, panes[0].group_by is the canonical field.
         assert_eq!(
             app.panes[0].group_by,
             GroupByCategory::Priority,
@@ -7768,6 +7775,103 @@ mod tests {
             AppMode::Normal,
             "Enter without focused popup must apply filter and return to Normal mode"
         );
+    }
+
+    // ── Regression: cursor skips middle task after grouping-off + due-date sort ──
+
+    /// Verify that toggling grouping off then changing sort to DueDate leaves
+    /// pane.display_rows in sync so Down arrow lands on the next task, not the
+    /// task-after-next (the bug caused by stale group headers in pane.display_rows).
+    #[test]
+    fn cursor_does_not_skip_middle_task_after_grouping_off_and_due_date_sort() {
+        // Three tasks with distinct due dates so each had its own group when grouping was on.
+        let mut app = make_app_with_tasks(&[
+            "x 2026-05-06 2026-05-04 update VT password +Admin due:2026-05-04",
+            "(B) 2026-05-06 move rack to Kentland +CTRC due:2026-05-08",
+            "2026-05-04 renew flexible work agreement +Admin due:2026-05-09",
+        ]);
+
+        // Step 1: enable grouping by priority so pane.display_rows gets group headers.
+        app.panes[0].grouping = true;
+        app.panes[0].group_by = GroupByCategory::Priority;
+        app.rebuild_and_reanchor();
+
+        // Step 2: toggle grouping OFF (mirrors user pressing the group_toggle key).
+        app.panes[0].grouping = false;
+
+        // Step 3: set sort to DueDate (mirrors user pressing the sort_cycle key).
+        app.panes[0].sort_order = todotxt_core::SortOrder::DueDate;
+
+        // Step 4: rebuild as triggered by either action.
+        app.rebuild_and_reanchor();
+
+        // pane.display_rows must now be a flat list of 3 Task rows (no GroupHeaders).
+        let row_count = app.panes[0].display_rows.len();
+        assert_eq!(row_count, 3, "pane.display_rows should have exactly 3 tasks, got {}", row_count);
+        for row in &app.panes[0].display_rows {
+            assert!(
+                matches!(row, DisplayRow::Task(_)),
+                "pane.display_rows must not contain GroupHeader rows after grouping is off"
+            );
+        }
+
+        // Step 5: cursor starts at row 0 (first task, due:2026-05-04).
+        app.panes[0].selected = 0;
+
+        // Step 6: press Down — must move to row 1, not skip to row 2.
+        press_key(&mut app, KeyCode::Down);
+        assert_eq!(
+            app.panes[0].selected, 1,
+            "Down from row 0 must land on row 1 (not skip middle task)"
+        );
+
+        // Step 7: press Down again — must move to row 2.
+        press_key(&mut app, KeyCode::Down);
+        assert_eq!(
+            app.panes[0].selected, 2,
+            "Down from row 1 must land on row 2"
+        );
+    }
+
+    // ── Regression: group_by_cycle has no visual effect in single-pane (260512-gbx) ──
+
+    /// Verify that cycling group-by in single-pane mode changes self.display_rows visually.
+    /// Root cause: self.group_by was not synced from pane.group_by in rebuild_and_reanchor.
+    #[test]
+    fn group_by_cycle_changes_display_rows_in_single_pane() {
+        // Tasks with distinct priorities and projects so grouping produces different headers.
+        let mut app = make_app_with_tasks(&[
+            "(A) task one +projectA",
+            "(B) task two +projectB",
+            "task three +projectA",
+        ]);
+
+        // Enable grouping with Priority.
+        app.panes[0].grouping = true;
+        app.panes[0].group_by = GroupByCategory::Priority;
+        app.rebuild_and_reanchor();
+
+        let priority_headers: Vec<String> = app.panes[0].display_rows.iter().filter_map(|r| {
+            if let DisplayRow::GroupHeader(s) = r { Some(s.clone()) } else { None }
+        }).collect();
+        assert!(!priority_headers.is_empty(), "expected Priority group headers");
+
+        // Cycle group_by to Project.
+        app.panes[0].group_by = cycle_group_by(app.panes[0].group_by);
+        app.rebuild_and_reanchor();
+
+        let project_headers: Vec<String> = app.panes[0].display_rows.iter().filter_map(|r| {
+            if let DisplayRow::GroupHeader(s) = r { Some(s.clone()) } else { None }
+        }).collect();
+        assert!(!project_headers.is_empty(), "expected Project group headers after cycle");
+        assert_ne!(
+            priority_headers, project_headers,
+            "display_rows headers must change after group_by_cycle (260512-gbx regression)"
+        );
+
+        // pane.group_by must be Project after cycling.
+        assert_eq!(app.panes[0].group_by, GroupByCategory::Project,
+            "pane.group_by must be Project after cycling (260512-gbx sync check)");
     }
 }
 

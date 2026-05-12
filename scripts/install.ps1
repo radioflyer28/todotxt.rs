@@ -7,18 +7,21 @@
 #   irm https://raw.githubusercontent.com/radioflyer28/todotxt.rs/master/scripts/install.ps1 -OutFile install.ps1
 #   .\install.ps1 --cli
 #   .\install.ps1 --both
+#   .\install.ps1 --local   # install from local build
 #   # Or set $env:INSTALL before piping to iex:
 #   $env:INSTALL='both'; irm .../install.ps1 | iex
 #
 # Options:
-#   --tui   Install todotxt-tui only (default)
-#   --cli   Install todotxt only
-#   --both  Install both todotxt-tui and todotxt
+#   --tui    Install todotxt-tui only (default)
+#   --cli    Install todotxt only
+#   --both   Install both todotxt-tui and todotxt
+#   --local  Copy locally-built binaries from BUILD_DIR instead of downloading
 #
 # Environment overrides (set before running):
 #   $env:INSTALL        'tui' (default), 'cli', or 'both'
 #   $env:INSTALL_DIR    Installation directory (default: %USERPROFILE%\bin)
 #   $env:RELEASE_TAG    Specific release tag, e.g. "v1.5.0" (default: latest)
+#   $env:BUILD_DIR      Local build output directory for --local (default: .\target\release)
 
 $ErrorActionPreference = 'Stop'
 
@@ -28,12 +31,14 @@ $Repo = 'radioflyer28/todotxt.rs'
 
 # $args parsing (for direct invocation); $env:INSTALL overrides
 $mode = 'tui'
+$Local = $false
 foreach ($arg in $args) {
     switch ($arg) {
-        '--tui'  { $mode = 'tui' }
-        '--cli'  { $mode = 'cli' }
-        '--both' { $mode = 'both' }
-        default  { Write-Error "Unknown option: $arg. Use --tui (default), --cli, or --both."; exit 1 }
+        '--tui'   { $mode = 'tui' }
+        '--cli'   { $mode = 'cli' }
+        '--both'  { $mode = 'both' }
+        '--local' { $Local = $true }
+        default   { Write-Error "Unknown option: $arg. Use --tui (default), --cli, --both, or --local."; exit 1 }
     }
 }
 if ($env:INSTALL) { $mode = $env:INSTALL.ToLower() }
@@ -70,14 +75,45 @@ function Install-Binary {
     Write-Host ""
 }
 
+# -- Local copy helper ---------------------------------------------------------
+
+function Install-LocalBinary {
+    param([string]$BinaryName)
+
+    $BuildDir = if ($env:BUILD_DIR) { $env:BUILD_DIR } else { Join-Path $PSScriptRoot '..' 'target' 'release' }
+    $Src  = Join-Path $BuildDir $BinaryName
+    $Dest = Join-Path $InstallDir $BinaryName
+
+    if (-not (Test-Path $Src)) {
+        Write-Error "Local binary not found: $Src`nBuild first with: cargo build --release"
+        exit 1
+    }
+
+    Write-Host "Copying $Src ..."
+    Copy-Item -Path $Src -Destination $Dest -Force
+
+    $Version = & $Dest --version 2>$null
+    Write-Host "Installed: $Dest"
+    Write-Host "Version:   $(if ($Version) { $Version } else { 'unknown' })"
+    Write-Host ""
+}
+
 # -- Install requested binaries -----------------------------------------------
 
 if ($InstallTui) {
-    Install-Binary 'todotxt-tui-windows-x86_64.exe' 'todotxt-tui.exe'
+    if ($Local) {
+        Install-LocalBinary 'todotxt-tui.exe'
+    } else {
+        Install-Binary 'todotxt-tui-windows-x86_64.exe' 'todotxt-tui.exe'
+    }
 }
 
 if ($InstallCli) {
-    Install-Binary 'todotxt-windows-x86_64.exe' 'todotxt.exe'
+    if ($Local) {
+        Install-LocalBinary 'todotxt.exe'
+    } else {
+        Install-Binary 'todotxt-windows-x86_64.exe' 'todotxt.exe'
+    }
 }
 
 # -- PATH check ----------------------------------------------------------------
