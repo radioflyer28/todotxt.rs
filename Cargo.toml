@@ -3,7 +3,7 @@ members = ["crates/todotxt-core", "crates/todotxt-cli", "crates/todotxt-tui"]
 resolver = "2"
 
 [workspace.package]
-version = "1.6.1"
+version = "1.6.3"
 
 [profile.release]
 strip = true
