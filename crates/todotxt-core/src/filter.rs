@@ -101,7 +101,7 @@ impl Filter {
 
         // AND-evaluate all tokens
         for term in &self.terms {
-            let passes = Self::eval_term(term, task, &raw, today);
+            let passes = Self::eval_term(term, task, raw, today);
             if !passes {
                 return false;
             }
