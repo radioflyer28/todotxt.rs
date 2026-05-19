@@ -1,20 +1,12 @@
 # todotxt.net - Rust Port
 
-## Current Milestone: v1.6.3 TUI UX tweaks, filter OR operator, recurring tasks, done.txt rotation
+## Current Milestone
 
-**Goal:** Improve day-to-day TUI usability while adding higher-value task workflow features and archive hygiene.
-
-**Target features:**
-- Add recurring-task support via `rec:` with implicit next-occurrence creation on completion.
-- Add time-based done.txt rotation with monthly cadence and deterministic period naming.
-- Add OR (`|`) support in filter expressions.
-- Hide cursor highlight in inactive TUI panes.
-- Add spacer rows between grouped list sections.
-- Improve TUI date-picker ergonomics for field cycling, week jumps, and continuity-first auto-select behavior.
+No active milestone. `v1.6.3` has been shipped and archived.
 
 ## Current State
 
-v1.0 through v1.6 are shipped. The Rust port now features a full-featured power-user TUI with archive workflow, bulk mark-done, external `$EDITOR` integration, filter history, multi-dimensional view presets, view state persistence, independent group-by controls, filter input autocomplete, pane task movement, recurring completion, monthly done.txt rotation, and expanded date-picker ergonomics — all on top of the earlier CLI/TUI/pane foundations.
+v1.0 through v1.6.3 are shipped. The Rust port now features a full-featured power-user TUI with archive workflow, bulk mark-done, external `$EDITOR` integration, filter history, multi-dimensional view presets, view state persistence, independent group-by controls, filter input autocomplete, pane task movement, recurring completion, monthly done.txt rotation, token-local OR filtering, and expanded date-picker ergonomics — all on top of the earlier CLI/TUI/pane foundations.
 
 Milestone archives:
 
@@ -25,14 +17,15 @@ Milestone archives:
 - .planning/milestones/v1.4-ROADMAP.md
 - .planning/milestones/v1.5-ROADMAP.md
 - .planning/milestones/v1.6-ROADMAP.md
+- .planning/milestones/v1.6.3-ROADMAP.md
 
-## Next Milestone
+## Next Milestone Goals
 
-**v1.8 — (to be planned)**
+**To be planned**
 
-Run `/gsd-new-milestone` to define v1.8 requirements and roadmap.
+Run `$gsd-new-milestone` to define the next requirements and roadmap.
 
-Known candidate features for v1.8 consideration:
+Known candidate features for the next milestone:
 - GUI interface (native desktop)
 - CI/CD release pipeline and package distribution
 
@@ -52,7 +45,7 @@ Shipped:
 
 - todotxt-core: parser, Task model, TaskList CRUD, filter/sort engines, file watching, portable mode
 - todotxt-cli: read/write/enrichment/bulk commands, todo.sh compatibility, JSON output, TOML config, completions
-- todotxt-tui: keyboard-driven task workflows, grouping, deferred toggle, presets, parity keymaps/help
+- todotxt-tui: keyboard-driven task workflows, grouping, deferred toggle, presets, theme behavior
 - Milestone v1.3 parity additions: canonical multi-selection, bulk delete/append, normalization integration, configurable keymaps, help overlay, and app-wide error log discoverability
 
 ## Requirements
@@ -120,14 +113,14 @@ Shipped:
 - AC-02 through AC-04 — filter input autocomplete with cursor-aware narrowing shipped and verified (Phase 42)
 - PRSV-01 through PRSV-03 — `tui-state.toml` view state persistence shipped and verified (Phase 43)
 
-### Active (v1.6.3)
+### Validated (v1.6.3)
 
-- Add recurring-task support via `rec:` with implicit next-occurrence creation on completion.
-- Add time-based done.txt rotation for archive hygiene, with monthly cadence shipping first.
-- Add OR operator support in filter language.
-- Hide inactive-pane cursor highlight in TUI.
-- Add spacer rows before grouped headers for scan readability.
-- Improve date-entry ergonomics for real non-due date fields and refine shared auto-select behavior for match-driven dialogs such as project and context tag selection.
+- REC-01 through REC-04 — recurring task rules and implicit next-occurrence creation shipped and verified (Phase 48)
+- DONE-01 through DONE-03 — monthly `done.txt` rotation and cadence config shipped and verified (Phase 49)
+- FILT-01 through FILT-03 — token-local OR filter behavior shipped and verified (Phase 46)
+- TUI-01 through TUI-02 — inactive-pane highlight suppression and grouped spacer rows shipped and verified (Phase 47)
+- DATE-UX-01 through DATE-UX-02 — TUI date-target cycling and week-jump picker navigation shipped and verified (Phase 50)
+- AUTO-SEL-01 through AUTO-SEL-02 — continuity-first quick project/context auto-select shipped and verified (Phase 50)
 
 ### Planned (future milestone)
 
@@ -136,11 +129,11 @@ Shipped:
 
 ## Context
 
-Shipped: v1.0 (2026-04-16), v1.1 (2026-04-23), v1.2 (2026-04-24), v1.3 (2026-04-28), v1.4 (2026-04-29), v1.5 (2026-05-01), v1.6 (2026-05-06)
+Shipped: v1.0 (2026-04-16), v1.1 (2026-04-23), v1.2 (2026-04-24), v1.3 (2026-04-28), v1.4 (2026-04-29), v1.5 (2026-05-01), v1.6 (2026-05-06), v1.6.3 (2026-05-19)
 Tech stack: Rust stable, Cargo workspace, winnow, clap, ratatui, tui-textarea, crossterm, tokio, serde_json, tempfile
 Crates: crates/todotxt-core, crates/todotxt-cli, crates/todotxt-tui
 Tests: 215 passing (todotxt-tui); 0 failing
-v1.6 additions: archive workflow, bulk mark-done, external editor, filter autocomplete, view state persistence (tui-state.toml), group-by decoupling, full view presets, filter history, pane task movement
+Latest additions: recurring completion, monthly archive rotation, OR filters, grouped-view readability, and date/quick-setter ergonomics
 
 ## Constraints
 
@@ -160,7 +153,11 @@ v1.6 additions: archive workflow, bulk mark-done, external editor, filter autoco
 | View state in sidecar `tui-state.toml` (not config.toml) | Validated v1.6 — config = defaults, state = session overrides |
 | Filter history session-only (not persisted) | Validated v1.6 — session ring covers use case; cross-session deferred |
 | `accept_filter_completion` uses local `AcceptResult` enum | v1.6 — required by Rust borrow checker to extract action before dropping autocomplete borrow |
-| BUG-41-01 fix: `KeyModifiers::NONE` guard on Left/Right nav arms | v1.6 — Phase 44 TDD; plain Right still navigates, Ctrl+Right now reaches pane_move_task |
+| `BUG-41-01 fix: KeyModifiers::NONE guard on Left/Right nav arms` | v1.6 — Phase 44 TDD; plain Right still navigates, Ctrl+Right now reaches pane_move_task |
+| Token-local OR only | v1.6.3 — delivered core/CLI filter power without growing into a broader query grammar |
+| Recurring completion is implicit | v1.6.3 — auto-create next occurrence in both CLI and TUI instead of prompting |
+| Archive rotation is time-based monthly first | v1.6.3 — keeps archive hygiene simple while leaving cadence room for future weekly-style expansion |
+| Phase 50 stays on Rust TUI/core path | v1.6.3 — corrected initial client-side drift and reinforced milestone scope |
 
 ## Archived Planning Snapshot
 
@@ -191,4 +188,4 @@ After each milestone:
 4. Context refresh with current state.
 
 ---
-*Last updated: 2026-05-19 after Phase 50 input ergonomics planning.*
+*Last updated: 2026-05-19 after v1.6.3 milestone completion.*

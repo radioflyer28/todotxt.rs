@@ -79,6 +79,48 @@
 
 ---
 
+## Milestone: v1.6.3 — TUI UX tweaks, filter OR operator, recurring tasks, done.txt rotation
+
+**Shipped:** 2026-05-19
+**Phases:** 5 | **Plans:** 12
+
+### What Was Built
+
+- Token-local OR filters in `todotxt-core`, plus CLI help and integration coverage for supported syntax
+- TUI readability polish: inactive-pane highlight suppression and spacer rows between grouped sections
+- Shared recurring completion behavior across CLI and TUI, with implicit next-occurrence creation from `rec:` rules
+- Monthly `done.txt` rotation with deterministic names like `done-YYYY-MM.txt` and explicit CLI/TUI feedback
+- TUI date-target cycling, week-jump picker navigation, and continuity-first project/context quick-setter auto-select
+
+### What Worked
+
+- **Small phase slices stayed honest**: each phase was narrow enough to complete end-to-end in one pass without reopening previous architecture decisions
+- **Shared-core first approach paid off**: OR parsing, recurrence, and archive cadence all landed in shared Rust code so CLI and TUI stayed aligned automatically
+- **Discussion before planning prevented scope creep**: the phase discussions were especially useful in keeping recurrence, archive cadence, and auto-select semantics clear
+- **Milestone-level audit caught only closeout drift**: by the end, the remaining issues were paperwork mismatches instead of product holes
+
+### What Was Inefficient
+
+- **Commit drift during the milestone**: phases 46-50 accumulated in the working tree instead of committing as they went, which made closeout look suspicious and forced a manual triage step
+- **Audit convergence still lagged execution**: the milestone was behaviorally complete before `REQUIREMENTS.md`, `ROADMAP.md`, and the missing Phase 46 verification artifact were converged
+- **Phase 50 briefly started in the wrong codebase slice**: the initial desktop-client drift was corrected quickly, but it was still wasted motion that tighter scope checks would have avoided
+
+### Patterns Established
+
+- Milestone-close triage should distinguish real feature work from whitespace/noise before cleanup assumptions are made
+- Shared feature semantics belong in `todotxt-core` whenever both CLI and TUI will consume them
+- Quick-setter continuity rules should preserve current token selection while narrowing instead of defaulting to ranked-first
+- Archive cadence configuration can be future-ready without shipping every cadence or cleanup policy immediately
+
+### Key Lessons
+
+- Commit milestone phases incrementally even when the work feels tightly coupled; otherwise closeout confidence drops fast
+- Converge roadmap, requirements, and verification artifacts before running the milestone audit to avoid “passed behavior, failed paperwork” audits
+- When a milestone is explicitly TUI-scoped, enforce that boundary early before touching any adjacent client code
+- If an audit finds only documentation gaps, fix them inline before archiving rather than carrying them as fake tech debt
+
+---
+
 ## Cross-Milestone Trends
 
 (To be populated after v1.1+)

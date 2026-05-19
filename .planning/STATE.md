@@ -1,37 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6.3
-milestone_name: TUI UX tweaks, filter OR operator, recurring tasks, done.txt rotation
-status: ready_for_audit
+milestone: none
+milestone_name: null
+status: milestone_completed
 last_updated: "2026-05-19T00:00:00.000Z"
-last_activity: 2026-05-19 - Phase 50 executed and verified
+last_activity: 2026-05-19 - Milestone v1.6.3 archived and tagged
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-15)
+See: .planning/PROJECT.md (updated 2026-05-19)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Milestone implementation complete; Phase 50 input ergonomics shipped and verified
+**Current focus:** Milestone v1.6.3 archived; planning next milestone
 
 ## Current Position
 
-Phase: 50 — Input Ergonomics
-Plan: 50-01 and 50-02 complete
-Status: Executed and verified
-Last activity: 2026-05-19 — Input ergonomics execution completed
+Phase: none
+Plan: none
+Status: Milestone archived
+Last activity: 2026-05-19 — v1.6.3 archived and tagged
 
 ## Next Step
 
-Run `$gsd-validate-phase 50` or `$gsd-audit-milestone` to close out the milestone.
+Run `$gsd-new-milestone` to define the next milestone requirements and roadmap.
 
 ## Deferred Items
 
@@ -49,13 +49,13 @@ Items acknowledged and deferred at milestone close on 2026-05-06:
 | seed | SEED-007-tui-view-state-persistence | dormant — addressed by Phase 43 (PRSV-01/02/03) |
 | seed | SEED-008-decouple-group-by-from-sort-order | dormant — addressed by Phase 40 (GRP-01/02/03/04) |
 | seed | SEED-009-bulk-mark-done | dormant — addressed by Phase 39 (BDONE-01/02) |
-| seed | SEED-010-recurring-tasks | dormant — genuinely unimplemented; future milestone |
+| seed | SEED-010-recurring-tasks | shipped — addressed by Phase 48 (REC-01/02/03/04) |
 | seed | SEED-011-filter-history | dormant — addressed by Phase 41 (FHIST-01/02/03) |
 | seed | SEED-012-open-in-editor | dormant — addressed by Phase 39 (XEDIT-01/02/03) |
 | seed | SEED-013-fix-project-autocomplete-bug | dormant — addressed by Phase 39 (AC-01) |
 | seed | SEED-014-autocomplete-coverage-and-narrowing | dormant — addressed by Phase 42 (AC-02/03/04) |
 | seed | SEED-015-view-presets | dormant — addressed by Phase 41 (PRST-01/02) |
-| seed | SEED-016-done-txt-rotation | dormant — genuinely unimplemented; future milestone |
+| seed | SEED-016-done-txt-rotation | shipped — addressed by Phase 49 (DONE-01/02/03) |
 
 Known deferred items at close: 17 (5 verification gaps, 12 seeds)
 
@@ -84,3 +84,5 @@ None.
 
 - `accept_filter_completion` uses local enum `AcceptResult` to extract action before dropping autocomplete borrow — required by Rust borrow checker
 - `#[allow(dead_code)]` on `compute_filter_autocomplete` removed: function is now called from `handle_filtering_key` `_` arm
+- Recurring completion creates the next occurrence implicitly in both CLI and TUI
+- Archive rotation is monthly and time-based, with deterministic period archive naming

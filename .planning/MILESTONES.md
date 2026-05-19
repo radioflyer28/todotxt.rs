@@ -1,5 +1,23 @@
 # Milestones
 
+## v1.6.3 TUI UX tweaks, filter OR operator, recurring tasks, done.txt rotation (Shipped: 2026-05-19)
+
+**Phases:** 5 (Phases 46-50) | **Plans:** 12 | **Requirements:** 16/16 complete
+
+**Key accomplishments:**
+
+1. Added token-local OR filter support with shared core parsing, CLI help updates, and integration coverage.
+2. Improved TUI readability with inactive-pane selection suppression and spacer rows between grouped sections.
+3. Implemented shared recurring task completion so CLI and TUI both auto-generate the next occurrence.
+4. Added monthly `done.txt` rotation with deterministic archive naming and explicit CLI/TUI feedback.
+5. Refined TUI input ergonomics with date-target cycling, week-jump picker navigation, and continuity-first quick-setter auto-select.
+
+**Archive:** .planning/milestones/v1.6.3-ROADMAP.md | .planning/milestones/v1.6.3-REQUIREMENTS.md | .planning/milestones/v1.6.3-MILESTONE-AUDIT.md
+
+Known deferred items at close: 17 (see STATE.md Deferred Items)
+
+---
+
 ## v1.6 TUI Fixes and Power User Improvements (Shipped: 2026-05-06)
 
 **Phases:** 7 (Phases 39–45) | **Plans:** 18 | **Requirements:** 29/29 complete | **Tests:** 215 passing
