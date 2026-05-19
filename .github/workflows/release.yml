@@ -101,11 +101,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item target\release\todotxt-tui.exe dist\todotxt-tui-windows-x86_64.exe
           Copy-Item target\release\todotxt.exe dist\todotxt-windows-x86_64.exe
+          Compress-Archive -Path dist\todotxt-tui-windows-x86_64.exe,dist\todotxt-windows-x86_64.exe -DestinationPath dist\windows-x86_64.zip -Force
 
       - uses: actions/upload-artifact@v7
         with:
           name: windows-x86_64
-          path: dist/
+          path: dist/windows-x86_64.zip
+          compression-level: 0
 
   release:
     name: Create GitHub Release
