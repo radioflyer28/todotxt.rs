@@ -1,15 +1,16 @@
 //! State structures for multi-pane TUI model.
 
-use todotxt_core::{SortOrder, TaskList};
-use chrono::NaiveDate;
-use chrono::Datelike;
-use std::collections::{HashMap, HashSet};
 use crate::config::GroupByCategory;
+use chrono::Datelike;
+use chrono::NaiveDate;
+use std::collections::{HashMap, HashSet};
+use todotxt_core::{SortOrder, TaskList};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayRow {
     Task(usize),
     GroupHeader(String),
+    GroupSpacer,
 }
 
 /// Mode for autocomplete interactions (Phase 33, Plan 02).
@@ -115,13 +116,13 @@ pub struct AutocompleteState {
     #[allow(dead_code)]
     pub mode: AutocompleteMode, // Type of autocomplete interaction
     #[allow(dead_code)]
-    pub trigger: char,    // '@', '+', or '#'
-    pub prefix: String,   // text typed after the trigger (NOT including trigger)
+    pub trigger: char, // '@', '+', or '#'
+    pub prefix: String, // text typed after the trigger (NOT including trigger)
     #[allow(dead_code)]
     pub all_items: Vec<String>, // original candidate pool (used by quick setters)
     pub items: Vec<String>, // filtered token list (without trigger char)
-    pub selected: usize,  // current highlight index in popup
-    pub focused: bool,    // true when Down arrow moved focus into popup
+    pub selected: usize, // current highlight index in popup
+    pub focused: bool,  // true when Down arrow moved focus into popup
 }
 
 impl AutocompleteState {
@@ -133,11 +134,19 @@ impl AutocompleteState {
             AutocompleteMode::TokenAutocomplete(trigger)
         };
         let all_items = items.clone();
-        AutocompleteState { mode, trigger, prefix, all_items, items, selected: 0, focused: false }
+        AutocompleteState {
+            mode,
+            trigger,
+            prefix,
+            all_items,
+            items,
+            selected: 0,
+            focused: false,
+        }
     }
 
     /// Create autocomplete state for quick setter from Normal mode
-        #[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn new_quick_setter(trigger: char, prefix: String, items: Vec<String>) -> Self {
         let all_items = items.clone();
         AutocompleteState {
@@ -166,7 +175,7 @@ impl AutocompleteState {
             .collect();
         AutocompleteState {
             mode: AutocompleteMode::FilterHistory,
-            trigger: '\0',  // no trigger char for history mode
+            trigger: '\0', // no trigger char for history mode
             prefix,
             all_items: history_items,
             items,
@@ -178,13 +187,39 @@ impl AutocompleteState {
 
 /// State for the date picker modal (Phase 33, Plan 01).
 /// Tracks month/year selection and day suggestions with weekday labels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatePickerTarget {
+    Due,
+    Threshold,
+    Completed,
+}
+
+impl DatePickerTarget {
+    pub fn label(self) -> &'static str {
+        match self {
+            DatePickerTarget::Due => "due date",
+            DatePickerTarget::Threshold => "threshold date",
+            DatePickerTarget::Completed => "completed date",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            DatePickerTarget::Due => DatePickerTarget::Threshold,
+            DatePickerTarget::Threshold => DatePickerTarget::Completed,
+            DatePickerTarget::Completed => DatePickerTarget::Due,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DatePickerState {
-    pub month_year: String,   // e.g., "2026-07"
+    pub target: DatePickerTarget,
+    pub month_year: String,        // e.g., "2026-07"
     pub selected_day: Option<u32>, // currently highlighted day
-    pub day_input: String,    // optional typed day input (e.g., "14")
-    pub suggestions: Vec<String>, // formatted as "01 Mon", "02 Tue", etc.
-    pub focused: bool,        // true when navigation has focused the picker (like autocomplete)
+    pub day_input: String,         // optional typed day input (e.g., "14")
+    pub suggestions: Vec<String>,  // formatted as "01 Mon", "02 Tue", etc.
+    pub focused: bool, // true when navigation has focused the picker (like autocomplete)
 }
 
 impl DatePickerState {
@@ -192,12 +227,18 @@ impl DatePickerState {
     /// Validates the month and generates day suggestions.
     #[allow(dead_code)]
     pub fn new(month_year: &str) -> Self {
+        Self::new_for_target(month_year, DatePickerTarget::Due)
+    }
+
+    pub fn new_for_target(month_year: &str, target: DatePickerTarget) -> Self {
         let suggestions = generate_date_suggestions(month_year).unwrap_or_default();
-        let selected_day = suggestions.first()
+        let selected_day = suggestions
+            .first()
             .and_then(|s| s.split_whitespace().next())
             .and_then(|d| d.parse::<u32>().ok());
 
         DatePickerState {
+            target,
             month_year: month_year.to_string(),
             selected_day,
             day_input: String::new(),
@@ -211,10 +252,12 @@ impl DatePickerState {
         if self.suggestions.is_empty() {
             return;
         }
-        let current_idx = self.selected_day
+        let current_idx = self
+            .selected_day
             .and_then(|day| {
                 self.suggestions.iter().position(|s| {
-                    s.split_whitespace().next()
+                    s.split_whitespace()
+                        .next()
                         .and_then(|d| d.parse::<u32>().ok())
                         .map(|d| d == day)
                         .unwrap_or(false)
@@ -233,10 +276,12 @@ impl DatePickerState {
         if self.suggestions.is_empty() {
             return;
         }
-        let current_idx = self.selected_day
+        let current_idx = self
+            .selected_day
             .and_then(|day| {
                 self.suggestions.iter().position(|s| {
-                    s.split_whitespace().next()
+                    s.split_whitespace()
+                        .next()
                         .and_then(|d| d.parse::<u32>().ok())
                         .map(|d| d == day)
                         .unwrap_or(false)
@@ -245,6 +290,40 @@ impl DatePickerState {
             .unwrap_or(0);
         let prev_idx = current_idx.saturating_sub(1);
         self.selected_day = self.suggestions[prev_idx]
+            .split_whitespace()
+            .next()
+            .and_then(|d| d.parse::<u32>().ok());
+    }
+
+    pub fn select_next_week(&mut self) {
+        self.shift_selected_day(7);
+    }
+
+    pub fn select_prev_week(&mut self) {
+        self.shift_selected_day(-7);
+    }
+
+    fn shift_selected_day(&mut self, delta: i32) {
+        if self.suggestions.is_empty() {
+            return;
+        }
+
+        let current_idx = self
+            .selected_day
+            .and_then(|day| {
+                self.suggestions.iter().position(|s| {
+                    s.split_whitespace()
+                        .next()
+                        .and_then(|d| d.parse::<u32>().ok())
+                        .map(|d| d == day)
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(0);
+
+        let max_idx = self.suggestions.len().saturating_sub(1) as i32;
+        let next_idx = (current_idx as i32 + delta).clamp(0, max_idx) as usize;
+        self.selected_day = self.suggestions[next_idx]
             .split_whitespace()
             .next()
             .and_then(|d| d.parse::<u32>().ok());
@@ -306,7 +385,8 @@ impl PriorityPickerState {
 
     /// Returns the chosen priority: `Some(char)` for A–Z, `None` for "no priority" item.
     pub fn selected_priority(&self) -> Option<char> {
-        self.items.get(self.selected_idx)
+        self.items
+            .get(self.selected_idx)
             .and_then(|s| s.chars().next())
             .filter(|c| c.is_ascii_uppercase())
     }
@@ -326,9 +406,11 @@ pub fn generate_date_suggestions(month_year: &str) -> Result<Vec<String>, String
     let year_str = parts[0];
     let month_str = parts[1];
 
-    let year = year_str.parse::<i32>()
+    let year = year_str
+        .parse::<i32>()
         .map_err(|_| "Invalid year".to_string())?;
-    let month = month_str.parse::<u32>()
+    let month = month_str
+        .parse::<u32>()
         .map_err(|_| "Invalid month".to_string())?;
 
     if !(1..=12).contains(&month) {
@@ -550,7 +632,7 @@ mod tests {
         // select_next on empty pane should do nothing
         pane.select_next();
         assert_eq!(pane.selected, 0);
-        
+
         // select_prev on empty pane should do nothing
         pane.select_prev();
         assert_eq!(pane.selected, 0);
@@ -558,33 +640,50 @@ mod tests {
 
     #[test]
     fn test_generate_date_suggestions_valid_month() {
-        let suggestions = generate_date_suggestions("2026-07").expect("Should generate suggestions");
+        let suggestions =
+            generate_date_suggestions("2026-07").expect("Should generate suggestions");
         assert!(!suggestions.is_empty(), "July 2026 should have days");
         assert_eq!(suggestions.len(), 31, "July should have 31 days");
-        
+
         // Check format of first suggestion (should be "01 <weekday>")
         assert!(suggestions[0].starts_with("01"), "First day should be 01");
         let parts: Vec<&str> = suggestions[0].split_whitespace().collect();
         assert_eq!(parts.len(), 2, "Should have day and weekday");
         assert_eq!(parts[0], "01", "First part should be 01");
-        assert!(parts[1].len() == 3, "Weekday should be 3 letters (e.g., 'Wed')");
-        
+        assert!(
+            parts[1].len() == 3,
+            "Weekday should be 3 letters (e.g., 'Wed')"
+        );
+
         // Check format of middle suggestion (should be "14 <weekday>")
-        assert!(suggestions[13].starts_with("14"), "14th day should start with 14");
+        assert!(
+            suggestions[13].starts_with("14"),
+            "14th day should start with 14"
+        );
         let parts: Vec<&str> = suggestions[13].split_whitespace().collect();
         assert_eq!(parts.len(), 2, "Should have day and weekday");
     }
 
     #[test]
     fn test_generate_date_suggestions_february_leap_year() {
-        let suggestions = generate_date_suggestions("2024-02").expect("Should generate suggestions");
-        assert_eq!(suggestions.len(), 29, "February 2024 (leap year) should have 29 days");
+        let suggestions =
+            generate_date_suggestions("2024-02").expect("Should generate suggestions");
+        assert_eq!(
+            suggestions.len(),
+            29,
+            "February 2024 (leap year) should have 29 days"
+        );
     }
 
     #[test]
     fn test_generate_date_suggestions_february_non_leap_year() {
-        let suggestions = generate_date_suggestions("2023-02").expect("Should generate suggestions");
-        assert_eq!(suggestions.len(), 28, "February 2023 (non-leap year) should have 28 days");
+        let suggestions =
+            generate_date_suggestions("2023-02").expect("Should generate suggestions");
+        assert_eq!(
+            suggestions.len(),
+            28,
+            "February 2023 (non-leap year) should have 28 days"
+        );
     }
 
     #[test]
@@ -596,12 +695,16 @@ mod tests {
     #[test]
     fn test_generate_date_suggestions_invalid_format() {
         let suggestions = generate_date_suggestions("2026/07").expect("Should not error");
-        assert!(suggestions.is_empty(), "Invalid format should return empty Vec");
+        assert!(
+            suggestions.is_empty(),
+            "Invalid format should return empty Vec"
+        );
     }
 
     #[test]
     fn test_date_picker_state_new() {
         let picker = DatePickerState::new("2026-07");
+        assert_eq!(picker.target, DatePickerTarget::Due);
         assert_eq!(picker.month_year, "2026-07");
         assert_eq!(picker.selected_day, Some(1));
         assert!(!picker.suggestions.is_empty());
@@ -632,7 +735,11 @@ mod tests {
         let mut picker = DatePickerState::new("2026-07");
         picker.selected_day = Some(1);
         picker.select_prev();
-        assert_eq!(picker.selected_day, Some(1), "Should not go before first day");
+        assert_eq!(
+            picker.selected_day,
+            Some(1),
+            "Should not go before first day"
+        );
     }
 
     #[test]
@@ -640,19 +747,47 @@ mod tests {
         let mut picker = DatePickerState::new("2026-07");
         picker.selected_day = Some(31);
         picker.select_next();
-        assert_eq!(picker.selected_day, Some(31), "Should not go beyond last day");
+        assert_eq!(
+            picker.selected_day,
+            Some(31),
+            "Should not go beyond last day"
+        );
+    }
+
+    #[test]
+    fn test_date_picker_select_next_week() {
+        let mut picker = DatePickerState::new("2026-07");
+        picker.selected_day = Some(1);
+        picker.select_next_week();
+        assert_eq!(picker.selected_day, Some(8));
+    }
+
+    #[test]
+    fn test_date_picker_select_prev_week_clamps_at_start() {
+        let mut picker = DatePickerState::new("2026-07");
+        picker.selected_day = Some(3);
+        picker.select_prev_week();
+        assert_eq!(picker.selected_day, Some(1));
     }
 
     #[test]
     fn test_rank_matches_exact() {
-        let candidates = vec!["email".to_string(), "work".to_string(), "personal".to_string()];
+        let candidates = vec![
+            "email".to_string(),
+            "work".to_string(),
+            "personal".to_string(),
+        ];
         let result = rank_matches("email", candidates);
         assert_eq!(result[0], "email", "Exact match should be first");
     }
 
     #[test]
     fn test_rank_matches_prefix() {
-        let candidates = vec!["email".to_string(), "work".to_string(), "waiting".to_string()];
+        let candidates = vec![
+            "email".to_string(),
+            "work".to_string(),
+            "waiting".to_string(),
+        ];
         let result = rank_matches("wa", candidates);
         assert_eq!(result[0], "waiting", "Prefix match should be first");
     }
@@ -673,7 +808,11 @@ mod tests {
 
     #[test]
     fn test_rank_matches_order_exact_prefix_substring() {
-        let candidates = vec!["work".to_string(), "works".to_string(), "network".to_string()];
+        let candidates = vec![
+            "work".to_string(),
+            "works".to_string(),
+            "network".to_string(),
+        ];
         let result = rank_matches("work", candidates);
         assert_eq!(result[0], "work", "Exact match first");
         assert_eq!(result[1], "works", "Prefix match second");
@@ -705,7 +844,8 @@ mod tests {
 
     #[test]
     fn test_autocomplete_state_new_quick_setter() {
-        let ac = AutocompleteState::new_quick_setter('@', "".to_string(), vec!["email".to_string()]);
+        let ac =
+            AutocompleteState::new_quick_setter('@', "".to_string(), vec!["email".to_string()]);
         assert_eq!(ac.mode, AutocompleteMode::QuickSetter('@'));
         assert_eq!(ac.trigger, '@');
         assert_eq!(ac.prefix, "");
@@ -715,7 +855,11 @@ mod tests {
 
     #[test]
     fn filter_history_autocomplete_prefix_filters() {
-        let items = vec!["@work".to_string(), "@home".to_string(), "due:today".to_string()];
+        let items = vec![
+            "@work".to_string(),
+            "@home".to_string(),
+            "due:today".to_string(),
+        ];
         let ac = AutocompleteState::new_filter_history("@w".to_string(), items.clone());
         assert_eq!(ac.mode, AutocompleteMode::FilterHistory);
         assert_eq!(ac.items, vec!["@work".to_string()]);

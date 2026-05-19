@@ -2,6 +2,7 @@
 created: 2026-05-15T00:00:00
 title: Add OR operator support to filter engine
 area: tui
+resolves_phase: 46
 files:
   - crates/todotxt-core/src/filter.rs:1-210
   - crates/todotxt-tui/src/app.rs:728

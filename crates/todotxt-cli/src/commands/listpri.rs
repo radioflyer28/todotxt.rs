@@ -26,7 +26,12 @@ fn parse_priority_range(spec: &str) -> Result<(char, char), CliError> {
     )))
 }
 
-pub fn run(todo_path: &Path, args: &ListpriArgs, _cfg: &Config, renderer: &Renderer) -> Result<(), CliError> {
+pub fn run(
+    todo_path: &Path,
+    args: &ListpriArgs,
+    _cfg: &Config,
+    renderer: &Renderer,
+) -> Result<(), CliError> {
     let list = TaskList::load(todo_path)?;
 
     let (start, end) = match &args.priorities {

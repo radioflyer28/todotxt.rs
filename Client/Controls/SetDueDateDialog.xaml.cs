@@ -59,8 +59,8 @@ namespace Client
 
             if (!dp.SelectedDate.HasValue) return;
 
-            // "Up" key increases date by 1 day.
             var date = dp.SelectedDate.Value;
+            // "Up" key increases date by 1 day.
             if (e.Key == Key.Up)
             {
                 e.Handled = true;

@@ -2,6 +2,7 @@
 created: 2026-05-15T00:00:00
 title: Add spacer row between TUI group headers
 area: tui
+resolves_phase: 47
 files:
   - crates/todotxt-tui/src/state.rs:10-12
   - crates/todotxt-tui/src/app.rs:755-770

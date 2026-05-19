@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use todotxt_core::resolve_config_path;
+use todotxt_core::{resolve_config_path, ArchiveRotationCadence};
 
 /// Named filter preset stored in config under `[presets.name]`.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
@@ -21,6 +21,9 @@ pub struct Config {
     /// Path to the user's done.txt file (defaults to sibling of todo.txt).
     #[serde(default)]
     pub done_file: Option<PathBuf>,
+    /// Time-based rotation cadence for the active done.txt archive.
+    #[serde(default)]
+    pub archive_rotation_cadence: ArchiveRotationCadence,
     /// Named filter presets. Max 9 per CFG-02.
     #[serde(default)]
     pub presets: HashMap<String, PresetConfig>,
@@ -59,8 +62,7 @@ impl Config {
         if path.exists() {
             let content = std::fs::read_to_string(path)
                 .with_context(|| format!("reading config: {}", path.display()))?;
-            toml::from_str(&content)
-                .with_context(|| format!("parsing config: {}", path.display()))
+            toml::from_str(&content).with_context(|| format!("parsing config: {}", path.display()))
         } else {
             // Auto-create with default todo_file beside config.toml (D-01, D-02).
             // Using the config dir (not a hardcoded home path) means portable mode
@@ -74,10 +76,11 @@ impl Config {
                 todo_file: home_todo,
                 auto_creation_date: false,
                 done_file: None,
+                archive_rotation_cadence: ArchiveRotationCadence::Monthly,
                 presets: HashMap::new(),
             };
-            let toml_str = toml::to_string_pretty(&default)
-                .context("serializing default config")?;
+            let toml_str =
+                toml::to_string_pretty(&default).context("serializing default config")?;
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent) // P-08: always create dirs first
                     .with_context(|| format!("creating config dir: {}", parent.display()))?;
@@ -122,16 +125,9 @@ mod tests {
     fn load_or_create_reads_existing_file() {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("config.toml");
-        fs::write(
-            &config_path,
-            "todo_file = \"/home/user/todo.txt\"\n",
-        )
-        .unwrap();
+        fs::write(&config_path, "todo_file = \"/home/user/todo.txt\"\n").unwrap();
         let config = Config::load_or_create(&config_path).unwrap();
-        assert_eq!(
-            config.todo_file,
-            Some(PathBuf::from("/home/user/todo.txt"))
-        );
+        assert_eq!(config.todo_file, Some(PathBuf::from("/home/user/todo.txt")));
     }
 
     #[test]
@@ -149,6 +145,7 @@ mod tests {
             todo_file: None,
             auto_creation_date: false,
             done_file: None,
+            archive_rotation_cadence: ArchiveRotationCadence::Monthly,
             presets: HashMap::new(),
         };
         assert!(config.resolve_todo_file().is_err());
@@ -160,6 +157,7 @@ mod tests {
             todo_file: Some(PathBuf::from("/home/user/todo.txt")),
             auto_creation_date: false,
             done_file: None,
+            archive_rotation_cadence: ArchiveRotationCadence::Monthly,
             presets: HashMap::new(),
         };
         assert_eq!(
@@ -182,5 +180,26 @@ mod tests {
         let config = Config::load_or_create(&config_path).unwrap();
         let preset = config.presets.get("work").unwrap();
         assert_eq!(preset.filter.as_deref(), Some("+work"));
+    }
+
+    #[test]
+    fn archive_rotation_cadence_defaults_to_monthly() {
+        let config: Config = toml::from_str("todo_file = \"/home/user/todo.txt\"\n").unwrap();
+        assert_eq!(
+            config.archive_rotation_cadence,
+            ArchiveRotationCadence::Monthly
+        );
+    }
+
+    #[test]
+    fn archive_rotation_cadence_deserializes() {
+        let config: Config = toml::from_str(
+            "todo_file = \"/home/user/todo.txt\"\narchive_rotation_cadence = \"monthly\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            config.archive_rotation_cadence,
+            ArchiveRotationCadence::Monthly
+        );
     }
 }

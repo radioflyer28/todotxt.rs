@@ -145,9 +145,8 @@ fn list_json_no_cr_in_output() {
 #[test]
 fn list_no_color_no_cr_artifacts() {
     // Use CRLF content to exercise the CR-normalization path.
-    let fx = TestFixture::with_content(
-        "(A) Buy milk +groceries @home\r\nCall dentist @personal\r\n",
-    );
+    let fx =
+        TestFixture::with_content("(A) Buy milk +groceries @home\r\nCall dentist @personal\r\n");
     let output = fx
         .cmd()
         .arg("--no-color")
@@ -165,3 +164,110 @@ fn list_no_color_no_cr_artifacts() {
     );
 }
 
+#[test]
+fn list_positional_or_context_filter_matches_either_context() {
+    let fx = TestFixture::with_content(
+        "(A) Alpha task @work\n(B) Beta task @home\n(C) Gamma task @gym\n",
+    );
+    let output = fx
+        .cmd()
+        .arg("list")
+        .arg("@work|@home")
+        .output()
+        .expect("todotxt list positional OR ran");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Alpha task"),
+        "work task must be included: {stdout}"
+    );
+    assert!(
+        stdout.contains("Beta task"),
+        "home task must be included: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Gamma task"),
+        "gym task must be excluded: {stdout}"
+    );
+}
+
+#[test]
+fn list_filter_flag_or_priority_matches_either_priority() {
+    let fx = TestFixture::with_content(
+        "(A) Alpha task @work\n(B) Beta task @home\n(C) Gamma task @gym\n",
+    );
+    let output = fx
+        .cmd()
+        .arg("list")
+        .arg("--filter")
+        .arg("(A)|(B)")
+        .output()
+        .expect("todotxt list --filter OR ran");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Alpha task"),
+        "A task must be included: {stdout}"
+    );
+    assert!(
+        stdout.contains("Beta task"),
+        "B task must be included: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Gamma task"),
+        "C task must be excluded: {stdout}"
+    );
+}
+
+#[test]
+fn list_or_and_combined_requires_both_terms() {
+    let fx = TestFixture::with_content(
+        "(A) Alpha task @work\n(B) Beta task @work\n(B) Beta home task @home\n(C) Gamma task @work\n",
+    );
+    let output = fx
+        .cmd()
+        .arg("list")
+        .arg("(A)|(B)")
+        .arg("@work")
+        .output()
+        .expect("todotxt list OR+AND ran");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Alpha task"),
+        "A @work task must be included: {stdout}"
+    );
+    assert!(
+        stdout.contains("Beta task @work"),
+        "B @work task must be included: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Beta home task"),
+        "B @home task must be excluded: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Gamma task"),
+        "C @work task must be excluded: {stdout}"
+    );
+}
+
+#[test]
+fn list_or_empty_branch_is_tolerated() {
+    let fx = TestFixture::with_content("(A) Alpha task @work\n(B) Beta task @home\n");
+    let output = fx
+        .cmd()
+        .arg("list")
+        .arg("@work|")
+        .output()
+        .expect("todotxt list empty OR branch ran");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Alpha task"),
+        "work task must be included: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Beta task"),
+        "home task must be excluded: {stdout}"
+    );
+}

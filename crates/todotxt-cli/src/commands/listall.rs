@@ -2,15 +2,22 @@ use crate::{cli::ListArgs, config::Config, output::Renderer, CliError};
 use std::path::Path;
 use todotxt_core::{Filter, TaskList};
 
-pub fn run(todo_path: &Path, _args: &ListArgs, cfg: &Config, renderer: &Renderer) -> Result<(), CliError> {
+pub fn run(
+    todo_path: &Path,
+    _args: &ListArgs,
+    cfg: &Config,
+    renderer: &Renderer,
+) -> Result<(), CliError> {
     // Load todo.txt
     let todo_list = TaskList::load(todo_path)?;
 
     // Resolve done.txt path (same pattern as archive.rs)
-    let done_path = cfg
-        .done_file
-        .clone()
-        .unwrap_or_else(|| todo_path.parent().unwrap_or(Path::new(".")).join("done.txt"));
+    let done_path = cfg.done_file.clone().unwrap_or_else(|| {
+        todo_path
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("done.txt")
+    });
 
     // Show all tasks — no threshold or hidden suppression
     let no_filter = Filter {

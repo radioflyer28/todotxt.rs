@@ -1,9 +1,11 @@
-use todotxt_core::{Filter, TaskList};
 use chrono::Local;
 use std::fs;
 use tempfile::TempDir;
+use todotxt_core::{Filter, TaskList};
 
-fn today_str() -> String { Local::now().date_naive().format("%Y-%m-%d").to_string() }
+fn today_str() -> String {
+    Local::now().date_naive().format("%Y-%m-%d").to_string()
+}
 
 fn task_list_from(lines: &[&str]) -> (TaskList, TempDir) {
     let dir = TempDir::new().unwrap();
@@ -18,10 +20,7 @@ fn task_list_from(lines: &[&str]) -> (TaskList, TempDir) {
 
 #[test]
 fn filter_done_returns_only_completed() {
-    let (tl, _tmp) = task_list_from(&[
-        "x 2024-01-01 Completed task",
-        "Incomplete task",
-    ]);
+    let (tl, _tmp) = task_list_from(&["x 2024-01-01 Completed task", "Incomplete task"]);
     let f = Filter::from_query("DONE");
     let results = tl.filter(&f);
     assert_eq!(results.len(), 1);
@@ -31,10 +30,7 @@ fn filter_done_returns_only_completed() {
 
 #[test]
 fn filter_not_done_returns_only_incomplete() {
-    let (tl, _tmp) = task_list_from(&[
-        "x 2024-01-01 Completed task",
-        "Incomplete task",
-    ]);
+    let (tl, _tmp) = task_list_from(&["x 2024-01-01 Completed task", "Incomplete task"]);
     let f = Filter::from_query("-DONE");
     let results = tl.filter(&f);
     assert_eq!(results.len(), 1);
@@ -60,10 +56,7 @@ fn filter_due_today_matches_today_only() {
 
 #[test]
 fn filter_due_past_matches_overdue() {
-    let (tl, _tmp) = task_list_from(&[
-        "Overdue due:2000-01-01",
-        "Future due:2099-12-31",
-    ]);
+    let (tl, _tmp) = task_list_from(&["Overdue due:2000-01-01", "Future due:2099-12-31"]);
     let f = Filter::from_query("due:past");
     let results = tl.filter(&f);
     assert_eq!(results.len(), 1);
@@ -149,7 +142,10 @@ fn filter_suppresses_hidden_h1_by_default() {
 #[test]
 fn filter_shows_hidden_when_suppression_off() {
     let (tl, _tmp) = task_list_from(&["Normal task", "Secret task h:1"]);
-    let f = Filter { suppress_hidden: false, ..Filter::new() };
+    let f = Filter {
+        suppress_hidden: false,
+        ..Filter::new()
+    };
     let results = tl.filter(&f);
     assert_eq!(results.len(), 2);
 }

@@ -36,14 +36,13 @@ fn fixture_with_done_file(
 #[test]
 fn test_alias_a_adds_task() {
     let fixture = TestFixture::with_content("Buy milk\n");
-    fixture
-        .cmd()
-        .args(["a", "Call dentist"])
-        .assert()
-        .success();
+    fixture.cmd().args(["a", "Call dentist"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(content.contains("Call dentist"), "task should be present, got: {content}");
+    assert!(
+        content.contains("Call dentist"),
+        "task should be present, got: {content}"
+    );
 }
 
 #[test]
@@ -52,7 +51,10 @@ fn test_alias_rm_deletes_task() {
     fixture.cmd().args(["rm", "1"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(!content.contains("Buy milk"), "deleted task should be gone, got: {content}");
+    assert!(
+        !content.contains("Buy milk"),
+        "deleted task should be gone, got: {content}"
+    );
     assert!(content.contains("Send report"), "second task should remain");
 }
 
@@ -62,7 +64,10 @@ fn test_alias_done_completes_task() {
     fixture.cmd().args(["done", "1"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(content.starts_with("x "), "completed task should start with 'x ', got: {content}");
+    assert!(
+        content.starts_with("x "),
+        "completed task should start with 'x ', got: {content}"
+    );
 }
 
 #[test]
@@ -71,7 +76,10 @@ fn test_alias_dp_removes_priority() {
     fixture.cmd().args(["dp", "1"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(!content.starts_with("(A)"), "priority should be removed, got: {content}");
+    assert!(
+        !content.starts_with("(A)"),
+        "priority should be removed, got: {content}"
+    );
     assert!(content.contains("Buy milk"), "task text should remain");
 }
 
@@ -81,16 +89,26 @@ fn test_alias_p_sets_priority() {
     fixture.cmd().args(["p", "A", "1"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(content.starts_with("(A)"), "priority should be set, got: {content}");
+    assert!(
+        content.starts_with("(A)"),
+        "priority should be set, got: {content}"
+    );
 }
 
 #[test]
 fn test_alias_app_appends_text() {
     let fixture = TestFixture::with_content("Buy milk\n");
-    fixture.cmd().args(["app", "1", "due:tomorrow"]).assert().success();
+    fixture
+        .cmd()
+        .args(["app", "1", "due:tomorrow"])
+        .assert()
+        .success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(content.contains("due:tomorrow"), "appended text should be present, got: {content}");
+    assert!(
+        content.contains("due:tomorrow"),
+        "appended text should be present, got: {content}"
+    );
 }
 
 #[test]
@@ -99,7 +117,10 @@ fn test_alias_prep_prepends_text() {
     fixture.cmd().args(["prep", "1", "(A)"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(content.contains("(A)"), "prepended text should be present, got: {content}");
+    assert!(
+        content.contains("(A)"),
+        "prepended text should be present, got: {content}"
+    );
 }
 
 #[test]
@@ -200,12 +221,19 @@ fn test_list_compat_format() {
     let text = String::from_utf8(output).unwrap();
     // Each output line should be "{N} {raw_task}"
     assert!(
-        text.lines().any(|l| l.starts_with("1 (A) Buy milk") || l.starts_with("2 (A) Buy milk")),
+        text.lines()
+            .any(|l| l.starts_with("1 (A) Buy milk") || l.starts_with("2 (A) Buy milk")),
         "expected '1 (A) Buy milk' or '2 (A) Buy milk' in compat output, got:\n{text}"
     );
     // No table border characters from comfy-table
-    assert!(!text.contains('─'), "compat output should not contain table borders, got:\n{text}");
-    assert!(!text.contains('│'), "compat output should not contain table borders, got:\n{text}");
+    assert!(
+        !text.contains('─'),
+        "compat output should not contain table borders, got:\n{text}"
+    );
+    assert!(
+        !text.contains('│'),
+        "compat output should not contain table borders, got:\n{text}"
+    );
 }
 
 #[test]
@@ -237,9 +265,7 @@ fn test_list_compat_numbering_matches_id() {
 
 #[test]
 fn test_listpri_default_shows_all_priorities() {
-    let fixture = TestFixture::with_content(
-        "(A) High priority\n(C) Low priority\nNo priority\n",
-    );
+    let fixture = TestFixture::with_content("(A) High priority\n(C) Low priority\nNo priority\n");
     fixture
         .cmd()
         .args(["listpri"])
@@ -252,9 +278,8 @@ fn test_listpri_default_shows_all_priorities() {
 
 #[test]
 fn test_listpri_single_letter() {
-    let fixture = TestFixture::with_content(
-        "(A) High priority\n(B) Medium\n(C) Low\nNo priority\n",
-    );
+    let fixture =
+        TestFixture::with_content("(A) High priority\n(B) Medium\n(C) Low\nNo priority\n");
     fixture
         .cmd()
         .args(["listpri", "A"])
@@ -268,9 +293,7 @@ fn test_listpri_single_letter() {
 
 #[test]
 fn test_listpri_range() {
-    let fixture = TestFixture::with_content(
-        "(A) First\n(B) Second\n(C) Third\n(D) Fourth\nNone\n",
-    );
+    let fixture = TestFixture::with_content("(A) First\n(B) Second\n(C) Third\n(D) Fourth\nNone\n");
     fixture
         .cmd()
         .args(["listpri", "A-C"])
@@ -304,21 +327,15 @@ fn test_listpri_no_matching_tasks_exits_0() {
 #[test]
 fn test_listpri_invalid_spec_exits_nonzero() {
     let fixture = TestFixture::with_content("Buy milk\n");
-    fixture
-        .cmd()
-        .args(["listpri", "123"])
-        .assert()
-        .failure();
+    fixture.cmd().args(["listpri", "123"]).assert().failure();
 }
 
 // ── Group 5: listall tests ────────────────────────────────────────────────────
 
 #[test]
 fn test_listall_merges_todo_and_done() {
-    let (fixture, done_path) = fixture_with_done_file(
-        "(A) Active task\n",
-        Some("x 2024-01-01 Completed task\n"),
-    );
+    let (fixture, done_path) =
+        fixture_with_done_file("(A) Active task\n", Some("x 2024-01-01 Completed task\n"));
     let _ = done_path; // keep alive
     fixture
         .cmd()
@@ -343,10 +360,8 @@ fn test_listall_missing_done_txt_exits_0() {
 
 #[test]
 fn test_listall_alias_lsa() {
-    let (fixture, done_path) = fixture_with_done_file(
-        "Active task\n",
-        Some("x 2024-01-01 Done task\n"),
-    );
+    let (fixture, done_path) =
+        fixture_with_done_file("Active task\n", Some("x 2024-01-01 Done task\n"));
     let _ = done_path;
     fixture
         .cmd()
@@ -378,7 +393,11 @@ fn test_deduplicate_removes_exact_duplicate() {
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     let lines: Vec<&str> = content.lines().collect();
-    assert_eq!(lines.len(), 2, "expected 2 lines after dedup, got: {content}");
+    assert_eq!(
+        lines.len(),
+        2,
+        "expected 2 lines after dedup, got: {content}"
+    );
     assert!(content.contains("Buy milk"), "original task should remain");
     assert!(content.contains("Send report"), "second task should remain");
 }
@@ -401,7 +420,11 @@ fn test_deduplicate_multiple_duplicates() {
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     let lines: Vec<&str> = content.lines().collect();
-    assert_eq!(lines.len(), 3, "expected 3 unique tasks remaining, got: {content}");
+    assert_eq!(
+        lines.len(),
+        3,
+        "expected 3 unique tasks remaining, got: {content}"
+    );
 }
 
 #[test]
@@ -428,5 +451,9 @@ fn test_deduplicate_idempotent() {
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     let lines: Vec<&str> = content.lines().collect();
-    assert_eq!(lines.len(), 2, "should have 2 tasks after two passes, got: {content}");
+    assert_eq!(
+        lines.len(),
+        2,
+        "should have 2 tasks after two passes, got: {content}"
+    );
 }

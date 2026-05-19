@@ -56,7 +56,11 @@ pub fn run_pri(
         let updated = task.with_priority(Some(priority_upper));
         list.update(idx, updated.clone())?;
         renderer.print_write_result(
-            &format!("Priority set to ({}) for task #{}.", priority_upper, idx + 1),
+            &format!(
+                "Priority set to ({}) for task #{}.",
+                priority_upper,
+                idx + 1
+            ),
             idx,
             &updated,
         );
@@ -67,11 +71,7 @@ pub fn run_pri(
 }
 
 /// Remove priority from one or more tasks (`depri`).
-pub fn run_depri(
-    todo_path: &Path,
-    ids: &[usize],
-    renderer: &Renderer,
-) -> Result<(), CliError> {
+pub fn run_depri(todo_path: &Path, ids: &[usize], renderer: &Renderer) -> Result<(), CliError> {
     if ids.is_empty() {
         return Err(CliError::Other(anyhow::anyhow!(
             "at least one task ID required"

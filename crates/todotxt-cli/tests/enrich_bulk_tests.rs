@@ -1,7 +1,10 @@
 mod helpers;
 
+use chrono::{Datelike, Duration, Local, NaiveTime};
+use filetime::{set_file_mtime, FileTime};
 use helpers::TestFixture;
 use predicates::str::contains;
+use predicates::prelude::PredicateBooleanExt;
 use std::fs;
 use toml::Value;
 
@@ -30,16 +33,20 @@ fn fixture_with_done_file() -> (TestFixture, std::path::PathBuf) {
     (fixture, done_path)
 }
 
+fn previous_month_date() -> chrono::NaiveDate {
+    let today = Local::now().date_naive();
+    let first_of_month = today.with_day(1).unwrap();
+    first_of_month
+        .checked_sub_signed(Duration::days(1))
+        .unwrap()
+}
+
 // ── pri / depri tests ────────────────────────────────────────────────────────
 
 #[test]
 fn test_pri_sets_priority() {
     let fixture = TestFixture::with_content("Buy milk +groceries @home\nSend report\n");
-    fixture
-        .cmd()
-        .args(["pri", "B", "1"])
-        .assert()
-        .success();
+    fixture.cmd().args(["pri", "B", "1"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     assert!(
@@ -54,15 +61,14 @@ fn test_pri_replaces_existing() {
     // Task 1 starts with (A); after `pri A 1 B` it should have (B).
     // NOTE: CLI syntax: pri <priority> <ids...>
     let fixture = TestFixture::with_content("(A) Buy milk\nSend report\n");
-    fixture
-        .cmd()
-        .args(["pri", "B", "1"])
-        .assert()
-        .success();
+    fixture.cmd().args(["pri", "B", "1"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     let first = content.lines().next().unwrap();
-    assert!(first.starts_with("(B) "), "expected (B) prefix, got: {first}");
+    assert!(
+        first.starts_with("(B) "),
+        "expected (B) prefix, got: {first}"
+    );
     assert!(!first.contains("(A)"), "old priority (A) should be gone");
 }
 
@@ -88,21 +94,13 @@ fn test_pri_multi_id() {
 fn test_pri_invalid_letter_exits_2() {
     let fixture = TestFixture::with_content("Task one\n");
     // '1' is not an ASCII alphabetic char → CliError::Other → exit 2
-    fixture
-        .cmd()
-        .args(["pri", "1", "1"])
-        .assert()
-        .code(2);
+    fixture.cmd().args(["pri", "1", "1"]).assert().code(2);
 }
 
 #[test]
 fn test_depri_removes_priority() {
     let fixture = TestFixture::with_content("(A) Buy milk\nSend report\n");
-    fixture
-        .cmd()
-        .args(["depri", "1"])
-        .assert()
-        .success();
+    fixture.cmd().args(["depri", "1"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     let first = content.lines().next().unwrap();
@@ -116,11 +114,7 @@ fn test_depri_removes_priority() {
 #[test]
 fn test_depri_multi_id() {
     let fixture = TestFixture::with_content("(A) Task one\n(B) Task two\nTask three\n");
-    fixture
-        .cmd()
-        .args(["depri", "1", "2"])
-        .assert()
-        .success();
+    fixture.cmd().args(["depri", "1", "2"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     let mut lines = content.lines();
@@ -134,11 +128,7 @@ fn test_depri_multi_id() {
 fn test_depri_idempotent() {
     // depri on a task that already has no priority should succeed (skip with info message)
     let fixture = TestFixture::with_content("Task one\n");
-    fixture
-        .cmd()
-        .args(["depri", "1"])
-        .assert()
-        .success();
+    fixture.cmd().args(["depri", "1"]).assert().success();
 }
 
 // ── due / postpone tests ─────────────────────────────────────────────────────
@@ -162,11 +152,7 @@ fn test_due_iso_date() {
 #[test]
 fn test_due_today() {
     let fixture = TestFixture::with_content("Buy milk\n");
-    fixture
-        .cmd()
-        .args(["due", "1", "today"])
-        .assert()
-        .success();
+    fixture.cmd().args(["due", "1", "today"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
     // Just verify the due: tag was added in YYYY-MM-DD format
@@ -245,7 +231,10 @@ fn test_due_json_output() {
     let text = String::from_utf8(output).unwrap();
     let val: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
     assert_eq!(val["schema_version"], 1, "schema_version should be 1");
-    assert!(val["data"].is_object() || val["data"].is_array(), "data field should be present");
+    assert!(
+        val["data"].is_object() || val["data"].is_array(),
+        "data field should be present"
+    );
 }
 
 #[test]
@@ -364,7 +353,10 @@ fn test_archive_idempotent() {
     // Second run: 0 completed remain in todo.txt → done.txt unchanged
     let done_content = fs::read_to_string(&done_path).unwrap();
     let count = done_content.lines().filter(|l| l.starts_with("x ")).count();
-    assert_eq!(count, 1, "done.txt should have exactly 1 archived task after two runs");
+    assert_eq!(
+        count, 1,
+        "done.txt should have exactly 1 archived task after two runs"
+    );
 }
 
 #[test]
@@ -407,6 +399,50 @@ fn test_archive_json_output() {
 }
 
 #[test]
+fn test_archive_rotates_prior_period_done_txt_and_reports_it() {
+    let (fixture, done_path) = fixture_with_done_file();
+    fs::write(&done_path, "x 2026-01-01 old archived task\n").unwrap();
+
+    let previous_month = previous_month_date();
+    let previous_month_time = previous_month.and_time(NaiveTime::from_hms_opt(12, 0, 0).unwrap());
+    set_file_mtime(
+        &done_path,
+        FileTime::from_unix_time(previous_month_time.and_utc().timestamp(), 0),
+    )
+    .unwrap();
+
+    let rotated_name = format!(
+        "done-{:04}-{:02}.txt",
+        previous_month.year(),
+        previous_month.month()
+    );
+    let rotated_path = fixture.dir.path().join(&rotated_name);
+
+    fixture
+        .cmd()
+        .args(["archive"])
+        .assert()
+        .success()
+        .stderr(contains("Rotated previous done.txt to").and(contains(rotated_name.as_str())));
+
+    let rotated_content = fs::read_to_string(&rotated_path).unwrap();
+    assert!(
+        rotated_content.contains("old archived task"),
+        "prior done.txt content should move into the rotated period file"
+    );
+
+    let active_done_content = fs::read_to_string(&done_path).unwrap();
+    assert!(
+        active_done_content.contains("x 2024-01-01 Done task +work"),
+        "newly archived task should be written into the fresh active done.txt"
+    );
+    assert!(
+        !active_done_content.contains("old archived task"),
+        "fresh active done.txt should not retain prior-period content after rotation"
+    );
+}
+
+#[test]
 fn test_del_done_removes_completed() {
     let fixture = TestFixture::with_content(SAMPLE_TODO);
 
@@ -439,7 +475,10 @@ fn test_del_done_idempotent() {
     fixture.cmd().args(["del-done"]).assert().success();
 
     let content = fs::read_to_string(fixture.todo.path()).unwrap();
-    assert!(!content.contains("x 2024-01-01"), "no completed tasks after second run");
+    assert!(
+        !content.contains("x 2024-01-01"),
+        "no completed tasks after second run"
+    );
 }
 
 #[test]
@@ -477,21 +516,13 @@ fn test_invalid_id_exits_1() {
 fn test_validation_error_exits_2() {
     // Non-alphabetic char as priority → exit 2
     let fixture = TestFixture::with_content("Task one\n");
-    fixture
-        .cmd()
-        .args(["pri", "9", "1"])
-        .assert()
-        .code(2);
+    fixture.cmd().args(["pri", "9", "1"]).assert().code(2);
 }
 
 #[test]
 fn test_success_exits_0() {
     let fixture = TestFixture::with_content("Task one\n");
-    fixture
-        .cmd()
-        .args(["pri", "A", "1"])
-        .assert()
-        .code(0);
+    fixture.cmd().args(["pri", "A", "1"]).assert().code(0);
 }
 
 #[test]

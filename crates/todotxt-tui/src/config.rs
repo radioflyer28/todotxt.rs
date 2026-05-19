@@ -8,8 +8,9 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use todotxt_core::SortOrder;
 use todotxt_core::resolve_config_path;
+use todotxt_core::ArchiveRotationCadence;
+use todotxt_core::SortOrder;
 
 /// Serde helper: returns `true` as the default value for normalization toggles.
 /// Required because `#[serde(default)]` alone defaults to `false` for bool.
@@ -137,6 +138,9 @@ pub struct TuiConfig {
     /// Automatically prepend today's date to new tasks.
     #[serde(default)]
     pub auto_creation_date: bool,
+    /// Time-based rotation cadence for the active done.txt archive.
+    #[serde(default)]
+    pub archive_rotation_cadence: ArchiveRotationCadence,
     /// Normalize token placement when appending text to a task (D-07 in 21-CONTEXT.md).
     /// When true (default), appended priority/project/context/date tokens are merged
     /// into the task's canonical fields instead of raw string concat.
@@ -193,12 +197,19 @@ fn default_archive_for_todo(todo_path: &Path) -> PathBuf {
 /// - `--archive` overrides `done_file`
 /// - When `--todo` is set and `--archive` is omitted, archive defaults to
 ///   `{todo_dir}/done.txt`
-pub fn resolve_startup_paths(config: &TuiConfig, overrides: &CliPathOverrides) -> color_eyre::Result<StartupPaths> {
-    let todo_path = overrides.todo.clone().or_else(|| config.todo_file.clone()).ok_or_else(|| {
-        color_eyre::eyre::eyre!(
-            "todo_file is not set in config.toml. Hint: set todo_file or pass --todo"
-        )
-    })?;
+pub fn resolve_startup_paths(
+    config: &TuiConfig,
+    overrides: &CliPathOverrides,
+) -> color_eyre::Result<StartupPaths> {
+    let todo_path = overrides
+        .todo
+        .clone()
+        .or_else(|| config.todo_file.clone())
+        .ok_or_else(|| {
+            color_eyre::eyre::eyre!(
+                "todo_file is not set in config.toml. Hint: set todo_file or pass --todo"
+            )
+        })?;
 
     let archive_path = if let Some(explicit_archive) = overrides.archive.clone() {
         explicit_archive
@@ -297,23 +308,25 @@ impl TuiConfig {
             // Using the config dir (not a hardcoded home path) means portable mode
             // automatically co-locates todo.txt beside the config and binary.
             let config_dir = path.parent().map(|p| p.to_path_buf());
-            let home_todo = config_dir
-                .as_ref()
-                .map(|d| d.join("todo.txt"))
-                .or_else(|| directories::BaseDirs::new()
-                    .map(|b| b.home_dir().join(".todotxt.rs").join("todo.txt")));
+            let home_todo = config_dir.as_ref().map(|d| d.join("todo.txt")).or_else(|| {
+                directories::BaseDirs::new()
+                    .map(|b| b.home_dir().join(".todotxt.rs").join("todo.txt"))
+            });
             let default = TuiConfig {
                 todo_file: home_todo,
+                archive_rotation_cadence: ArchiveRotationCadence::Monthly,
                 ..TuiConfig::default()
             };
             let toml_str = toml::to_string_pretty(&default)
                 .map_err(|e| color_eyre::eyre::eyre!("Failed to serialize default config: {e}"))?;
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| color_eyre::eyre::eyre!("creating config dir {}: {e}", parent.display()))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    color_eyre::eyre::eyre!("creating config dir {}: {e}", parent.display())
+                })?;
             }
-            std::fs::write(path, &toml_str)
-                .map_err(|e| color_eyre::eyre::eyre!("writing default config {}: {e}", path.display()))?;
+            std::fs::write(path, &toml_str).map_err(|e| {
+                color_eyre::eyre::eyre!("writing default config {}: {e}", path.display())
+            })?;
             Ok(default)
         }
     }
@@ -330,10 +343,12 @@ impl TuiConfig {
         let content = toml::to_string(self)
             .map_err(|e| color_eyre::eyre::eyre!("Failed to serialize config: {e}"))?;
         let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &content)
-            .map_err(|e| color_eyre::eyre::eyre!("Failed to write config tmp {}: {e}", tmp_path.display()))?;
-        std::fs::rename(&tmp_path, path)
-            .map_err(|e| color_eyre::eyre::eyre!("Failed to rename config tmp to {}: {e}", path.display()))?;
+        std::fs::write(&tmp_path, &content).map_err(|e| {
+            color_eyre::eyre::eyre!("Failed to write config tmp {}: {e}", tmp_path.display())
+        })?;
+        std::fs::rename(&tmp_path, path).map_err(|e| {
+            color_eyre::eyre::eyre!("Failed to rename config tmp to {}: {e}", path.display())
+        })?;
         Ok(())
     }
 }
@@ -377,10 +392,12 @@ impl TuiStateFile {
         let content = toml::to_string(self)
             .map_err(|e| color_eyre::eyre::eyre!("Failed to serialize TUI state: {e}"))?;
         let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &content)
-            .map_err(|e| color_eyre::eyre::eyre!("Failed to write state tmp {}: {e}", tmp_path.display()))?;
-        std::fs::rename(&tmp_path, path)
-            .map_err(|e| color_eyre::eyre::eyre!("Failed to rename state tmp to {}: {e}", path.display()))?;
+        std::fs::write(&tmp_path, &content).map_err(|e| {
+            color_eyre::eyre::eyre!("Failed to write state tmp {}: {e}", tmp_path.display())
+        })?;
+        std::fs::rename(&tmp_path, path).map_err(|e| {
+            color_eyre::eyre::eyre!("Failed to rename state tmp to {}: {e}", path.display())
+        })?;
         Ok(())
     }
 }
@@ -465,37 +482,100 @@ pub(crate) fn parse_key_chord(s: &str) -> Option<(KeyCode, KeyModifiers)> {
 /// Used as the base map by `resolve_keymap`.
 pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
     let mut m = HashMap::new();
-    m.insert("quit".into(),            (KeyCode::Char('q'), KeyModifiers::NONE));
-    m.insert("add".into(),             (KeyCode::Char('n'), KeyModifiers::NONE));
-    m.insert("edit".into(),            (KeyCode::Char('e'), KeyModifiers::NONE));
-    m.insert("delete".into(),          (KeyCode::Char('d'), KeyModifiers::NONE));
-    m.insert("bulk_delete".into(),     (KeyCode::Char('D'), KeyModifiers::NONE));
-    m.insert("bulk_append".into(),     (KeyCode::Char('T'), KeyModifiers::NONE));
-    m.insert("toggle_done".into(),     (KeyCode::Char('x'), KeyModifiers::NONE));
-    m.insert("archive".into(),         (KeyCode::Char('A'), KeyModifiers::NONE));
-    m.insert("filter_open".into(),     (KeyCode::Char('f'), KeyModifiers::NONE));
-    m.insert("filter_define".into(),   (KeyCode::Char('F'), KeyModifiers::NONE));
-    m.insert("filter_toggle".into(),   (KeyCode::Char('f'), KeyModifiers::CONTROL));
-    m.insert("sort_cycle".into(),      (KeyCode::Char('o'), KeyModifiers::NONE));
-    m.insert("group_toggle".into(),    (KeyCode::Char('G'), KeyModifiers::NONE));
-    m.insert("group_by_cycle".into(),  (KeyCode::Char('g'), KeyModifiers::NONE));
-    m.insert("deferred_toggle".into(), (KeyCode::Char('h'), KeyModifiers::NONE));
-    m.insert("theme_cycle".into(),     (KeyCode::Char('t'), KeyModifiers::NONE));
-    m.insert("disjoint_select".into(), (KeyCode::Char('v'), KeyModifiers::NONE));
-    m.insert("disjoint_mark".into(),   (KeyCode::Char(' '), KeyModifiers::NONE));
-    m.insert("quick_context".into(),   (KeyCode::Char('@'), KeyModifiers::NONE));
-    m.insert("quick_project".into(),   (KeyCode::Char('+'), KeyModifiers::NONE));
+    m.insert("quit".into(), (KeyCode::Char('q'), KeyModifiers::NONE));
+    m.insert("add".into(), (KeyCode::Char('n'), KeyModifiers::NONE));
+    m.insert("edit".into(), (KeyCode::Char('e'), KeyModifiers::NONE));
+    m.insert("delete".into(), (KeyCode::Char('d'), KeyModifiers::NONE));
+    m.insert(
+        "bulk_delete".into(),
+        (KeyCode::Char('D'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "bulk_append".into(),
+        (KeyCode::Char('T'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "toggle_done".into(),
+        (KeyCode::Char('x'), KeyModifiers::NONE),
+    );
+    m.insert("archive".into(), (KeyCode::Char('A'), KeyModifiers::NONE));
+    m.insert(
+        "filter_open".into(),
+        (KeyCode::Char('f'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "filter_define".into(),
+        (KeyCode::Char('F'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "filter_toggle".into(),
+        (KeyCode::Char('f'), KeyModifiers::CONTROL),
+    );
+    m.insert(
+        "sort_cycle".into(),
+        (KeyCode::Char('o'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "group_toggle".into(),
+        (KeyCode::Char('G'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "group_by_cycle".into(),
+        (KeyCode::Char('g'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "deferred_toggle".into(),
+        (KeyCode::Char('h'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "theme_cycle".into(),
+        (KeyCode::Char('t'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "disjoint_select".into(),
+        (KeyCode::Char('v'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "disjoint_mark".into(),
+        (KeyCode::Char(' '), KeyModifiers::NONE),
+    );
+    m.insert(
+        "quick_context".into(),
+        (KeyCode::Char('@'), KeyModifiers::NONE),
+    );
+    m.insert(
+        "quick_project".into(),
+        (KeyCode::Char('+'), KeyModifiers::NONE),
+    );
     // Phase 22 parity hotkeys (D-11)
-    m.insert("help".into(),            (KeyCode::Char('?'), KeyModifiers::NONE));
-    m.insert("clear_filter".into(),    (KeyCode::Char('0'), KeyModifiers::NONE));
-    m.insert("reload".into(),          (KeyCode::Char('.'), KeyModifiers::NONE));
+    m.insert("help".into(), (KeyCode::Char('?'), KeyModifiers::NONE));
+    m.insert(
+        "clear_filter".into(),
+        (KeyCode::Char('0'), KeyModifiers::NONE),
+    );
+    m.insert("reload".into(), (KeyCode::Char('.'), KeyModifiers::NONE));
     // Phase 26 pane lifecycle hotkeys (D-17, D-18, D-20)
-    m.insert("pane_add".into(),        (KeyCode::Char('n'), KeyModifiers::CONTROL));
-    m.insert("pane_delete".into(),     (KeyCode::Char('w'), KeyModifiers::CONTROL));
-    m.insert("pane_hide_toggle".into(), (KeyCode::Char('p'), KeyModifiers::CONTROL));
+    m.insert(
+        "pane_add".into(),
+        (KeyCode::Char('n'), KeyModifiers::CONTROL),
+    );
+    m.insert(
+        "pane_delete".into(),
+        (KeyCode::Char('w'), KeyModifiers::CONTROL),
+    );
+    m.insert(
+        "pane_hide_toggle".into(),
+        (KeyCode::Char('p'), KeyModifiers::CONTROL),
+    );
     // Phase 41 pane task movement (D-07, PMOVE-01)
-    m.insert("pane_move_left".into(),  (KeyCode::Left,  KeyModifiers::CONTROL));
-    m.insert("pane_move_right".into(), (KeyCode::Right, KeyModifiers::CONTROL));
+    m.insert(
+        "pane_move_left".into(),
+        (KeyCode::Left, KeyModifiers::CONTROL),
+    );
+    m.insert(
+        "pane_move_right".into(),
+        (KeyCode::Right, KeyModifiers::CONTROL),
+    );
     m
 }
 
@@ -507,18 +587,16 @@ pub(crate) fn default_keymap() -> HashMap<String, (KeyCode, KeyModifiers)> {
 /// to their defaults and a conflict warning is emitted (D-07, Plan 22-02).
 ///
 /// Returns `(effective_bindings, warnings)`.
-pub fn resolve_keymap(config: &TuiConfig) -> (HashMap<String, (KeyCode, KeyModifiers)>, Vec<String>) {
+pub fn resolve_keymap(
+    config: &TuiConfig,
+) -> (HashMap<String, (KeyCode, KeyModifiers)>, Vec<String>) {
     let mut effective = default_keymap();
-    let known_actions: std::collections::HashSet<String> =
-        effective.keys().cloned().collect();
+    let known_actions: std::collections::HashSet<String> = effective.keys().cloned().collect();
     let mut warnings = Vec::new();
 
     for (action, chord_str) in &config.keymap {
         if !known_actions.contains(action.as_str()) {
-            warnings.push(format!(
-                "unknown action '{}' in [keymap] — ignored",
-                action
-            ));
+            warnings.push(format!("unknown action '{}' in [keymap] — ignored", action));
         } else if let Some(binding) = parse_key_chord(chord_str) {
             effective.insert(action.clone(), binding);
         } else {
@@ -534,7 +612,10 @@ pub fn resolve_keymap(config: &TuiConfig) -> (HashMap<String, (KeyCode, KeyModif
     let defaults = default_keymap();
     let mut chord_to_actions: HashMap<(KeyCode, KeyModifiers), Vec<String>> = HashMap::new();
     for (action, binding) in &effective {
-        chord_to_actions.entry(*binding).or_default().push(action.clone());
+        chord_to_actions
+            .entry(*binding)
+            .or_default()
+            .push(action.clone());
     }
     for (chord, actions) in &chord_to_actions {
         if actions.len() > 1 {
@@ -592,8 +673,35 @@ normalize_edit = true
 auto_creation_date = false
 "#;
         let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
-        assert_eq!(config.normalize_append, true, "normalize_append should default to true");
-        assert_eq!(config.normalize_edit, true, "normalize_edit should default to true");
+        assert_eq!(
+            config.normalize_append, true,
+            "normalize_append should default to true"
+        );
+        assert_eq!(
+            config.normalize_edit, true,
+            "normalize_edit should default to true"
+        );
+    }
+
+    #[test]
+    fn archive_rotation_cadence_defaults_to_monthly() {
+        let config: TuiConfig =
+            toml::from_str("todo_file = \"tasks.txt\"\n").expect("Failed to parse TOML");
+        assert_eq!(
+            config.archive_rotation_cadence,
+            ArchiveRotationCadence::Monthly
+        );
+    }
+
+    #[test]
+    fn archive_rotation_cadence_deserializes() {
+        let config: TuiConfig =
+            toml::from_str("todo_file = \"tasks.txt\"\narchive_rotation_cadence = \"monthly\"\n")
+                .expect("Failed to parse TOML");
+        assert_eq!(
+            config.archive_rotation_cadence,
+            ArchiveRotationCadence::Monthly
+        );
     }
 
     // ── Phase 22 keymap tests ─────────────────────────────────────────────────
@@ -605,7 +713,10 @@ auto_creation_date = false
 delete = "backspace"
 "#;
         let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
-        assert_eq!(config.keymap.get("delete").map(|s| s.as_str()), Some("backspace"));
+        assert_eq!(
+            config.keymap.get("delete").map(|s| s.as_str()),
+            Some("backspace")
+        );
     }
 
     #[test]
@@ -614,7 +725,10 @@ delete = "backspace"
 auto_creation_date = false
 "#;
         let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
-        assert!(config.keymap.is_empty(), "keymap should default to empty map when [keymap] is absent");
+        assert!(
+            config.keymap.is_empty(),
+            "keymap should default to empty map when [keymap] is absent"
+        );
     }
 
     #[test]
@@ -662,7 +776,9 @@ auto_creation_date = false
     #[test]
     fn resolve_keymap_unknown_action_adds_warning() {
         let mut config = TuiConfig::default();
-        config.keymap.insert("nonexistent_action".into(), "x".into());
+        config
+            .keymap
+            .insert("nonexistent_action".into(), "x".into());
         let (effective, warnings) = resolve_keymap(&config);
         assert!(
             warnings.iter().any(|w| w.contains("nonexistent_action")),
@@ -678,7 +794,9 @@ auto_creation_date = false
         config.keymap.insert("delete".into(), "bogus_chord".into());
         let (effective, warnings) = resolve_keymap(&config);
         assert!(
-            warnings.iter().any(|w| w.contains("bogus_chord") && w.contains("delete")),
+            warnings
+                .iter()
+                .any(|w| w.contains("bogus_chord") && w.contains("delete")),
             "expected warning for invalid chord"
         );
         // Default for "delete" should still be 'd'
@@ -693,7 +811,10 @@ auto_creation_date = false
         let mut config = TuiConfig::default();
         config.keymap.insert("delete".into(), "backspace".into());
         let (effective, warnings) = resolve_keymap(&config);
-        assert!(warnings.is_empty(), "no warnings expected for valid override");
+        assert!(
+            warnings.is_empty(),
+            "no warnings expected for valid override"
+        );
         assert_eq!(
             effective.get("delete"),
             Some(&(KeyCode::Backspace, KeyModifiers::NONE))
@@ -731,7 +852,10 @@ auto_creation_date = false
 todo_file = "tasks.txt"
 "#;
         let config: TuiConfig = toml::from_str(toml_str).expect("Failed to parse TOML");
-        assert!(config.panes.is_empty(), "panes should default to empty vec when [[panes]] is absent");
+        assert!(
+            config.panes.is_empty(),
+            "panes should default to empty vec when [[panes]] is absent"
+        );
     }
 
     #[test]
@@ -771,8 +895,8 @@ filter = "@work"
 [presets.filter."2"]
 filter = "+personal"
 "#;
-        let config: TuiConfig = toml::from_str(toml_str)
-            .expect("presets.filter TOML must deserialize without error");
+        let config: TuiConfig =
+            toml::from_str(toml_str).expect("presets.filter TOML must deserialize without error");
         assert_eq!(
             config.presets.filter.len(),
             2,
@@ -802,9 +926,12 @@ filter = "@work"
 label = "Home"
 filter = "@home"
 "#;
-        let config: TuiConfig = toml::from_str(toml_str)
-            .expect("presets.panes TOML must deserialize without error");
-        let preset = config.presets.panes.get("work")
+        let config: TuiConfig =
+            toml::from_str(toml_str).expect("presets.panes TOML must deserialize without error");
+        let preset = config
+            .presets
+            .panes
+            .get("work")
             .expect("preset 'work' must exist");
         assert_eq!(preset.panes.len(), 2, "two pane entries must be parsed");
         assert_eq!(preset.panes[0].label, "Work");
@@ -855,7 +982,11 @@ mod state_file_tests {
     fn tuistatefile_load_valid_parses_panes() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("tui-state.toml");
-        std::fs::write(&path, "[[panes]]\nlabel = \"Work\"\nfilter = \"+work\"\ngroup = true\n").unwrap();
+        std::fs::write(
+            &path,
+            "[[panes]]\nlabel = \"Work\"\nfilter = \"+work\"\ngroup = true\n",
+        )
+        .unwrap();
         let result = TuiStateFile::load(&path).unwrap();
         assert_eq!(result.panes.len(), 1);
         assert_eq!(result.panes[0].label, "Work");
@@ -904,6 +1035,9 @@ mod state_file_tests {
     fn state_file_path_sibling_of_config() {
         let config_path = PathBuf::from("/home/user/.todotxt.rs/config.toml");
         let state_path = state_file_path(&config_path);
-        assert_eq!(state_path, PathBuf::from("/home/user/.todotxt.rs/tui-state.toml"));
+        assert_eq!(
+            state_path,
+            PathBuf::from("/home/user/.todotxt.rs/tui-state.toml")
+        );
     }
 }

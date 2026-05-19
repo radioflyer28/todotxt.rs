@@ -171,14 +171,18 @@ pub enum Commands {
 
 /// Arguments for the `list` / `ls` subcommand.
 ///
-/// Filter tokens are AND-combined. Tokens starting with `:` are preset names.
+/// Filter tokens are AND-combined. Use `|` inside one token for OR
+/// (for example `@work|@home` or `(A)|(B) @work`). Tokens starting
+/// with `:` are preset names. Grouped negation such as `-(@work|@home)`
+/// is not supported; empty OR branches are ignored.
 #[derive(Args, Debug)]
 pub struct ListArgs {
-    /// Filter tokens: plain words, +project, @context, due:today, DONE, -DONE, :preset_name
-    /// Multiple tokens are AND-combined.
+    /// Filter tokens: plain words, +project, @context, due:today, DONE, -DONE, :preset_name.
+    /// Multiple tokens are AND-combined; `|` inside one token means OR.
     pub filters: Vec<String>,
 
-    /// Additional filter query with spaces (combined AND with positional filters)
+    /// Additional filter query with spaces (AND-combined with positional filters).
+    /// Supports the same token-local OR syntax and ignores empty OR branches.
     #[arg(long = "filter", short = 'f')]
     pub filter_query: Option<String>,
 
@@ -210,4 +214,3 @@ pub struct ListpriArgs {
     /// Priority filter: single letter (A) or range (A-C). Defaults to A-Z if omitted.
     pub priorities: Option<String>,
 }
-

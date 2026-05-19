@@ -43,8 +43,8 @@ fn main() -> color_eyre::Result<()> {
     let args = Args::parse();
 
     // D-07: Resolve config path with portable mode support.
-    let platform_path = TuiConfig::default_path()
-        .ok_or_else(|| eyre!("Cannot determine config directory"))?;
+    let platform_path =
+        TuiConfig::default_path().ok_or_else(|| eyre!("Cannot determine config directory"))?;
     let config_path = if let Some(explicit) = args.config.as_ref() {
         explicit.clone()
     } else {
@@ -134,11 +134,16 @@ fn main() -> color_eyre::Result<()> {
     let theme = crate::theme::Theme::from_str(&config.tui.theme);
 
     // Run the event loop.
-    let mut app = App::new(task_list, todo_path, config, Some(config_path), theme, no_color);
+    let mut app = App::new(
+        task_list,
+        todo_path,
+        config,
+        Some(config_path),
+        theme,
+        no_color,
+    );
     app.run(&mut guard.terminal, rx)?;
 
     // Guard drops here → disable_raw_mode + LeaveAlternateScreen.
     Ok(())
 }
-
-

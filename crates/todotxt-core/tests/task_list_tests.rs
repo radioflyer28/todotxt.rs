@@ -91,10 +91,7 @@ fn crlf_round_trip() {
 
     let raw = fs::read(&out_path).unwrap();
     let content = String::from_utf8(raw).unwrap();
-    assert!(
-        content.contains("\r\n"),
-        "CRLF was not preserved on save"
-    );
+    assert!(content.contains("\r\n"), "CRLF was not preserved on save");
     // Should NOT contain bare \n that isn't preceded by \r.
     let bare_lf = content
         .as_bytes()
@@ -128,11 +125,7 @@ fn lf_round_trip() {
 #[test]
 fn add_task() {
     let dir = TempDir::new().unwrap();
-    let path = write_str(
-        &dir,
-        "todo.txt",
-        "(A) First\n(B) Second\n(C) Third\n",
-    );
+    let path = write_str(&dir, "todo.txt", "(A) First\n(B) Second\n(C) Third\n");
 
     let mut list = TaskList::load(&path).unwrap();
     let new_task = Task::parse("(D) Fourth");
@@ -260,7 +253,11 @@ fn preserve_whitespace() {
 
     // preserve_whitespace: false (default) drops blank lines.
     let list_no_ws = TaskList::load(&path).unwrap();
-    assert_eq!(list_no_ws.len(), 3, "blank lines should be dropped by default");
+    assert_eq!(
+        list_no_ws.len(),
+        3,
+        "blank lines should be dropped by default"
+    );
 
     // preserve_whitespace: true keeps blank lines.
     let list_with_ws = TaskList::load_with_options(&path, true).unwrap();
@@ -308,7 +305,11 @@ fn mixed_file_detected_as_lf_saves_as_lf() {
     let path = write_file(&dir, "mixed.txt", content);
 
     let list = TaskList::load(&path).unwrap();
-    assert_eq!(list.line_ending(), LineEnding::Lf, "first LF line should set Lf ending");
+    assert_eq!(
+        list.line_ending(),
+        LineEnding::Lf,
+        "first LF line should set Lf ending"
+    );
 
     list.save().unwrap();
     let saved = fs::read(&path).unwrap();

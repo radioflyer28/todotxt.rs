@@ -23,7 +23,10 @@ fn test_crlf_file_round_trips_without_corruption() {
     // Read raw bytes and verify CRLF preserved
     let saved = fs::read(&path).expect("read saved file");
     let has_crlf = saved.windows(2).any(|w| w == b"\r\n");
-    assert!(has_crlf, "CRLF line endings must be preserved after round-trip");
+    assert!(
+        has_crlf,
+        "CRLF line endings must be preserved after round-trip"
+    );
 
     // Verify no double-CR was introduced
     let has_double_cr = saved.windows(3).any(|w| w == b"\r\r\n");
@@ -31,7 +34,11 @@ fn test_crlf_file_round_trips_without_corruption() {
 
     // Task count must be preserved
     let reloaded = TaskList::load(&path).expect("reload after save");
-    assert_eq!(reloaded.tasks().len(), 3, "task count must survive round-trip");
+    assert_eq!(
+        reloaded.tasks().len(),
+        3,
+        "task count must survive round-trip"
+    );
 }
 
 #[test]
@@ -55,7 +62,11 @@ fn test_lf_file_round_trips_without_corruption() {
     assert!(!has_crlf, "CRLF must not be introduced into an LF file");
 
     let reloaded = TaskList::load(&path).expect("reload after save");
-    assert_eq!(reloaded.tasks().len(), 3, "task count must survive round-trip");
+    assert_eq!(
+        reloaded.tasks().len(),
+        3,
+        "task count must survive round-trip"
+    );
 }
 
 #[test]

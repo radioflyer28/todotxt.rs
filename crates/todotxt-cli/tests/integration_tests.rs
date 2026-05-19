@@ -55,11 +55,7 @@ fn test_scenario_full_workflow_smoke() {
     let new_id = task_count.to_string();
 
     // do {id}
-    fixture
-        .cmd()
-        .args(["do", &new_id])
-        .assert()
-        .success();
+    fixture.cmd().args(["do", &new_id]).assert().success();
 
     // stats — should show at least 1 completed
     let stats_out = fixture
@@ -113,7 +109,10 @@ Unrelated task\n";
     let s = String::from_utf8_lossy(&out);
     assert!(s.contains("Alpha task"), "Alpha task must appear");
     assert!(s.contains("Gamma task"), "Gamma task must appear");
-    assert!(!s.contains("Unrelated task"), "Unrelated task must not appear");
+    assert!(
+        !s.contains("Unrelated task"),
+        "Unrelated task must not appear"
+    );
 
     // filter by @beta_context — should see tasks 2 and 3 only
     let out2 = fixture
@@ -127,7 +126,10 @@ Unrelated task\n";
     let s2 = String::from_utf8_lossy(&out2);
     assert!(s2.contains("Beta task"), "Beta task must appear");
     assert!(s2.contains("Gamma task"), "Gamma task must appear");
-    assert!(!s2.contains("Alpha task +alpha_project\n"), "Alpha-only task must not appear for @beta filter");
+    assert!(
+        !s2.contains("Alpha task +alpha_project\n"),
+        "Alpha-only task must not appear for @beta filter"
+    );
 
     // AND filter: +alpha_project AND @beta_context — only task 3
     let out3 = fixture
@@ -228,32 +230,16 @@ fn test_scenario_exit_code_contract() {
     let fixture = TestFixture::new();
 
     // success → exit 0
-    fixture
-        .cmd()
-        .args(["add", "valid task"])
-        .assert()
-        .code(0);
+    fixture.cmd().args(["add", "valid task"]).assert().code(0);
 
     // non-existent ID → exit 1 (NotFound)
-    fixture
-        .cmd()
-        .args(["do", "9999"])
-        .assert()
-        .code(1);
+    fixture.cmd().args(["do", "9999"]).assert().code(1);
 
     // show non-existent ID → exit 1
-    fixture
-        .cmd()
-        .args(["show", "9999"])
-        .assert()
-        .code(1);
+    fixture.cmd().args(["show", "9999"]).assert().code(1);
 
     // invalid subcommand → clap exits 2
-    fixture
-        .cmd()
-        .args(["not-a-real-command"])
-        .assert()
-        .code(2);
+    fixture.cmd().args(["not-a-real-command"]).assert().code(2);
 }
 
 // ── Scenario 5: Enrichment pipeline ──────────────────────────────────────
@@ -304,11 +290,7 @@ fn test_scenario_enrichment_pipeline() {
     );
 
     // do {id} — complete the task
-    fixture
-        .cmd()
-        .args(["do", &task_id])
-        .assert()
-        .success();
+    fixture.cmd().args(["do", &task_id]).assert().success();
 
     // archive — task moves to done.txt
     fixture.cmd().args(["archive"]).assert().success();
@@ -318,5 +300,94 @@ fn test_scenario_enrichment_pipeline() {
     assert!(
         done.contains("Prepare quarterly report"),
         "completed task must be in done.txt: {done}"
+    );
+}
+
+#[test]
+fn recurring_cli_single_creates_next_occurrence_without_prompt() {
+    let fixture = TestFixture::with_content("Pay rent rec:+1m due:2026-01-31\n");
+
+    fixture.cmd().args(["do", "1"]).assert().success();
+
+    let content = fs::read_to_string(fixture.todo.path()).expect("read todo");
+    let lines: Vec<_> = content.lines().collect();
+    assert_eq!(
+        lines.len(),
+        2,
+        "expected completed task plus next occurrence"
+    );
+    assert!(
+        lines[0].starts_with("x "),
+        "original task must be completed: {}",
+        lines[0]
+    );
+    assert!(lines[0].contains("Pay rent"));
+    assert!(lines[1].contains("Pay rent"));
+    assert!(lines[1].contains("rec:+1m"));
+    assert!(
+        lines[1].contains("due:2026-02-28"),
+        "next monthly due date should be appended: {}",
+        lines[1]
+    );
+    assert!(
+        !lines[1].starts_with("x "),
+        "next occurrence must be incomplete"
+    );
+}
+
+#[test]
+fn recurring_cli_multi_creates_one_next_occurrence_per_recurring_task() {
+    let fixture = TestFixture::with_content(
+        "Pay rent rec:+1m due:2026-01-31\n\
+Stretch rec:1w due:2026-01-10\n\
+Normal task\n\
+x 2026-01-01 Already done rec:1d due:2026-01-01\n",
+    );
+
+    fixture
+        .cmd()
+        .args(["do", "1", "2", "3", "4"])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(fixture.todo.path()).expect("read todo");
+    let lines: Vec<_> = content.lines().collect();
+    assert_eq!(
+        lines.len(),
+        6,
+        "two recurring follow-ups should be appended"
+    );
+    assert!(
+        lines[0].starts_with("x "),
+        "first recurring task must be completed"
+    );
+    assert!(
+        lines[1].starts_with("x "),
+        "second recurring task must be completed"
+    );
+    assert!(
+        lines[2].starts_with("x "),
+        "non-recurring task must be completed"
+    );
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line.contains("Already done") && line.starts_with("x "))
+            .count(),
+        1,
+        "already-completed recurring task must not duplicate"
+    );
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line.contains("Pay rent"))
+            .count(),
+        2,
+        "pay rent should appear once completed and once as next occurrence"
+    );
+    assert_eq!(
+        lines.iter().filter(|line| line.contains("Stretch")).count(),
+        2,
+        "stretch should appear once completed and once as next occurrence"
     );
 }

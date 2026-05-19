@@ -21,4 +21,3 @@ pub fn run(todo_path: &Path, id: usize, renderer: &Renderer) -> Result<(), CliEr
     renderer.print_task(idx, task); // D-13: raw line
     Ok(())
 }
-

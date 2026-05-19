@@ -5,7 +5,7 @@
 use std::io::Write;
 
 use tempfile::NamedTempFile;
-use todotxt_core::{TaskList, SortOrder};
+use todotxt_core::{SortOrder, TaskList};
 use todotxt_tui::app::App;
 use todotxt_tui::config::TuiConfig;
 use todotxt_tui::state::DisplayRow;
@@ -21,7 +21,14 @@ fn make_app_with_lines(lines: &[&str]) -> App {
     let path = file.path().to_path_buf();
     let task_list = TaskList::load(&path).expect("failed to load task list");
 
-    App::new(task_list, path, TuiConfig::default(), None, Theme::Default, true)
+    App::new(
+        task_list,
+        path,
+        TuiConfig::default(),
+        None,
+        Theme::Default,
+        true,
+    )
 }
 
 /// Helper to set up an app with specific pane state (filter, sort, grouping)
@@ -96,17 +103,24 @@ fn test_add_task_preserves_filter_state() {
 
     // Add a task directly to task_list to simulate add operation
     let new_task = todotxt_core::Task::parse("New task @home +shopping");
-    app.task_list
-        .add(new_task)
-        .expect("failed to add task");
-    
+    app.task_list.add(new_task).expect("failed to add task");
+
     // Rebuild display (simulating what save_and_exit does)
     app.rebuild_all_panes();
 
     // Verify pane state is preserved
-    assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query should not change");
-    assert_eq!(app.panes[0].sort_order, initial_sort, "sort_order should not change");
-    assert_eq!(app.panes[0].grouping, initial_grouping, "grouping should not change");
+    assert_eq!(
+        app.panes[0].filter_query, initial_filter,
+        "filter_query should not change"
+    );
+    assert_eq!(
+        app.panes[0].sort_order, initial_sort,
+        "sort_order should not change"
+    );
+    assert_eq!(
+        app.panes[0].grouping, initial_grouping,
+        "grouping should not change"
+    );
 }
 
 /// Test 2: Filter state persists after edit
@@ -127,9 +141,18 @@ fn test_edit_task_preserves_filter_state() {
     app.rebuild_all_panes();
 
     // Verify pane state is preserved
-    assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query should not change");
-    assert_eq!(app.panes[0].sort_order, initial_sort, "sort_order should not change");
-    assert_eq!(app.panes[0].grouping, initial_grouping, "grouping should not change");
+    assert_eq!(
+        app.panes[0].filter_query, initial_filter,
+        "filter_query should not change"
+    );
+    assert_eq!(
+        app.panes[0].sort_order, initial_sort,
+        "sort_order should not change"
+    );
+    assert_eq!(
+        app.panes[0].grouping, initial_grouping,
+        "grouping should not change"
+    );
 }
 
 /// Test 3: Filter state persists after delete
@@ -150,9 +173,18 @@ fn test_delete_task_preserves_filter_state() {
     app.rebuild_all_panes();
 
     // Verify pane state is preserved
-    assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query should not change");
-    assert_eq!(app.panes[0].sort_order, initial_sort, "sort_order should not change");
-    assert_eq!(app.panes[0].grouping, initial_grouping, "grouping should not change");
+    assert_eq!(
+        app.panes[0].filter_query, initial_filter,
+        "filter_query should not change"
+    );
+    assert_eq!(
+        app.panes[0].sort_order, initial_sort,
+        "sort_order should not change"
+    );
+    assert_eq!(
+        app.panes[0].grouping, initial_grouping,
+        "grouping should not change"
+    );
 }
 
 /// Test 4: Filter state persists after toggle (mark done)
@@ -169,7 +201,9 @@ fn test_toggle_task_preserves_filter_state() {
         if let Some(task) = app.task_list.tasks().get(idx).cloned() {
             let toggle_value = !task.completed;
             let toggled = task.with_completed(toggle_value);
-            app.task_list.update(idx, toggled).expect("failed to toggle");
+            app.task_list
+                .update(idx, toggled)
+                .expect("failed to toggle");
         }
     }
 
@@ -177,9 +211,18 @@ fn test_toggle_task_preserves_filter_state() {
     app.rebuild_all_panes();
 
     // Verify pane state is preserved
-    assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query should not change");
-    assert_eq!(app.panes[0].sort_order, initial_sort, "sort_order should not change");
-    assert_eq!(app.panes[0].grouping, initial_grouping, "grouping should not change");
+    assert_eq!(
+        app.panes[0].filter_query, initial_filter,
+        "filter_query should not change"
+    );
+    assert_eq!(
+        app.panes[0].sort_order, initial_sort,
+        "sort_order should not change"
+    );
+    assert_eq!(
+        app.panes[0].grouping, initial_grouping,
+        "grouping should not change"
+    );
 }
 
 /// Test 5: Filter state preserved through multiple mutations
@@ -194,7 +237,10 @@ fn test_multiple_mutations_preserve_filter_state() {
     let new_task = todotxt_core::Task::parse("Task 1");
     app.task_list.add(new_task).expect("add failed");
     app.rebuild_all_panes();
-    assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query after add");
+    assert_eq!(
+        app.panes[0].filter_query, initial_filter,
+        "filter_query after add"
+    );
 
     // Edit
     if let Some(task) = app.task_list.tasks().get(0).cloned() {
@@ -202,7 +248,10 @@ fn test_multiple_mutations_preserve_filter_state() {
         app.task_list.update(0, edited).expect("edit failed");
     }
     app.rebuild_all_panes();
-    assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query after edit");
+    assert_eq!(
+        app.panes[0].filter_query, initial_filter,
+        "filter_query after edit"
+    );
 
     // Delete
     if let Some(DisplayRow::Task(idx)) = app.display_rows().get(0) {
@@ -210,19 +259,26 @@ fn test_multiple_mutations_preserve_filter_state() {
         app.task_list.delete(idx).expect("delete failed");
     }
     app.rebuild_all_panes();
-    assert_eq!(app.panes[0].filter_query, initial_filter, "filter_query after delete");
+    assert_eq!(
+        app.panes[0].filter_query, initial_filter,
+        "filter_query after delete"
+    );
 
     // Final state
-    assert_eq!(app.panes[0].sort_order, initial_sort, "sort_order unchanged");
-    assert_eq!(app.panes[0].grouping, initial_grouping, "grouping unchanged");
+    assert_eq!(
+        app.panes[0].sort_order, initial_sort,
+        "sort_order unchanged"
+    );
+    assert_eq!(
+        app.panes[0].grouping, initial_grouping,
+        "grouping unchanged"
+    );
 }
 
 /// Test 6: Undo entry captures original task state before mutation
 #[test]
 fn test_undo_entry_captures_original_state() {
-    let mut app = make_app_with_lines(&[
-        "Buy milk @home +shopping @evening due:2026-05-15",
-    ]);
+    let mut app = make_app_with_lines(&["Buy milk @home +shopping @evening due:2026-05-15"]);
 
     // Get original task and raw text
     let original_task = app.task_list.tasks()[0].clone();
@@ -230,7 +286,9 @@ fn test_undo_entry_captures_original_state() {
 
     // Verify tag positions in original
     let home_pos = original_raw.find("@home").expect("@home not in original");
-    let evening_pos = original_raw.find("@evening").expect("@evening not in original");
+    let evening_pos = original_raw
+        .find("@evening")
+        .expect("@evening not in original");
     assert!(
         home_pos < evening_pos,
         "original has tags in order: @home before @evening"
@@ -247,7 +305,8 @@ fn test_undo_entry_captures_original_state() {
         assert_eq!(undo.tasks.len(), 1, "undo entry should contain 1 task");
         let undo_raw = undo.tasks[0].to_raw();
         assert_eq!(
-            undo_raw, original_raw.as_str(),
+            undo_raw,
+            original_raw.as_str(),
             "undo entry should preserve original raw text with original tag order"
         );
     } else {
@@ -260,7 +319,7 @@ fn test_undo_entry_captures_original_state() {
 fn test_hierarchical_filter_state_preserved() {
     let mut app = setup_app_with_state(
         &["Task @email/waiting", "Task @work"],
-        "@email",  // Parent prefix filter
+        "@email", // Parent prefix filter
         SortOrder::FileOrder,
         false,
     );
@@ -284,7 +343,7 @@ fn test_hierarchical_filter_state_preserved() {
 fn test_project_hierarchical_filter_preserved() {
     let mut app = setup_app_with_state(
         &["Work +client/acme", "Work +other"],
-        "+client",  // Parent prefix filter for projects
+        "+client", // Parent prefix filter for projects
         SortOrder::FileOrder,
         true,
     );
@@ -309,4 +368,3 @@ fn test_project_hierarchical_filter_preserved() {
         "grouping should persist"
     );
 }
-

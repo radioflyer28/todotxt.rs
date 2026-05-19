@@ -36,4 +36,3 @@ pub fn run(todo_path: &Path, renderer: &Renderer) -> Result<(), CliError> {
     renderer.print_stats(&stats);
     Ok(())
 }
-

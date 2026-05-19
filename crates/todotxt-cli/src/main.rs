@@ -52,23 +52,32 @@ fn run(cli: &Cli) -> Result<(), CliError> {
         Commands::Contexts => commands::contexts::run(&todo_path, &renderer)?,
         Commands::Show { id } => commands::show::run(&todo_path, *id, &renderer)?,
         Commands::Completions { shell } => commands::completions::run(*shell),
-        Commands::Add(args) => {
-            commands::add::run(&todo_path, &args.text, args.date, args.no_date, &cfg, &renderer)?
-        }
+        Commands::Add(args) => commands::add::run(
+            &todo_path,
+            &args.text,
+            args.date,
+            args.no_date,
+            &cfg,
+            &renderer,
+        )?,
         Commands::Do { ids } => commands::complete::run_do(&todo_path, ids, &renderer)?,
         Commands::Undo { ids } => commands::complete::run_undo(&todo_path, ids, &renderer)?,
         Commands::Del { ids } => commands::del::run(&todo_path, ids, &renderer)?,
         Commands::Edit { id, text } => commands::edit::run(&todo_path, *id, text, &renderer)?,
-        Commands::Append { id, text, normalize } => {
-            commands::append::run(&todo_path, *id, text, *normalize, &renderer)?
+        Commands::Append {
+            id,
+            text,
+            normalize,
+        } => commands::append::run(&todo_path, *id, text, *normalize, &renderer)?,
+        Commands::Prepend { id, text } => commands::prepend::run(&todo_path, *id, text, &renderer)?,
+        Commands::Pri { ids, priority } => {
+            commands::priority::run_pri(&todo_path, ids, *priority, &renderer)?
         }
-        Commands::Prepend { id, text } => {
-            commands::prepend::run(&todo_path, *id, text, &renderer)?
-        }
-        Commands::Pri { ids, priority } => commands::priority::run_pri(&todo_path, ids, *priority, &renderer)?,
         Commands::Depri { ids } => commands::priority::run_depri(&todo_path, ids, &renderer)?,
         Commands::Due { id, date } => commands::due::run_due(&todo_path, *id, date, &renderer)?,
-        Commands::Postpone { id, days } => commands::due::run_postpone(&todo_path, *id, *days, &renderer)?,
+        Commands::Postpone { id, days } => {
+            commands::due::run_postpone(&todo_path, *id, *days, &renderer)?
+        }
         Commands::Archive => commands::archive::run_archive(&todo_path, &cfg, &renderer)?,
         Commands::DelDone => commands::del_done::run_del_done(&todo_path, &renderer)?,
         Commands::Listpri(args) => commands::listpri::run(&todo_path, args, &cfg, &renderer)?,

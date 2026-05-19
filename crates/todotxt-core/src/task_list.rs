@@ -135,19 +135,16 @@ impl TaskList {
         })?;
 
         // Ensure all data is flushed to the OS before the atomic rename.
-        temp.as_file()
-            .sync_all()
-            .map_err(|source| TodoError::Io {
-                path: parent.to_path_buf(),
-                source,
-            })?;
+        temp.as_file().sync_all().map_err(|source| TodoError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
 
         // Atomic rename — replaces the original file in a single syscall.
-        temp.persist(&self.path)
-            .map_err(|e| TodoError::Io {
-                path: self.path.clone(),
-                source: e.error,
-            })?;
+        temp.persist(&self.path).map_err(|e| TodoError::Io {
+            path: self.path.clone(),
+            source: e.error,
+        })?;
 
         Ok(())
     }

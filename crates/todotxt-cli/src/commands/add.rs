@@ -16,7 +16,9 @@ pub fn run(
     renderer: &Renderer,
 ) -> Result<(), CliError> {
     if text.trim().is_empty() {
-        return Err(CliError::Other(anyhow::anyhow!("task text cannot be empty")));
+        return Err(CliError::Other(anyhow::anyhow!(
+            "task text cannot be empty"
+        )));
     }
 
     // Determine whether to prepend today's creation date (D-01).

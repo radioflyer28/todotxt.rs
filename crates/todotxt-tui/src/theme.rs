@@ -61,7 +61,9 @@ impl StyleSheet {
                 priority_c: Style::default(),
                 overdue: Style::default().add_modifier(Modifier::BOLD),
                 // No color: bold + dim makes headers visually distinct without using color.
-                group_header: Style::default().add_modifier(Modifier::BOLD).add_modifier(Modifier::DIM),
+                group_header: Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::DIM),
             }
         } else {
             match theme {
@@ -70,9 +72,13 @@ impl StyleSheet {
                     priority_a: Style::default().fg(Color::LightRed),
                     priority_b: Style::default().fg(Color::Yellow),
                     priority_c: Style::default().fg(Color::Cyan),
-                    overdue: Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD),
+                    overdue: Style::default()
+                        .fg(Color::LightRed)
+                        .add_modifier(Modifier::BOLD),
                     // Dark theme: bold gray — stands out from task rows without dominating.
-                    group_header: Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD),
+                    group_header: Style::default()
+                        .fg(Color::Gray)
+                        .add_modifier(Modifier::BOLD),
                 },
                 Theme::Light => StyleSheet {
                     // Light terminal palette — intentionally distinct from Default.
@@ -83,7 +89,9 @@ impl StyleSheet {
                     priority_c: Style::default().fg(Color::Green),
                     overdue: Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     // Light theme: bold dark gray — readable on light background.
-                    group_header: Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                    group_header: Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
                 },
             }
         }

@@ -1,6 +1,6 @@
-use todotxt_core::{SortOrder, TaskList};
 use std::fs;
 use tempfile::TempDir;
+use todotxt_core::{SortOrder, TaskList};
 
 fn task_list_from(lines: &[&str]) -> (TaskList, TempDir) {
     let dir = TempDir::new().unwrap();
@@ -15,11 +15,7 @@ fn task_list_from(lines: &[&str]) -> (TaskList, TempDir) {
 
 #[test]
 fn sort_priority_a_before_b_before_none() {
-    let (mut tl, _tmp) = task_list_from(&[
-        "No priority",
-        "(B) Second",
-        "(A) First",
-    ]);
+    let (mut tl, _tmp) = task_list_from(&["No priority", "(B) Second", "(A) First"]);
     tl.sort(SortOrder::Priority);
     let tasks = tl.tasks();
     assert_eq!(tasks[0].priority, Some('A'));
@@ -29,11 +25,8 @@ fn sort_priority_a_before_b_before_none() {
 
 #[test]
 fn sort_priority_stable_for_equal_priorities() {
-    let (mut tl, _tmp) = task_list_from(&[
-        "(A) Alpha first",
-        "(A) Alpha second",
-        "(A) Alpha third",
-    ]);
+    let (mut tl, _tmp) =
+        task_list_from(&["(A) Alpha first", "(A) Alpha second", "(A) Alpha third"]);
     tl.sort(SortOrder::Priority);
     let tasks = tl.tasks();
     // Original order preserved (stable sort)
@@ -62,11 +55,7 @@ fn sort_due_date_earliest_first_none_last() {
 
 #[test]
 fn sort_alphabetical_case_insensitive() {
-    let (mut tl, _tmp) = task_list_from(&[
-        "Zebra task",
-        "apple task",
-        "Mango task",
-    ]);
+    let (mut tl, _tmp) = task_list_from(&["Zebra task", "apple task", "Mango task"]);
     tl.sort(SortOrder::Alphabetical);
     let tasks = tl.tasks();
     assert!(tasks[0].to_raw().to_ascii_lowercase().starts_with("apple"));
@@ -78,11 +67,7 @@ fn sort_alphabetical_case_insensitive() {
 
 #[test]
 fn sort_project_first_tag_alpha_none_last() {
-    let (mut tl, _tmp) = task_list_from(&[
-        "No project",
-        "Task +zebra",
-        "Task +alpha",
-    ]);
+    let (mut tl, _tmp) = task_list_from(&["No project", "Task +zebra", "Task +alpha"]);
     tl.sort(SortOrder::Project);
     let tasks = tl.tasks();
     assert_eq!(tasks[0].projects.first().map(|s| s.as_str()), Some("alpha"));
@@ -94,11 +79,7 @@ fn sort_project_first_tag_alpha_none_last() {
 
 #[test]
 fn sort_context_first_tag_alpha_none_last() {
-    let (mut tl, _tmp) = task_list_from(&[
-        "No context",
-        "Task @work",
-        "Task @home",
-    ]);
+    let (mut tl, _tmp) = task_list_from(&["No context", "Task @work", "Task @home"]);
     tl.sort(SortOrder::Context);
     let tasks = tl.tasks();
     assert_eq!(tasks[0].contexts.first().map(|s| s.as_str()), Some("home"));

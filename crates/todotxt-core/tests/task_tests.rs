@@ -10,12 +10,7 @@ fn round_trip_all_fixture_lines() {
     let fixture = include_str!("fixtures/todo.txt");
     for line in fixture.lines() {
         let task = Task::parse(line);
-        assert_eq!(
-            task.to_string(),
-            line,
-            "round-trip failed for: {:?}",
-            line
-        );
+        assert_eq!(task.to_string(), line, "round-trip failed for: {:?}", line);
     }
 }
 
@@ -110,11 +105,7 @@ fn parse_multiple_projects_and_contexts_sorted() {
 #[case("(AB) two chars is NOT priority", None)]
 fn priority_case_sensitivity(#[case] line: &str, #[case] expected: Option<char>) {
     let task = Task::parse(line);
-    assert_eq!(
-        task.priority, expected,
-        "priority mismatch for: {:?}",
-        line
-    );
+    assert_eq!(task.priority, expected, "priority mismatch for: {:?}", line);
 }
 
 // ── Completed marker case-sensitivity ────────────────────────────────────────
@@ -175,6 +166,17 @@ fn with_completed_false_clears_completed() {
     let active = task.with_completed(false);
     assert!(!active.completed);
     assert_eq!(active.completion_date, None);
+}
+
+#[test]
+fn with_completion_date_sets_explicit_completion_date() {
+    let task = Task::parse("(A) Buy milk");
+    let d = date(2025, 3, 15);
+    let completed = task.with_completion_date(Some(d));
+    assert!(completed.completed);
+    assert_eq!(completed.completion_date, Some(d));
+    assert_eq!(completed.priority, None);
+    assert!(completed.to_string().starts_with("x 2025-03-15 "));
 }
 
 #[test]

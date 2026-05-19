@@ -1,6 +1,6 @@
-use todotxt_core::{Task, TaskList, TodoError};
 use std::fs;
 use tempfile::TempDir;
+use todotxt_core::{Task, TaskList, TodoError};
 
 fn task_list_from(lines: &[&str]) -> (TaskList, TempDir) {
     let dir = TempDir::new().unwrap();
@@ -45,8 +45,12 @@ fn batch_update_out_of_bounds_returns_error_no_mutation() {
     // Index 5 is out of bounds (count is 2)
     let result = tl.batch_update(vec![(0, replacement.clone()), (5, replacement)]);
     assert!(
-        matches!(result, Err(TodoError::IndexOutOfBounds { index: 5, count: 2 })),
-        "expected IndexOutOfBounds(5, 2), got {:?}", result
+        matches!(
+            result,
+            Err(TodoError::IndexOutOfBounds { index: 5, count: 2 })
+        ),
+        "expected IndexOutOfBounds(5, 2), got {:?}",
+        result
     );
     // Task at index 0 must NOT have been mutated (fail-fast — validate before apply)
     assert_eq!(tl.tasks()[0].to_raw(), "Task zero");

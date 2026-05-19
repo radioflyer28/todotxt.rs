@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6
-milestone_name: Verification Backfill
-status: complete
-last_updated: "2026-05-06T00:00:00.000Z"
-last_activity: 2026-05-09 - Completed quick task 260509-hkx: fix ? help key and update help text for v1.2+ features
+milestone: v1.6.3
+milestone_name: TUI UX tweaks, filter OR operator, recurring tasks, done.txt rotation
+status: ready_for_audit
+last_updated: "2026-05-19T00:00:00.000Z"
+last_activity: 2026-05-19 - Phase 50 executed and verified
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 18
-  completed_plans: 18
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 12
+  completed_plans: 12
   percent: 100
 ---
 
@@ -17,19 +17,21 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-04)
+See: .planning/PROJECT.md (updated 2026-05-15)
 
 **Core value:** A fast, cross-platform todo.txt tool with a first-class CLI for both human and AI agent use.
-**Current focus:** Phase 45 complete — all v1.6 phases verified
+**Current focus:** Milestone implementation complete; Phase 50 input ergonomics shipped and verified
 
 ## Current Position
 
-Milestone v1.6 closed — 2026-05-06. All 7 phases complete (18/18 plans).
-Status: Archiving milestone artifacts.
+Phase: 50 — Input Ergonomics
+Plan: 50-01 and 50-02 complete
+Status: Executed and verified
+Last activity: 2026-05-19 — Input ergonomics execution completed
 
 ## Next Step
 
-Run `/gsd-new-milestone` to start v1.7 planning.
+Run `$gsd-validate-phase 50` or `$gsd-audit-milestone` to close out the milestone.
 
 ## Deferred Items
 

@@ -16,7 +16,14 @@ fn make_app_with_lines(lines: &[&str]) -> App {
     let path = file.path().to_path_buf();
     let task_list = TaskList::load(&path).expect("failed to load task list");
 
-    App::new(task_list, path, TuiConfig::default(), None, Theme::Default, true)
+    App::new(
+        task_list,
+        path,
+        TuiConfig::default(),
+        None,
+        Theme::Default,
+        true,
+    )
 }
 
 #[test]

@@ -50,7 +50,12 @@ fn build_filter(args: &ListArgs, cfg: &Config) -> Filter {
     Filter::from_query(&effective_query)
 }
 
-pub fn run(todo_path: &Path, args: &ListArgs, cfg: &Config, renderer: &Renderer) -> Result<(), CliError> {
+pub fn run(
+    todo_path: &Path,
+    args: &ListArgs,
+    cfg: &Config,
+    renderer: &Renderer,
+) -> Result<(), CliError> {
     let list = TaskList::load(todo_path)?;
     let mut filter = build_filter(args, cfg);
 
@@ -73,4 +78,3 @@ pub fn run(todo_path: &Path, args: &ListArgs, cfg: &Config, renderer: &Renderer)
 
     Ok(())
 }
-

@@ -1,8 +1,20 @@
 # todotxt.net - Rust Port
 
+## Current Milestone: v1.6.3 TUI UX tweaks, filter OR operator, recurring tasks, done.txt rotation
+
+**Goal:** Improve day-to-day TUI usability while adding higher-value task workflow features and archive hygiene.
+
+**Target features:**
+- Add recurring-task support via `rec:` with implicit next-occurrence creation on completion.
+- Add time-based done.txt rotation with monthly cadence and deterministic period naming.
+- Add OR (`|`) support in filter expressions.
+- Hide cursor highlight in inactive TUI panes.
+- Add spacer rows between grouped list sections.
+- Improve TUI date-picker ergonomics for field cycling, week jumps, and continuity-first auto-select behavior.
+
 ## Current State
 
-v1.0 through v1.6 are shipped. The Rust port now features a full-featured power-user TUI with archive workflow, bulk mark-done, external `$EDITOR` integration, filter history, multi-dimensional view presets, view state persistence, independent group-by controls, filter input autocomplete, and pane task movement — all on top of the earlier CLI/TUI/pane foundations.
+v1.0 through v1.6 are shipped. The Rust port now features a full-featured power-user TUI with archive workflow, bulk mark-done, external `$EDITOR` integration, filter history, multi-dimensional view presets, view state persistence, independent group-by controls, filter input autocomplete, pane task movement, recurring completion, monthly done.txt rotation, and expanded date-picker ergonomics — all on top of the earlier CLI/TUI/pane foundations.
 
 Milestone archives:
 
@@ -16,14 +28,13 @@ Milestone archives:
 
 ## Next Milestone
 
-**v1.7 — (to be planned)**
+**v1.8 — (to be planned)**
 
-Run `/gsd-new-milestone` to define v1.7 requirements and roadmap.
+Run `/gsd-new-milestone` to define v1.8 requirements and roadmap.
 
-Known candidate features for v1.7 consideration:
-- Recurring task support (`rec:` extension) — SEED-010
-- done.txt rotation (log-file style) — SEED-016
-- Seed registry cleanup (mark addressed seeds as shipped)
+Known candidate features for v1.8 consideration:
+- GUI interface (native desktop)
+- CI/CD release pipeline and package distribution
 
 ---
 
@@ -109,6 +120,15 @@ Shipped:
 - AC-02 through AC-04 — filter input autocomplete with cursor-aware narrowing shipped and verified (Phase 42)
 - PRSV-01 through PRSV-03 — `tui-state.toml` view state persistence shipped and verified (Phase 43)
 
+### Active (v1.6.3)
+
+- Add recurring-task support via `rec:` with implicit next-occurrence creation on completion.
+- Add time-based done.txt rotation for archive hygiene, with monthly cadence shipping first.
+- Add OR operator support in filter language.
+- Hide inactive-pane cursor highlight in TUI.
+- Add spacer rows before grouped headers for scan readability.
+- Improve date-entry ergonomics for real non-due date fields and refine shared auto-select behavior for match-driven dialogs such as project and context tag selection.
+
 ### Planned (future milestone)
 
 - GUI interface (native desktop)
@@ -171,4 +191,4 @@ After each milestone:
 4. Context refresh with current state.
 
 ---
-*Last updated: 2026-05-06 after v1.6 milestone completion.*
+*Last updated: 2026-05-19 after Phase 50 input ergonomics planning.*

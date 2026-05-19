@@ -1,8 +1,36 @@
 use crate::{config::Config, output::json_success, output::Renderer, CliError};
+use chrono::Local;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-use todotxt_core::TaskList;
+use todotxt_core::{plan_archive_rotation, TaskList};
+
+fn append_archive_content(existing: &str, addition: &str) -> String {
+    let mut parts = Vec::new();
+    for part in [existing, addition] {
+        let normalized = part.trim_end_matches('\n');
+        if !normalized.is_empty() {
+            parts.push(normalized);
+        }
+    }
+
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", parts.join("\n"))
+    }
+}
+
+fn write_text_atomically(path: &Path, content: &str) -> Result<(), CliError> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let mut temp = NamedTempFile::new_in(parent)?;
+    temp.write_all(content.as_bytes())?;
+    temp.flush()?;
+    temp.as_file().sync_all()?;
+    temp.persist(path)
+        .map_err(|e| CliError::Other(anyhow::anyhow!("{}", e.error)))?;
+    Ok(())
+}
 
 /// Move all completed tasks from todo.txt to done.txt (`archive`).
 ///
@@ -11,15 +39,38 @@ use todotxt_core::TaskList;
 pub fn run_archive(todo_path: &Path, cfg: &Config, renderer: &Renderer) -> Result<(), CliError> {
     let list = TaskList::load(todo_path)?;
 
-    let completed: Vec<_> = list.tasks().iter().filter(|t| t.completed).cloned().collect();
-    let incomplete: Vec<_> = list.tasks().iter().filter(|t| !t.completed).cloned().collect();
+    let completed: Vec<_> = list
+        .tasks()
+        .iter()
+        .filter(|t| t.completed)
+        .cloned()
+        .collect();
+    let incomplete: Vec<_> = list
+        .tasks()
+        .iter()
+        .filter(|t| !t.completed)
+        .cloned()
+        .collect();
     let count = completed.len();
+    if count == 0 {
+        if renderer.json {
+            println!(
+                "{}",
+                json_success(serde_json::json!({ "count": 0, "rotated_to": null }))
+            );
+        } else if !renderer.quiet {
+            eprintln!("Archived 0 completed tasks.");
+        }
+        return Ok(());
+    }
 
     // Resolve done.txt path from config or as sibling of todo.txt.
-    let done_path = cfg
-        .done_file
-        .clone()
-        .unwrap_or_else(|| todo_path.parent().unwrap_or(Path::new(".")).join("done.txt"));
+    let done_path = cfg.done_file.clone().unwrap_or_else(|| {
+        todo_path
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("done.txt")
+    });
 
     // Ensure done.txt parent directory exists.
     if let Some(parent) = done_path.parent() {
@@ -33,27 +84,45 @@ pub fn run_archive(todo_path: &Path, cfg: &Config, renderer: &Renderer) -> Resul
         String::new()
     };
 
-    let new_done_content = if count == 0 {
-        existing_done.clone()
+    let existing_modified = if done_path.exists() {
+        Some(std::fs::metadata(&done_path)?.modified()?)
     } else {
-        let appended = completed.iter().map(|t| t.to_raw()).collect::<Vec<_>>().join("\n");
-        if existing_done.is_empty() {
-            format!("{appended}\n")
-        } else {
-            let base = existing_done.trim_end_matches('\n');
-            format!("{base}\n{appended}\n")
-        }
+        None
     };
+    let decision = plan_archive_rotation(
+        &done_path,
+        cfg.archive_rotation_cadence,
+        Local::now().date_naive(),
+        existing_modified,
+        !existing_done.trim().is_empty(),
+    );
+
+    let rotated_to: Option<PathBuf> = if let Some(rotated_path) = decision.rotated_path.clone() {
+        let existing_rotated = if rotated_path.exists() {
+            std::fs::read_to_string(&rotated_path)?
+        } else {
+            String::new()
+        };
+        let rotated_content = append_archive_content(&existing_rotated, &existing_done);
+        write_text_atomically(&rotated_path, &rotated_content)?;
+        Some(rotated_path)
+    } else {
+        None
+    };
+    let active_existing = if rotated_to.is_some() {
+        String::new()
+    } else {
+        existing_done.clone()
+    };
+    let appended = completed
+        .iter()
+        .map(|t| t.to_raw())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let new_done_content = append_archive_content(&active_existing, &appended);
 
     // Atomic write: done.txt
-    let done_parent = done_path.parent().unwrap_or(Path::new("."));
-    let mut temp_done = NamedTempFile::new_in(done_parent)?;
-    temp_done.write_all(new_done_content.as_bytes())?;
-    temp_done.flush()?;
-    temp_done.as_file().sync_all()?;
-    temp_done
-        .persist(&done_path)
-        .map_err(|e| CliError::Other(anyhow::anyhow!("{}", e.error)))?;
+    write_text_atomically(&done_path, &new_done_content)?;
 
     // Atomic write: todo.txt (incomplete tasks only).
     let new_todo_content = if incomplete.is_empty() {
@@ -61,26 +130,35 @@ pub fn run_archive(todo_path: &Path, cfg: &Config, renderer: &Renderer) -> Resul
     } else {
         format!(
             "{}\n",
-            incomplete.iter().map(|t| t.to_raw()).collect::<Vec<_>>().join("\n")
+            incomplete
+                .iter()
+                .map(|t| t.to_raw())
+                .collect::<Vec<_>>()
+                .join("\n")
         )
     };
-    let todo_parent = todo_path.parent().unwrap_or(Path::new("."));
-    let mut temp_todo = NamedTempFile::new_in(todo_parent)?;
-    temp_todo.write_all(new_todo_content.as_bytes())?;
-    temp_todo.flush()?;
-    temp_todo.as_file().sync_all()?;
-    temp_todo
-        .persist(todo_path)
-        .map_err(|e| CliError::Other(anyhow::anyhow!("{}", e.error)))?;
+    write_text_atomically(todo_path, &new_todo_content)?;
 
     if renderer.json {
-        println!("{}", json_success(serde_json::json!({ "count": count })));
-    } else if !renderer.quiet {
-        eprintln!(
-            "Archived {} completed task{}.",
-            count,
-            if count == 1 { "" } else { "s" }
+        println!(
+            "{}",
+            json_success(serde_json::json!({
+                "count": count,
+                "rotated_to": rotated_to.as_ref().map(|path| path.display().to_string())
+            }))
         );
+    } else if !renderer.quiet {
+        let task_suffix = if count == 1 { "" } else { "s" };
+        if let Some(rotated_path) = rotated_to {
+            eprintln!(
+                "Archived {} completed task{}. Rotated previous done.txt to {}.",
+                count,
+                task_suffix,
+                rotated_path.display()
+            );
+        } else {
+            eprintln!("Archived {} completed task{}.", count, task_suffix);
+        }
     }
 
     Ok(())

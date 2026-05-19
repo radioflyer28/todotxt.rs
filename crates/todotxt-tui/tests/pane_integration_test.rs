@@ -3,25 +3,28 @@
 
 #[cfg(test)]
 mod pane_integration_tests {
-    use todotxt_tui::app::App;
-    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig, TuiStateFile};
-    use todotxt_tui::state::Pane;
-    use todotxt_core::{TaskList, SortOrder};
     use std::fs::{self, File};
     use std::io::Write;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use todotxt_core::{SortOrder, TaskList};
+    use todotxt_tui::app::App;
+    use todotxt_tui::config::{PaneConfig, PaneSort, TuiConfig, TuiStateFile};
+    use todotxt_tui::state::Pane;
 
     /// Helper: Create a test App with a task list
     fn setup_test_app() -> App {
         // Create a temporary empty todo.txt file
         let temp_dir = std::env::temp_dir();
         let test_file = temp_dir.join("test_todo.txt");
-        File::create(&test_file).expect("Failed to create test file").write_all(b"").expect("Failed to write to test file");
-        
+        File::create(&test_file)
+            .expect("Failed to create test file")
+            .write_all(b"")
+            .expect("Failed to write to test file");
+
         let task_list = TaskList::load(&test_file).expect("Failed to load TaskList");
         let config = todotxt_tui::config::TuiConfig::default();
-        
+
         let app = App::new(
             task_list,
             test_file,
@@ -44,27 +47,27 @@ mod pane_integration_tests {
     #[test]
     fn test_pane_navigation_wraps_around() {
         let mut app = setup_test_app();
-        
+
         // App starts with one default pane
         assert_eq!(app.panes.len(), 1);
         assert_eq!(app.active_pane, 0);
-        
+
         // Add a second pane (simulating Phase 26 pane creation)
         app.panes.push(Pane::new(1, "Pane 2".to_string()));
         assert_eq!(app.panes.len(), 2);
-        
+
         // Navigate right to pane 1
         app.focus_next_pane();
         assert_eq!(app.active_pane, 1);
-        
+
         // Navigate right again — should wrap to pane 0
         app.focus_next_pane();
         assert_eq!(app.active_pane, 0);
-        
+
         // Navigate left — should wrap to pane 1
         app.focus_prev_pane();
         assert_eq!(app.active_pane, 1);
-        
+
         // Navigate left again — should go to pane 0
         app.focus_prev_pane();
         assert_eq!(app.active_pane, 0);
@@ -74,22 +77,22 @@ mod pane_integration_tests {
     fn test_pane_filter_state_preserved_on_navigation() {
         let mut app = setup_test_app();
         app.panes.push(Pane::new(1, "Pane 2".to_string()));
-        
+
         // Set filter on pane 0
         app.active_pane_mut().filter_query = "project:work".to_string();
         assert_eq!(app.panes[0].filter_query, "project:work");
-        
+
         // Navigate to pane 1
         app.focus_next_pane();
         assert_eq!(app.active_pane, 1);
-        
+
         // Pane 1 should have empty filter
         assert_eq!(app.active_pane().filter_query, "");
-        
+
         // Navigate back to pane 0
         app.focus_prev_pane();
         assert_eq!(app.active_pane, 0);
-        
+
         // Filter should be preserved
         assert_eq!(app.active_pane().filter_query, "project:work");
     }
@@ -98,20 +101,20 @@ mod pane_integration_tests {
     fn test_pane_sort_state_preserved_on_navigation() {
         let mut app = setup_test_app();
         app.panes.push(Pane::new(1, "Pane 2".to_string()));
-        
+
         // Set sort on pane 0
         app.active_pane_mut().sort_order = SortOrder::Priority;
         assert_eq!(app.panes[0].sort_order, SortOrder::Priority);
-        
+
         // Navigate to pane 1
         app.focus_next_pane();
-        
+
         // Pane 1 should have default FileOrder
         assert_eq!(app.active_pane().sort_order, SortOrder::FileOrder);
-        
+
         // Navigate back to pane 0
         app.focus_prev_pane();
-        
+
         // Sort should be preserved
         assert_eq!(app.active_pane().sort_order, SortOrder::Priority);
     }
@@ -120,20 +123,20 @@ mod pane_integration_tests {
     fn test_pane_grouping_state_preserved_on_navigation() {
         let mut app = setup_test_app();
         app.panes.push(Pane::new(1, "Pane 2".to_string()));
-        
+
         // Enable grouping on pane 0
         app.active_pane_mut().grouping = true;
         assert_eq!(app.panes[0].grouping, true);
-        
+
         // Navigate to pane 1
         app.focus_next_pane();
-        
+
         // Pane 1 should have grouping disabled
         assert_eq!(app.active_pane().grouping, false);
-        
+
         // Navigate back to pane 0
         app.focus_prev_pane();
-        
+
         // Grouping should be preserved
         assert_eq!(app.active_pane().grouping, true);
     }
@@ -141,56 +144,56 @@ mod pane_integration_tests {
     #[test]
     fn test_empty_pane_allows_filter_modification() {
         let mut app = setup_test_app();
-        
+
         // Active pane should be empty (no tasks)
         assert!(app.active_pane().is_empty());
-        
+
         // Modifying filter should succeed even on empty pane
         app.active_pane_mut().filter_query = "project:test".to_string();
-        
+
         assert_eq!(app.active_pane().filter_query, "project:test");
     }
 
     #[test]
     fn test_empty_pane_allows_sort_modification() {
         let mut app = setup_test_app();
-        
+
         // Active pane should be empty
         assert!(app.active_pane().is_empty());
-        
+
         // Modifying sort order should succeed even on empty pane
         app.active_pane_mut().sort_order = SortOrder::DueDate;
-        
+
         assert_eq!(app.active_pane().sort_order, SortOrder::DueDate);
     }
 
     #[test]
     fn test_empty_pane_allows_grouping_modification() {
         let mut app = setup_test_app();
-        
+
         // Active pane should be empty
         assert!(app.active_pane().is_empty());
-        
+
         // Toggling grouping should succeed even on empty pane
         app.active_pane_mut().grouping = true;
-        
+
         assert!(app.active_pane().grouping);
     }
 
     #[test]
     fn test_reconcile_active_pane_ensures_bounds() {
         let mut app = setup_test_app();
-        
+
         // Add a couple panes
         app.panes.push(Pane::new(1, "Pane 2".to_string()));
         app.panes.push(Pane::new(2, "Pane 3".to_string()));
-        
+
         // Set active_pane to an out-of-bounds value
         app.active_pane = 5;
-        
+
         // reconcile_active_pane should fix it
         app.reconcile_active_pane();
-        
+
         // Should clamp to last valid index (2)
         assert_eq!(app.active_pane, 2);
     }
@@ -198,14 +201,14 @@ mod pane_integration_tests {
     #[test]
     fn test_reconcile_active_pane_creates_default_pane_when_empty() {
         let mut app = setup_test_app();
-        
+
         // Remove all panes
         app.panes.clear();
         assert_eq!(app.panes.len(), 0);
-        
+
         // reconcile_active_pane should create a default pane
         app.reconcile_active_pane();
-        
+
         assert_eq!(app.panes.len(), 1);
         assert_eq!(app.active_pane, 0);
         assert_eq!(app.panes[0].label, "");
@@ -214,16 +217,16 @@ mod pane_integration_tests {
     #[test]
     fn test_single_pane_fallback_when_all_panes_empty() {
         let mut app = setup_test_app();
-        
+
         // Add multiple panes
         app.panes.push(Pane::new(1, "Pane 2".to_string()));
         app.panes.push(Pane::new(2, "Pane 3".to_string()));
-        
+
         // All panes should be empty (no tasks added)
         for pane in &app.panes {
             assert!(pane.is_empty());
         }
-        
+
         // should_show_single_pane should return true (fallback)
         assert!(app.should_show_single_pane());
     }
@@ -231,13 +234,13 @@ mod pane_integration_tests {
     #[test]
     fn test_active_pane_mut_reconciles_bounds() {
         let mut app = setup_test_app();
-        
+
         // Set active_pane to invalid index
         app.active_pane = 10;
-        
+
         // active_pane_mut() should call reconcile before returning
         let _ = app.active_pane_mut();
-        
+
         // Should be fixed now
         assert!(app.active_pane < app.panes.len());
     }
@@ -246,17 +249,17 @@ mod pane_integration_tests {
     fn test_pane_selection_clamped_on_navigation() {
         let mut app = setup_test_app();
         app.panes.push(Pane::new(1, "Pane 2".to_string()));
-        
+
         // Manually set selected to an invalid value on pane 0
         app.panes[0].selected = 100;
         assert!(!app.panes[0].is_empty() || app.panes[0].selected == 100); // pane is empty or selection is out of bounds
-        
+
         // Navigate to pane 1
         app.focus_next_pane();
-        
+
         // Navigate back to pane 0
         app.focus_prev_pane();
-        
+
         // Selection should still be 100 (we don't auto-fix in navigate, only in rebuild)
         // This is expected behavior — the selection gets reconciled when display_rows is rebuilt
         assert_eq!(app.panes[0].selected, 100);
@@ -327,7 +330,8 @@ group = false
 "#;
         fs::write(&config_path, config_toml).expect("should write config");
 
-        let config = TuiConfig::load(&config_path).expect("load should tolerate invalid pane entries");
+        let config =
+            TuiConfig::load(&config_path).expect("load should tolerate invalid pane entries");
         assert_eq!(config.panes.len(), 1);
         assert_eq!(config.panes[0].label, "Valid");
         assert_eq!(config.panes[0].sort, PaneSort::Priority);
@@ -399,10 +403,12 @@ normalize_append = false
         app.panes[1].sort_order = SortOrder::DueDate;
         app.panes[1].grouping = false;
 
-        app.save_view_state().expect("quit persistence should succeed");
+        app.save_view_state()
+            .expect("quit persistence should succeed");
 
         let state_path = todotxt_tui::config::state_file_path(&config_path);
-        let reloaded = TuiStateFile::load(&state_path).expect("state file should be written and parseable");
+        let reloaded =
+            TuiStateFile::load(&state_path).expect("state file should be written and parseable");
         assert_eq!(reloaded.panes.len(), 2);
         assert_eq!(reloaded.panes[0].label, "Work");
         assert_eq!(reloaded.panes[0].filter, "project:work");
@@ -415,8 +421,12 @@ normalize_append = false
         assert!(!reloaded.panes[1].group);
 
         // config.toml must NOT be rewritten at runtime (PRSV-03).
-        let config_contents = fs::read_to_string(&config_path).expect("config.toml should still exist");
-        assert!(config_contents.contains("normalize_append"), "config.toml should be preserved unchanged");
+        let config_contents =
+            fs::read_to_string(&config_path).expect("config.toml should still exist");
+        assert!(
+            config_contents.contains("normalize_append"),
+            "config.toml should be preserved unchanged"
+        );
 
         let _ = fs::remove_file(&config_path);
         let _ = fs::remove_file(&state_path);
@@ -449,7 +459,8 @@ normalize_append = false
         app.panes[0].sort_order = SortOrder::Alphabetical;
         app.panes[0].grouping = true;
 
-        app.save_view_state().expect("quit persistence should succeed");
+        app.save_view_state()
+            .expect("quit persistence should succeed");
 
         let state_path = todotxt_tui::config::state_file_path(&config_path);
         let persisted = fs::read_to_string(&state_path).expect("should read persisted state file");
@@ -494,10 +505,15 @@ group = false
         app.panes[0].filter_query = "project:changed".to_string();
         let state_path = todotxt_tui::config::state_file_path(&config_path);
         // state file must not exist before quit save
-        assert!(!state_path.exists(), "state file must not be written until quit");
+        assert!(
+            !state_path.exists(),
+            "state file must not be written until quit"
+        );
 
-        app.save_view_state().expect("quit persistence should succeed");
-        let after_quit_write = fs::read_to_string(&state_path).expect("should read state file after quit save");
+        app.save_view_state()
+            .expect("quit persistence should succeed");
+        let after_quit_write =
+            fs::read_to_string(&state_path).expect("should read state file after quit save");
         assert!(after_quit_write.contains("project:changed"));
         // dir drops here, cleaning up all temp files automatically
     }
@@ -513,8 +529,11 @@ group = false
         File::create(&todo_path).unwrap().write_all(b"").unwrap();
 
         // config.toml defines "OldWork" pane
-        fs::write(&config_path, "[[panes]]\nlabel = \"OldWork\"\nfilter = \"+old\"\n")
-            .expect("should write config");
+        fs::write(
+            &config_path,
+            "[[panes]]\nlabel = \"OldWork\"\nfilter = \"+old\"\n",
+        )
+        .expect("should write config");
 
         // tui-state.toml defines "StateWork" pane — should win at startup
         let state = todotxt_tui::config::TuiStateFile {
@@ -547,7 +566,10 @@ group = false
 
         // Panes come from state file, not config.toml
         assert_eq!(app.panes.len(), 1, "panes should come from state file");
-        assert_eq!(app.panes[0].label, "StateWork", "label must match state file, not config.toml");
+        assert_eq!(
+            app.panes[0].label, "StateWork",
+            "label must match state file, not config.toml"
+        );
         assert_eq!(app.panes[0].filter_query, "+state");
     }
 
@@ -562,11 +584,17 @@ group = false
         File::create(&todo_path).unwrap().write_all(b"").unwrap();
 
         // config.toml defines "ConfigPane" — no state file present
-        fs::write(&config_path, "[[panes]]\nlabel = \"ConfigPane\"\nfilter = \"+config\"\n")
-            .expect("should write config");
+        fs::write(
+            &config_path,
+            "[[panes]]\nlabel = \"ConfigPane\"\nfilter = \"+config\"\n",
+        )
+        .expect("should write config");
 
         // No state file created — must not exist
-        assert!(!state_path.exists(), "state file must not exist for this test");
+        assert!(
+            !state_path.exists(),
+            "state file must not exist for this test"
+        );
 
         // Replicate main.rs startup logic: load state returns None → config unchanged
         let mut config = TuiConfig::load(&config_path).expect("should load config");
@@ -587,7 +615,10 @@ group = false
 
         // Panes come from config.toml
         assert_eq!(app.panes.len(), 1, "panes should come from config.toml");
-        assert_eq!(app.panes[0].label, "ConfigPane", "label must match config.toml");
+        assert_eq!(
+            app.panes[0].label, "ConfigPane",
+            "label must match config.toml"
+        );
         assert_eq!(app.panes[0].filter_query, "+config");
     }
 
@@ -615,7 +646,8 @@ group = false
         );
 
         // No pane state mutation — startup_pane_snapshot matches current state
-        app.save_view_state().expect("save_view_state must not fail");
+        app.save_view_state()
+            .expect("save_view_state must not fail");
 
         // State file must NOT be written (compare-on-quit optimization)
         assert!(

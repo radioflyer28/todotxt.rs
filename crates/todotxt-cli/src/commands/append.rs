@@ -3,7 +3,13 @@ use std::path::Path;
 use todotxt_core::{normalize_append, Task, TaskList};
 
 /// Append text to the end of a task (`append` command).
-pub fn run(todo_path: &Path, id: usize, text: &str, normalize: bool, renderer: &Renderer) -> Result<(), CliError> {
+pub fn run(
+    todo_path: &Path,
+    id: usize,
+    text: &str,
+    normalize: bool,
+    renderer: &Renderer,
+) -> Result<(), CliError> {
     let idx = validate_id(id)?;
     let mut list = TaskList::load(todo_path)?;
 

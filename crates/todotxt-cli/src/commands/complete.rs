@@ -1,4 +1,5 @@
 use crate::{output::Renderer, CliError};
+use chrono::Local;
 use std::path::Path;
 use todotxt_core::TaskList;
 
@@ -21,15 +22,32 @@ pub fn run_do(todo_path: &Path, ids: &[usize], renderer: &Renderer) -> Result<()
     indices.sort_unstable_by(|a, b| b.cmp(a));
     indices.dedup();
 
+    let completion_date = Local::now().date_naive();
+    let mut tasks = list.tasks().to_vec();
+    let mut completed_outputs = Vec::new();
+    let mut generated = Vec::new();
+
     for idx in indices {
-        let task = list.tasks()[idx].clone();
+        let task = tasks[idx].clone();
         if task.completed {
             eprintln!("info: task {} is already completed, skipping.", idx + 1);
             continue;
         }
 
+        if let Some(next_task) = task.next_recurring_occurrence(completion_date) {
+            generated.push(next_task);
+        }
         let updated = task.with_completed(true);
-        list.update(idx, updated.clone())?;
+        tasks[idx] = updated.clone();
+        completed_outputs.push((idx, updated));
+    }
+
+    if !completed_outputs.is_empty() || !generated.is_empty() {
+        tasks.extend(generated);
+        list.replace_all(tasks)?;
+    }
+
+    for (idx, updated) in completed_outputs {
         renderer.print_write_result(&format!("Completed task #{}.", idx + 1), idx, &updated);
     }
 

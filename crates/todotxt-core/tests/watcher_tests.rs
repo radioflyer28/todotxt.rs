@@ -40,14 +40,17 @@ mod tests {
         std::fs::write(&path, "Buy milk\nSend email\n").unwrap();
 
         let did_fire = wait_for_flag(&fired, 3000);
-        assert!(did_fire, "FileWatcher callback did not fire within 3 seconds after file write");
+        assert!(
+            did_fire,
+            "FileWatcher callback did not fire within 3 seconds after file write"
+        );
     }
 
     #[test]
     fn watcher_stop_does_not_panic() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        let watcher = FileWatcher::new(tmp.path(), Arc::new(|| {}))
-            .expect("FileWatcher::new should succeed");
+        let watcher =
+            FileWatcher::new(tmp.path(), Arc::new(|| {})).expect("FileWatcher::new should succeed");
         watcher.stop();
     }
 
@@ -74,6 +77,9 @@ mod tests {
         std::fs::rename(&tmp_path, &target).unwrap();
 
         let did_fire = wait_for_flag(&fired, 3000);
-        assert!(did_fire, "FileWatcher callback did not fire after atomic rename within 3 seconds");
+        assert!(
+            did_fire,
+            "FileWatcher callback did not fire after atomic rename within 3 seconds"
+        );
     }
 }

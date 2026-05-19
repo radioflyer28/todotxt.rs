@@ -81,10 +81,7 @@ mod tests {
 
     #[test]
     fn test_iso_date() {
-        assert_eq!(
-            parse_date_input("2026-12-25", TODAY()),
-            Ok(d(2026, 12, 25))
-        );
+        assert_eq!(parse_date_input("2026-12-25", TODAY()), Ok(d(2026, 12, 25)));
     }
 
     #[test]

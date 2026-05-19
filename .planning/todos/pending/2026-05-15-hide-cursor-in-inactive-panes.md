@@ -2,6 +2,7 @@
 created: 2026-05-15T00:00:00
 title: Hide cursor highlight in inactive TUI panes
 area: tui
+resolves_phase: 47
 files:
   - crates/todotxt-tui/src/components/pane_list.rs:184-200
   - crates/todotxt-tui/src/app.rs:129

@@ -27,8 +27,8 @@ pub fn run_due(
     renderer: &Renderer,
 ) -> Result<(), CliError> {
     let today = Local::now().date_naive();
-    let due_date = parse_date_input(date, today)
-        .map_err(|e| CliError::Other(anyhow::anyhow!("{}", e)))?;
+    let due_date =
+        parse_date_input(date, today).map_err(|e| CliError::Other(anyhow::anyhow!("{}", e)))?;
 
     let mut list = TaskList::load(todo_path)?;
     let idx = validate_id(id, list.len())?;
@@ -39,7 +39,11 @@ pub fn run_due(
     list.save()?;
 
     renderer.print_write_result(
-        &format!("Set due date to {} on task #{}.", due_date.format("%Y-%m-%d"), id),
+        &format!(
+            "Set due date to {} on task #{}.",
+            due_date.format("%Y-%m-%d"),
+            id
+        ),
         idx,
         &updated,
     );
@@ -59,10 +63,7 @@ pub fn run_postpone(
 
     let task = list.tasks()[idx].clone();
     let current_due = task.due_date.ok_or_else(|| {
-        CliError::Other(anyhow::anyhow!(
-            "task {} has no due date to postpone",
-            id
-        ))
+        CliError::Other(anyhow::anyhow!("task {} has no due date to postpone", id))
     })?;
 
     let new_due = current_due + Duration::days(days as i64);

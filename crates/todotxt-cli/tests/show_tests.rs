@@ -18,24 +18,14 @@ fn show_first_task_prints_raw_line() {
 #[test]
 fn show_nonexistent_id_exits_one() {
     let fx = TestFixture::new();
-    fx.cmd()
-        .arg("show")
-        .arg("9999")
-        .assert()
-        .failure()
-        .code(1);
+    fx.cmd().arg("show").arg("9999").assert().failure().code(1);
 }
 
 #[test]
 fn show_zero_id_exits_one() {
     let fx = TestFixture::new();
     // ID 0 is invalid (IDs are 1-based); show.rs returns CliError::NotFound for id==0
-    fx.cmd()
-        .arg("show")
-        .arg("0")
-        .assert()
-        .failure()
-        .code(1);
+    fx.cmd().arg("show").arg("0").assert().failure().code(1);
 }
 
 #[test]

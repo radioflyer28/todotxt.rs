@@ -1,5 +1,8 @@
 //! Pane list widget — renders a single pane with its task list
 
+use crate::state::{DisplayRow, Pane};
+use crate::theme::StyleSheet;
+use chrono::Local;
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -7,10 +10,7 @@ use ratatui::{
     Frame,
 };
 use std::collections::HashSet;
-use crate::state::{Pane, DisplayRow};
-use crate::theme::StyleSheet;
 use todotxt_core::DueStatus;
-use chrono::Local;
 
 #[allow(dead_code)]
 pub struct PaneList;
@@ -46,7 +46,11 @@ impl PaneList {
         }
 
         if header_parts.is_empty() {
-            if is_active { "▶".to_string() } else { " ".to_string() }
+            if is_active {
+                "▶".to_string()
+            } else {
+                " ".to_string()
+            }
         } else {
             header_parts.join(" | ")
         }
@@ -77,6 +81,18 @@ impl PaneList {
         format!("{}…", truncated)
     }
 
+    pub(crate) fn selected_row_for_render(
+        pane: &Pane,
+        is_active: bool,
+        label_selected: bool,
+    ) -> Option<usize> {
+        if is_active && !label_selected && !pane.display_rows.is_empty() {
+            Some(pane.selected)
+        } else {
+            None
+        }
+    }
+
     /// Render a single pane into the given area
     #[allow(dead_code, clippy::too_many_arguments)]
     pub fn render(
@@ -97,8 +113,7 @@ impl PaneList {
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default()
-                .fg(Color::DarkGray)
+            Style::default().fg(Color::DarkGray)
         };
 
         let title = Self::build_pane_title(pane, is_active, label_selected);
@@ -120,14 +135,14 @@ impl PaneList {
                 .enumerate()
                 .map(|(row_idx, row)| {
                     match row {
+                        DisplayRow::GroupSpacer => ListItem::new(""),
                         DisplayRow::GroupHeader(label) => {
                             let truncated = if usable_width > 0 {
                                 Self::truncate_for_width(&format!(" {}", label), usable_width)
                             } else {
                                 label.clone()
                             };
-                            ListItem::new(truncated)
-                                .style(stylesheet.group_header)
+                            ListItem::new(truncated).style(stylesheet.group_header)
                         }
                         DisplayRow::Task(ci) => {
                             let t = &tasks[*ci];
@@ -153,7 +168,8 @@ impl PaneList {
                                 // Completed tasks: DIM only, no color (D-01, D-06).
                                 Style::default().add_modifier(Modifier::DIM)
                             } else if show_deferred
-                                && t.threshold_date.is_some_and(|d| d > Local::now().date_naive())
+                                && t.threshold_date
+                                    .is_some_and(|d| d > Local::now().date_naive())
                             {
                                 Style::default().add_modifier(Modifier::DIM)
                             } else if t.priority == Some('A') {
@@ -197,8 +213,8 @@ impl PaneList {
             .highlight_style(Style::default().add_modifier(highlight_modifier));
 
         let mut list_state = ListState::default();
-        if !label_selected && !pane.display_rows.is_empty() {
-            list_state = list_state.with_selected(Some(pane.selected));
+        if let Some(selected) = Self::selected_row_for_render(pane, is_active, label_selected) {
+            list_state = list_state.with_selected(Some(selected));
         }
 
         frame.render_stateful_widget(list, area, &mut list_state);
@@ -217,7 +233,11 @@ mod tests {
         let mut p = Pane::new(0, "Pane 3".to_string());
         p.sort_order = SortOrder::CompletedDate;
         let title = PaneList::build_pane_title(&p, true, false);
-        assert!(!title.contains("sort:"), "Header must not contain 'sort:': {}", title);
+        assert!(
+            !title.contains("sort:"),
+            "Header must not contain 'sort:': {}",
+            title
+        );
         assert_eq!(title, "▶ Pane 3");
     }
 
@@ -228,7 +248,42 @@ mod tests {
         p.filter_query = "@work +CTRC".to_string();
         p.sort_order = SortOrder::CompletedDate;
         let title = PaneList::build_pane_title(&p, true, false);
-        assert!(!title.contains("filter:"), "Header must not contain 'filter:': {}", title);
+        assert!(
+            !title.contains("filter:"),
+            "Header must not contain 'filter:': {}",
+            title
+        );
         assert_eq!(title, "▶ Pane 3 | @work +CTRC");
+    }
+
+    #[test]
+    fn inactive_pane_has_no_render_selected_row() {
+        let mut p = Pane::new(0, "Pane 1".to_string());
+        p.display_rows = vec![DisplayRow::Task(0), DisplayRow::Task(1)];
+        p.selected = 1;
+
+        assert_eq!(PaneList::selected_row_for_render(&p, false, false), None);
+        assert_eq!(
+            p.selected, 1,
+            "render selection helper must not mutate pane.selected"
+        );
+    }
+
+    #[test]
+    fn active_pane_uses_remembered_selected_row() {
+        let mut p = Pane::new(0, "Pane 1".to_string());
+        p.display_rows = vec![DisplayRow::Task(0), DisplayRow::Task(1)];
+        p.selected = 1;
+
+        assert_eq!(PaneList::selected_row_for_render(&p, true, false), Some(1));
+    }
+
+    #[test]
+    fn label_selected_suppresses_render_selected_row() {
+        let mut p = Pane::new(0, "Pane 1".to_string());
+        p.display_rows = vec![DisplayRow::Task(0)];
+        p.selected = 0;
+
+        assert_eq!(PaneList::selected_row_for_render(&p, true, true), None);
     }
 }

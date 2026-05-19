@@ -9,7 +9,8 @@ fn set_auto_creation_date(fixture: &TestFixture, enabled: bool) {
     let todo_path = fixture.todo.path().to_string_lossy().into_owned();
     let toml = format!(
         "todo_file = {}\nauto_creation_date = {}\n",
-        Value::String(todo_path), enabled
+        Value::String(todo_path),
+        enabled
     );
     fs::write(fixture.config.path(), toml).expect("rewrite config.toml");
 }
@@ -262,7 +263,11 @@ fn edit_empty_text_exits_2() {
 #[test]
 fn edit_invalid_id_exits_1() {
     let fixture = TestFixture::new();
-    fixture.cmd().args(["edit", "99", "New text"]).assert().code(1);
+    fixture
+        .cmd()
+        .args(["edit", "99", "New text"])
+        .assert()
+        .code(1);
 }
 
 #[test]

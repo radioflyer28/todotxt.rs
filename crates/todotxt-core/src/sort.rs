@@ -1,5 +1,5 @@
-use std::cmp::Ordering;
 use crate::task::Task;
+use std::cmp::Ordering;
 
 /// The sort order to apply to a `TaskList`.
 ///
@@ -30,25 +30,22 @@ impl SortOrder {
     /// Compare two tasks according to this sort order.
     pub fn compare(&self, a: &Task, b: &Task) -> Ordering {
         match self {
-            SortOrder::Priority => {
-                match (a.priority, b.priority) {
-                    (None, None) => Ordering::Equal,
-                    (None, _) => Ordering::Greater,
-                    (_, None) => Ordering::Less,
-                    (Some(pa), Some(pb)) => pa.cmp(&pb),
-                }
-            }
-            SortOrder::DueDate => {
-                match (a.due_date, b.due_date) {
-                    (None, None) => Ordering::Equal,
-                    (None, _) => Ordering::Greater,
-                    (_, None) => Ordering::Less,
-                    (Some(da), Some(db)) => da.cmp(&db),
-                }
-            }
-            SortOrder::Alphabetical => {
-                a.to_raw().to_ascii_lowercase().cmp(&b.to_raw().to_ascii_lowercase())
-            }
+            SortOrder::Priority => match (a.priority, b.priority) {
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Greater,
+                (_, None) => Ordering::Less,
+                (Some(pa), Some(pb)) => pa.cmp(&pb),
+            },
+            SortOrder::DueDate => match (a.due_date, b.due_date) {
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Greater,
+                (_, None) => Ordering::Less,
+                (Some(da), Some(db)) => da.cmp(&db),
+            },
+            SortOrder::Alphabetical => a
+                .to_raw()
+                .to_ascii_lowercase()
+                .cmp(&b.to_raw().to_ascii_lowercase()),
             SortOrder::Project => {
                 let pa = a.projects.first().map(|s| s.to_ascii_lowercase());
                 let pb = b.projects.first().map(|s| s.to_ascii_lowercase());
@@ -70,22 +67,18 @@ impl SortOrder {
                 }
             }
             SortOrder::FileOrder => Ordering::Equal,
-            SortOrder::CompletedDate => {
-                match (a.completion_date, b.completion_date) {
-                    (None, None) => Ordering::Equal,
-                    (None, _) => Ordering::Greater,
-                    (_, None) => Ordering::Less,
-                    (Some(da), Some(db)) => da.cmp(&db),
-                }
-            }
-            SortOrder::CreationDate => {
-                match (a.creation_date, b.creation_date) {
-                    (None, None) => Ordering::Equal,
-                    (None, _) => Ordering::Greater,
-                    (_, None) => Ordering::Less,
-                    (Some(da), Some(db)) => da.cmp(&db),
-                }
-            }
+            SortOrder::CompletedDate => match (a.completion_date, b.completion_date) {
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Greater,
+                (_, None) => Ordering::Less,
+                (Some(da), Some(db)) => da.cmp(&db),
+            },
+            SortOrder::CreationDate => match (a.creation_date, b.creation_date) {
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Greater,
+                (_, None) => Ordering::Less,
+                (Some(da), Some(db)) => da.cmp(&db),
+            },
         }
     }
 }
@@ -95,7 +88,9 @@ mod tests {
     use super::*;
     use crate::task::Task;
 
-    fn task(raw: &str) -> Task { Task::parse(raw) }
+    fn task(raw: &str) -> Task {
+        Task::parse(raw)
+    }
 
     #[test]
     fn priority_sorted_a_before_b_before_none() {
@@ -127,7 +122,10 @@ mod tests {
     fn alphabetical_case_insensitive() {
         let apple = task("Apple task");
         let banana = task("banana task");
-        assert_eq!(SortOrder::Alphabetical.compare(&apple, &banana), Ordering::Less);
+        assert_eq!(
+            SortOrder::Alphabetical.compare(&apple, &banana),
+            Ordering::Less
+        );
     }
 
     #[test]

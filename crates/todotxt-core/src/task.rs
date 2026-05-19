@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use chrono::{Local, NaiveDate};
+use chrono::{Days, Local, Months, NaiveDate};
 use serde::{Deserialize, Serialize};
-use winnow::{combinator::opt, error::ContextError, prelude::*, error::ModalResult};
+use winnow::{combinator::opt, error::ContextError, error::ModalResult, prelude::*};
 
 /// Whether a task is overdue, due today, or not due.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -12,6 +12,48 @@ pub enum DueStatus {
     NotDue,
     Today,
     Overdue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecurrenceMode {
+    Strict,
+    Relative,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecurrenceUnit {
+    Days,
+    Weeks,
+    Months,
+    Years,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecurrenceRule {
+    pub mode: RecurrenceMode,
+    pub amount: u32,
+    pub unit: RecurrenceUnit,
+}
+
+impl RecurrenceRule {
+    fn next_due_date(self, task: &Task, completion_date: NaiveDate) -> Option<NaiveDate> {
+        let anchor = match self.mode {
+            RecurrenceMode::Strict => task.due_date.unwrap_or(completion_date),
+            RecurrenceMode::Relative => completion_date,
+        };
+        self.add_to(anchor)
+    }
+
+    fn add_to(self, date: NaiveDate) -> Option<NaiveDate> {
+        match self.unit {
+            RecurrenceUnit::Days => date.checked_add_days(Days::new(self.amount as u64)),
+            RecurrenceUnit::Weeks => {
+                date.checked_add_days(Days::new((self.amount as u64).saturating_mul(7)))
+            }
+            RecurrenceUnit::Months => date.checked_add_months(Months::new(self.amount)),
+            RecurrenceUnit::Years => date.checked_add_months(Months::new(self.amount * 12)),
+        }
+    }
 }
 
 /// A single todo.txt task.
@@ -114,6 +156,30 @@ impl Task {
         }
     }
 
+    /// Parse the first supported `rec:` token from this task, if present.
+    pub fn recurrence_rule(&self) -> Option<RecurrenceRule> {
+        self.raw.split_whitespace().find_map(parse_recurrence_token)
+    }
+
+    /// Construct the next incomplete occurrence for a recurring task.
+    pub fn next_recurring_occurrence(&self, completion_date: NaiveDate) -> Option<Task> {
+        let rule = self.recurrence_rule()?;
+        let next_due_date = rule.next_due_date(self, completion_date)?;
+        let next_task = Task {
+            raw: String::new(),
+            completed: false,
+            priority: self.priority,
+            creation_date: self.creation_date,
+            completion_date: None,
+            due_date: Some(next_due_date),
+            threshold_date: self.threshold_date,
+            projects: self.projects.clone(),
+            contexts: self.contexts.clone(),
+            body: self.body.clone(),
+        };
+        Some(Task::parse(&rebuild_raw(&next_task)))
+    }
+
     // ── Builder methods (value-consuming, per CONTEXT.md Decision 4) ─────────
 
     /// Mark or unmark this task as completed.
@@ -146,6 +212,34 @@ impl Task {
         }
     }
 
+    /// Set or clear the completion date.
+    ///
+    /// Setting a completion date marks the task completed and strips priority,
+    /// matching standard completion semantics while allowing an explicit date value.
+    pub fn with_completion_date(self, date: Option<NaiveDate>) -> Self {
+        match date {
+            Some(completion_date) => {
+                let new_task = Task {
+                    completed: true,
+                    priority: None,
+                    completion_date: Some(completion_date),
+                    ..self
+                };
+                let new_raw = rebuild_raw(&new_task);
+                Task::parse(&new_raw)
+            }
+            None => {
+                let new_task = Task {
+                    completed: false,
+                    completion_date: None,
+                    ..self
+                };
+                let new_raw = rebuild_raw(&new_task);
+                Task::parse(&new_raw)
+            }
+        }
+    }
+
     /// Set or clear the priority, updating the raw string.
     pub fn with_priority(self, priority: Option<char>) -> Self {
         let new_task = Task { priority, ..self };
@@ -155,21 +249,30 @@ impl Task {
 
     /// Set or clear the creation date.
     pub fn with_creation_date(self, date: Option<NaiveDate>) -> Self {
-        let new_task = Task { creation_date: date, ..self };
+        let new_task = Task {
+            creation_date: date,
+            ..self
+        };
         let new_raw = rebuild_raw(&new_task);
         Task::parse(&new_raw)
     }
 
     /// Set or clear the due date (`due:YYYY-MM-DD` tag in body).
     pub fn with_due_date(self, date: Option<NaiveDate>) -> Self {
-        let new_task = Task { due_date: date, ..self };
+        let new_task = Task {
+            due_date: date,
+            ..self
+        };
         let new_raw = rebuild_raw(&new_task);
         Task::parse(&new_raw)
     }
 
     /// Set or clear the threshold date (`t:YYYY-MM-DD` tag in body).
     pub fn with_threshold_date(self, date: Option<NaiveDate>) -> Self {
-        let new_task = Task { threshold_date: date, ..self };
+        let new_task = Task {
+            threshold_date: date,
+            ..self
+        };
         let new_raw = rebuild_raw(&new_task);
         Task::parse(&new_raw)
     }
@@ -206,7 +309,7 @@ pub fn normalize_append(task: &Task, append_text: &str) -> Task {
     // Unknown tokens that extract_tags doesn't recognize land in appended.body (NORM-05/D-02).
     // Note: If append_text is just "(A)" without trailing space, the parser won't recognize it as priority.
     // We handle this by appending a space for parsing purposes.
-    let parse_text = if append_text.len() == 3 
+    let parse_text = if append_text.len() == 3
         && append_text.as_bytes()[0] == b'('
         && append_text.as_bytes()[1].is_ascii_uppercase()
         && append_text.as_bytes()[2] == b')'
@@ -243,9 +346,9 @@ pub fn normalize_append(task: &Task, append_text: &str) -> Task {
 
     // NORM-05: body = original body + appended body words (plain text + unrecognized tokens).
     let body = match (task.body.is_empty(), appended.body.is_empty()) {
-        (true, _)  => appended.body.clone(),
-        (_, true)  => task.body.clone(),
-        _           => format!("{} {}", task.body, appended.body),
+        (true, _) => appended.body.clone(),
+        (_, true) => task.body.clone(),
+        _ => format!("{} {}", task.body, appended.body),
     };
 
     // Build the merged Task. `raw` is a private field — we are in the same module (task.rs).
@@ -361,6 +464,36 @@ fn winnow_date_inner(input: &mut &str) -> ModalResult<NaiveDate> {
 /// Returns `None` (and leaves `s` unchanged) if no valid date prefix is present.
 fn parse_date_prefix(s: &mut &str) -> Option<NaiveDate> {
     opt(winnow_date_inner).parse_next(s).unwrap_or_default()
+}
+
+fn parse_recurrence_token(token: &str) -> Option<RecurrenceRule> {
+    let mut rest = token.strip_prefix("rec:")?;
+    let mode = if let Some(stripped) = rest.strip_prefix('+') {
+        rest = stripped;
+        RecurrenceMode::Strict
+    } else {
+        RecurrenceMode::Relative
+    };
+
+    if rest.len() < 2 {
+        return None;
+    }
+
+    let (amount_str, unit_str) = rest.split_at(rest.len() - 1);
+    let amount: u32 = amount_str.parse().ok()?;
+    if amount == 0 {
+        return None;
+    }
+
+    let unit = match unit_str {
+        "d" => RecurrenceUnit::Days,
+        "w" => RecurrenceUnit::Weeks,
+        "m" => RecurrenceUnit::Months,
+        "y" => RecurrenceUnit::Years,
+        _ => return None,
+    };
+
+    Some(RecurrenceRule { mode, amount, unit })
 }
 
 // ── Manual prefix parsers ─────────────────────────────────────────────────────
@@ -501,22 +634,44 @@ mod tests {
     /// with_priority sets new priority and preserves all other metadata fields.
     #[test]
     fn test_with_priority_preserves_metadata() {
-        let task = Task::parse("(B) 2025-12-01 fix login bug @work @home +proj1 +proj2 due:2026-03-01 t:2026-02-01");
+        let task = Task::parse(
+            "(B) 2025-12-01 fix login bug @work @home +proj1 +proj2 due:2026-03-01 t:2026-02-01",
+        );
         let result = task.with_priority(Some('A'));
 
         assert_eq!(result.priority, Some('A'));
         assert_eq!(result.creation_date, Some(date(2025, 12, 1)));
         assert_eq!(result.due_date, Some(date(2026, 3, 1)));
         assert_eq!(result.threshold_date, Some(date(2026, 2, 1)));
-        assert_eq!(result.projects, vec!["proj1".to_string(), "proj2".to_string()]);
+        assert_eq!(
+            result.projects,
+            vec!["proj1".to_string(), "proj2".to_string()]
+        );
         assert!(result.contexts.contains(&"work".to_string()));
         assert!(result.contexts.contains(&"home".to_string()));
         assert_eq!(result.completed, false);
-        assert!(result.to_raw().starts_with("(A) "), "raw should start with (A): {}", result.to_raw());
-        assert!(result.to_raw().contains("due:2026-03-01"), "should contain due date: {}", result.to_raw());
-        assert!(!result.to_raw().contains("(B)"), "should not contain old priority: {}", result.to_raw());
+        assert!(
+            result.to_raw().starts_with("(A) "),
+            "raw should start with (A): {}",
+            result.to_raw()
+        );
+        assert!(
+            result.to_raw().contains("due:2026-03-01"),
+            "should contain due date: {}",
+            result.to_raw()
+        );
+        assert!(
+            !result.to_raw().contains("(B)"),
+            "should not contain old priority: {}",
+            result.to_raw()
+        );
         // Exactly one due: token
-        assert_eq!(result.to_raw().matches("due:").count(), 1, "exactly one due: token: {}", result.to_raw());
+        assert_eq!(
+            result.to_raw().matches("due:").count(),
+            1,
+            "exactly one due: token: {}",
+            result.to_raw()
+        );
     }
 
     /// with_priority(None) clears priority — no '(' token in raw output.
@@ -526,7 +681,11 @@ mod tests {
         let result = task.with_priority(None);
 
         assert_eq!(result.priority, None);
-        assert!(!result.to_raw().contains('('), "raw should not contain '(': {}", result.to_raw());
+        assert!(
+            !result.to_raw().contains('('),
+            "raw should not contain '(': {}",
+            result.to_raw()
+        );
         assert_eq!(result.creation_date, Some(date(2025, 12, 1)));
         assert_eq!(result.due_date, Some(date(2026, 3, 1)));
         assert_eq!(result.projects, vec!["proj1".to_string()]);
@@ -543,7 +702,11 @@ mod tests {
         assert_eq!(result.completion_date, Some(date(2026, 1, 15)));
         assert_eq!(result.creation_date, Some(date(2025, 12, 1)));
         assert_eq!(result.priority, Some('C'));
-        assert!(result.to_raw().starts_with("x "), "raw should start with 'x ': {}", result.to_raw());
+        assert!(
+            result.to_raw().starts_with("x "),
+            "raw should start with 'x ': {}",
+            result.to_raw()
+        );
         assert_eq!(result.due_date, Some(date(2026, 3, 1)));
         assert_eq!(result.projects, vec!["proj1".to_string()]);
         assert!(result.contexts.contains(&"work".to_string()));
@@ -552,18 +715,32 @@ mod tests {
     /// with_due_date replaces existing due: token — no duplicates.
     #[test]
     fn test_with_due_date_no_duplicate() {
-        let task = Task::parse("(A) 2025-12-01 fix login bug @work +proj1 due:2026-03-01 t:2026-02-01");
+        let task =
+            Task::parse("(A) 2025-12-01 fix login bug @work +proj1 due:2026-03-01 t:2026-02-01");
         let result = task.with_due_date(Some(date(2026, 6, 15)));
 
         assert_eq!(result.due_date, Some(date(2026, 6, 15)));
-        assert!(result.to_raw().contains("due:2026-06-15"), "should contain new due: {}", result.to_raw());
-        assert!(!result.to_raw().contains("due:2026-03-01"), "old due: should be gone: {}", result.to_raw());
+        assert!(
+            result.to_raw().contains("due:2026-06-15"),
+            "should contain new due: {}",
+            result.to_raw()
+        );
+        assert!(
+            !result.to_raw().contains("due:2026-03-01"),
+            "old due: should be gone: {}",
+            result.to_raw()
+        );
         assert_eq!(result.priority, Some('A'));
         assert_eq!(result.threshold_date, Some(date(2026, 2, 1)));
         assert_eq!(result.projects, vec!["proj1".to_string()]);
         assert!(result.contexts.contains(&"work".to_string()));
         // Exactly one due: token
-        assert_eq!(result.to_raw().matches("due:").count(), 1, "exactly one due: token: {}", result.to_raw());
+        assert_eq!(
+            result.to_raw().matches("due:").count(),
+            1,
+            "exactly one due: token: {}",
+            result.to_raw()
+        );
     }
 
     /// with_due_date(None) removes the due: token entirely.
@@ -573,7 +750,11 @@ mod tests {
         let result = task.with_due_date(None);
 
         assert_eq!(result.due_date, None);
-        assert!(!result.to_raw().contains("due:"), "raw should not contain 'due:': {}", result.to_raw());
+        assert!(
+            !result.to_raw().contains("due:"),
+            "raw should not contain 'due:': {}",
+            result.to_raw()
+        );
         assert_eq!(result.priority, Some('A'));
         assert_eq!(result.projects, vec!["proj1".to_string()]);
     }
@@ -585,16 +766,145 @@ mod tests {
         let result = task.with_priority(Some('Z'));
 
         assert_eq!(result.priority, Some('Z'));
-        assert_eq!(result.projects, vec!["proj1".to_string(), "proj2".to_string()]);
+        assert_eq!(
+            result.projects,
+            vec!["proj1".to_string(), "proj2".to_string()]
+        );
         assert_eq!(result.contexts.len(), 2);
         assert!(result.contexts.contains(&"work".to_string()));
         assert!(result.contexts.contains(&"home".to_string()));
-        assert!(result.to_raw().contains("+proj1"), "raw should contain +proj1: {}", result.to_raw());
-        assert!(result.to_raw().contains("+proj2"), "raw should contain +proj2: {}", result.to_raw());
-        assert!(result.to_raw().contains("@work"), "raw should contain @work: {}", result.to_raw());
-        assert!(result.to_raw().contains("@home"), "raw should contain @home: {}", result.to_raw());
+        assert!(
+            result.to_raw().contains("+proj1"),
+            "raw should contain +proj1: {}",
+            result.to_raw()
+        );
+        assert!(
+            result.to_raw().contains("+proj2"),
+            "raw should contain +proj2: {}",
+            result.to_raw()
+        );
+        assert!(
+            result.to_raw().contains("@work"),
+            "raw should contain @work: {}",
+            result.to_raw()
+        );
+        assert!(
+            result.to_raw().contains("@home"),
+            "raw should contain @home: {}",
+            result.to_raw()
+        );
         // No duplicates
         assert_eq!(result.to_raw().matches("+proj1").count(), 1);
         assert_eq!(result.to_raw().matches("+proj2").count(), 1);
+    }
+
+    #[test]
+    fn recurrence_parser_supports_strict_and_relative_tokens() {
+        let strict = Task::parse("pay rent rec:+1m due:2026-01-31");
+        let relative = Task::parse("stretch rec:2w");
+
+        assert_eq!(
+            strict.recurrence_rule(),
+            Some(RecurrenceRule {
+                mode: RecurrenceMode::Strict,
+                amount: 1,
+                unit: RecurrenceUnit::Months,
+            })
+        );
+        assert_eq!(
+            relative.recurrence_rule(),
+            Some(RecurrenceRule {
+                mode: RecurrenceMode::Relative,
+                amount: 2,
+                unit: RecurrenceUnit::Weeks,
+            })
+        );
+    }
+
+    #[test]
+    fn recurrence_parser_rejects_invalid_tokens() {
+        for raw in [
+            "bad rule rec:",
+            "bad rule rec:+",
+            "bad rule rec:abc",
+            "bad rule rec:+0d",
+            "bad rule rec:0w",
+            "bad rule rec:+1q",
+        ] {
+            let task = Task::parse(raw);
+            assert_eq!(task.recurrence_rule(), None, "expected invalid rule: {raw}");
+        }
+    }
+
+    #[test]
+    fn next_recurring_occurrence_strict_anchors_from_due_date() {
+        let task = Task::parse("(A) 2026-01-01 pay rent rec:+1m due:2026-01-31");
+        let next = task
+            .next_recurring_occurrence(date(2026, 2, 5))
+            .expect("strict recurrence");
+
+        assert_eq!(next.due_date, Some(date(2026, 2, 28)));
+    }
+
+    #[test]
+    fn next_recurring_occurrence_relative_anchors_from_completion_date() {
+        let task = Task::parse("(A) 2026-01-01 stretch rec:2w due:2026-01-10");
+        let next = task
+            .next_recurring_occurrence(date(2026, 1, 12))
+            .expect("relative recurrence");
+
+        assert_eq!(next.due_date, Some(date(2026, 1, 26)));
+    }
+
+    #[test]
+    fn next_recurring_occurrence_no_due_date_falls_back_to_completion_date() {
+        let task = Task::parse("water plants rec:+3d");
+        let next = task
+            .next_recurring_occurrence(date(2026, 3, 10))
+            .expect("fallback recurrence");
+
+        assert_eq!(next.due_date, Some(date(2026, 3, 13)));
+    }
+
+    #[test]
+    fn next_recurring_occurrence_is_deterministic_per_completion_date() {
+        let task = Task::parse("journal rec:1d");
+        let one = task
+            .next_recurring_occurrence(date(2026, 4, 2))
+            .expect("first");
+        let two = task
+            .next_recurring_occurrence(date(2026, 4, 2))
+            .expect("second");
+
+        assert_eq!(one, two);
+    }
+
+    #[test]
+    fn recurrence_metadata_preserves_identity_and_resets_completion_state() {
+        let task = Task::parse(
+            "(A) 2026-01-01 pay rent rec:+1m foo:bar +home @finance due:2026-01-31 t:2026-01-15",
+        );
+        let next = task
+            .next_recurring_occurrence(date(2026, 2, 3))
+            .expect("next occurrence");
+
+        assert!(!next.completed);
+        assert_eq!(next.completion_date, None);
+        assert_eq!(next.priority, Some('A'));
+        assert_eq!(next.creation_date, Some(date(2026, 1, 1)));
+        assert_eq!(next.threshold_date, Some(date(2026, 1, 15)));
+        assert_eq!(next.projects, vec!["home".to_string()]);
+        assert_eq!(next.contexts, vec!["finance".to_string()]);
+        assert!(next.body.contains("pay rent"));
+        assert!(next.body.contains("rec:+1m"));
+        assert!(next.body.contains("foo:bar"));
+        assert_eq!(next.due_date, Some(date(2026, 2, 28)));
+        assert_eq!(next.to_raw().matches("due:").count(), 1);
+    }
+
+    #[test]
+    fn recurrence_metadata_invalid_rule_creates_no_next_occurrence() {
+        let task = Task::parse("pay rent rec:+0d due:2026-01-31");
+        assert_eq!(task.next_recurring_occurrence(date(2026, 2, 1)), None);
     }
 }

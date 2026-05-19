@@ -11,14 +11,23 @@ pub fn run_del_done(todo_path: &Path, renderer: &Renderer) -> Result<(), CliErro
     let list = TaskList::load(todo_path)?;
 
     let count = list.tasks().iter().filter(|t| t.completed).count();
-    let incomplete: Vec<_> = list.tasks().iter().filter(|t| !t.completed).cloned().collect();
+    let incomplete: Vec<_> = list
+        .tasks()
+        .iter()
+        .filter(|t| !t.completed)
+        .cloned()
+        .collect();
 
     let new_content = if incomplete.is_empty() {
         String::new()
     } else {
         format!(
             "{}\n",
-            incomplete.iter().map(|t| t.to_raw()).collect::<Vec<_>>().join("\n")
+            incomplete
+                .iter()
+                .map(|t| t.to_raw())
+                .collect::<Vec<_>>()
+                .join("\n")
         )
     };
 

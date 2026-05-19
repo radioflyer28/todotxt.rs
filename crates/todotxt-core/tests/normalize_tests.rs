@@ -12,9 +12,16 @@ fn priority_appended_wins_over_original() {
     // D-03: appended priority replaces original
     let task = Task::parse("(A) fix bug");
     let result = normalize_append(&task, "(B)");
-    assert_eq!(result.priority, Some('B'), "appended (B) should replace original (A)");
+    assert_eq!(
+        result.priority,
+        Some('B'),
+        "appended (B) should replace original (A)"
+    );
     assert_eq!(result.body, "fix bug");
-    assert!(result.to_raw().starts_with("(B) "), "raw must start with (B)");
+    assert!(
+        result.to_raw().starts_with("(B) "),
+        "raw must start with (B)"
+    );
 }
 
 #[test]
@@ -52,7 +59,11 @@ fn projects_from_append_added_to_existing() {
 fn projects_deduplicated_when_appended_already_present() {
     let task = Task::parse("fix bug +work");
     let result = normalize_append(&task, "+work");
-    let work_count = result.projects.iter().filter(|p| p.as_str() == "work").count();
+    let work_count = result
+        .projects
+        .iter()
+        .filter(|p| p.as_str() == "work")
+        .count();
     assert_eq!(work_count, 1, "+work must appear exactly once");
 }
 
@@ -144,14 +155,21 @@ fn completed_flag_preserved_after_normalize_append() {
 fn inline_priority_lifted_from_body() {
     // User typed "fix bug (A) +work" — (A) is stray, must be lifted to priority field
     let result = normalize_line("fix bug (A) +work");
-    assert_eq!(result.priority, Some('A'), "inline (A) must be lifted to priority");
+    assert_eq!(
+        result.priority,
+        Some('A'),
+        "inline (A) must be lifted to priority"
+    );
     assert!(
         !result.body.contains("(A)"),
         "body must not contain (A) after lifting; body: {:?}",
         result.body
     );
     assert_eq!(result.projects, vec!["work"]);
-    assert!(result.to_raw().starts_with("(A) "), "raw must start with (A)");
+    assert!(
+        result.to_raw().starts_with("(A) "),
+        "raw must start with (A)"
+    );
 }
 
 #[test]
@@ -167,11 +185,17 @@ fn normalize_line_standard_prefix_priority_unchanged() {
 fn normalize_line_malformed_priority_stays_in_body() {
     // T-21-01: ((A)) and (AB) are NOT valid priority tokens — must stay in body
     let result = normalize_line("fix bug ((A)) more");
-    assert_eq!(result.priority, None, "((A)) must not be parsed as priority");
+    assert_eq!(
+        result.priority, None,
+        "((A)) must not be parsed as priority"
+    );
     assert!(result.body.contains("((A))"));
 
     let result2 = normalize_line("fix bug (AB) more");
-    assert_eq!(result2.priority, None, "(AB) must not be parsed as priority");
+    assert_eq!(
+        result2.priority, None,
+        "(AB) must not be parsed as priority"
+    );
     assert!(result2.body.contains("(AB)"));
 }
 
